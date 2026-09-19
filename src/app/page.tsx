@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { SourceUploader } from "@/components/upload/source-uploader";
+import { getConfig } from "@/config/env";
 
 export const metadata: Metadata = { title: "Create" };
 
 export default function CreatePage() {
+  const { uploadcare, upload, maxClipSeconds } = getConfig();
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:py-12">
       <div className="flex flex-col gap-2">
@@ -12,6 +15,14 @@ export default function CreatePage() {
           tell you the moment it lands.
         </p>
       </div>
+      <SourceUploader
+        settings={{
+          publicKey: uploadcare.publicKey,
+          allowedFormats: upload.allowedFormats,
+          maxBytes: upload.maxBytes,
+          maxClipSeconds,
+        }}
+      />
     </div>
   );
 }
