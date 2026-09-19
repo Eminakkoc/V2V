@@ -1,8 +1,17 @@
-export default function HomePage() {
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Create" };
+
+export default function CreatePage() {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">V2V Transform</h1>
-      <p className="text-muted-foreground">Upload a video, pick a style, get a restyled result.</p>
-    </main>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:py-12">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Create</h1>
+        <p className="text-muted-foreground">
+          Upload a video, trim the part you want, pick an art style. We hand it to the model and
+          tell you the moment it lands.
+        </p>
+      </div>
+    </div>
   );
 }
