@@ -9,6 +9,7 @@ type DropZoneProps = {
   hint: string;
   invalid: boolean;
   describedBy?: string | undefined;
+  disabled?: boolean;
   onFile: (file: File) => void;
   onChoose: () => void;
   onRecord: () => void;
@@ -18,6 +19,7 @@ export function DropZone({
   hint,
   invalid,
   describedBy,
+  disabled = false,
   onFile,
   onChoose,
   onRecord,
@@ -56,12 +58,18 @@ export function DropZone({
         <p className="text-sm text-muted-foreground">{hint}</p>
       </div>
       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-        <Button type="button" className="min-h-11" onClick={onChoose}>
+        <Button type="button" className="min-h-11" disabled={disabled} onClick={onChoose}>
           <FolderOpen aria-hidden />
           <span className="sm:hidden">Camera roll</span>
           <span className="hidden sm:inline">Choose a video</span>
         </Button>
-        <Button type="button" variant="outline" className="min-h-11" onClick={onRecord}>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11"
+          disabled={disabled}
+          onClick={onRecord}
+        >
           <Camera aria-hidden />
           <span className="sm:hidden">Record a video</span>
           <span className="hidden sm:inline">Record</span>

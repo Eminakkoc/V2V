@@ -3,7 +3,7 @@
 import "@uploadcare/react-uploader/core.css";
 import { FileUploaderRegular } from "@uploadcare/react-uploader/next";
 import type { UploadCtxProvider } from "@uploadcare/react-uploader";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSourceUpload, type UploadState } from "@/hooks/use-source-upload";
 import { apiFetch, toErrorLike } from "@/lib/api-client";
@@ -39,6 +39,8 @@ function announcementFor(state: UploadState): string {
 
 export function SourceUploader({ settings }: { settings: UploaderSettings }) {
   const uploaderRef = useRef<UploadCtxProvider>(null);
+  const pendingFileRef = useRef<File | null>(null);
+  const [ready, setReady] = useState(false);
   const limits = useMemo(
     () => ({ allowedFormats: settings.allowedFormats, maxBytes: settings.maxBytes }),
     [settings.allowedFormats, settings.maxBytes],
@@ -64,6 +66,20 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
 
   const api = () => uploaderRef.current?.getAPI();
 
+  // FileUploaderRegular loads its web component via a dynamic import, so the
+  // widget isn't ready the instant this component mounts. A drop that lands
+  // first is queued and replayed once the ref attaches, instead of being lost.
+  const setUploaderRef = useCallback((instance: UploadCtxProvider | null) => {
+    uploaderRef.current = instance;
+    setReady(instance !== null);
+    const pending = pendingFileRef.current;
+    if (instance && pending) {
+      pendingFileRef.current = null;
+      instance.getAPI()?.removeAllFiles();
+      instance.getAPI()?.addFileFromObject(pending);
+    }
+  }, []);
+
   function openChooser() {
     api()?.removeAllFiles();
     api()?.openSystemDialog();
@@ -77,6 +93,10 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
   }
 
   function addDroppedFile(file: File) {
+    if (!uploaderRef.current) {
+      pendingFileRef.current = file;
+      return;
+    }
     api()?.removeAllFiles();
     api()?.addFileFromObject(file);
   }
@@ -102,7 +122,7 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
       <FileUploaderRegular
         headless
         ctxName="v2v-source-uploader"
-        apiRef={uploaderRef}
+        apiRef={setUploaderRef}
         pubkey={settings.publicKey}
         multiple={false}
         accept={rules.accept}
@@ -134,6 +154,7 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
           hint={hint}
           invalid={problem !== null}
           describedBy={problem ? ERROR_ID : undefined}
+          disabled={!ready}
           onFile={addDroppedFile}
           onChoose={openChooser}
           onRecord={openCamera}
