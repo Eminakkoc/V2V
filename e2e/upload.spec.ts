@@ -41,3 +41,15 @@ test("an unreadable video asks for another file", async ({ page }) => {
   await expect(page.locator("#upload-error")).toContainText("Can't read the video");
   await expect(page.getByRole("button", { name: "Choose another file" })).toBeVisible();
 });
+
+test("a file at the multipart threshold is uploaded over the S3 host", async ({ page }) => {
+  const providers = await mockProviders(page, fakeUuid());
+  await page.goto("/");
+  await dropFile(dropZone(page), {
+    name: "large.mp4",
+    mimeType: "video/mp4",
+    size: 27 * 1024 * 1024,
+  });
+  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  expect(providers.multipartParts()).toBeGreaterThan(0);
+});

@@ -12,16 +12,47 @@ export function fakeUuid(prefix = ""): string {
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "*",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
 };
+
+const CORS_WITH_ETAG = { ...CORS, "access-control-expose-headers": "ETag" };
+
+// The presigned part URLs @uploadcare/upload-client's multipartStart() returns.
+const MULTIPART_HOST = "https://uploadcare.s3-accelerate.amazonaws.com";
 
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
   "base64",
 );
 
-export async function mockProviders(page: Page, uuid: string): Promise<{ uploads: () => number }> {
+function fileInfoJson(uuid: string) {
+  const size = 5 * 1024 * 1024;
+  return {
+    size,
+    done: size,
+    total: size,
+    uuid,
+    file_id: uuid,
+    original_filename: "clip.mp4",
+    filename: "clip.mp4",
+    mime_type: "video/mp4",
+    is_image: false,
+    is_stored: true,
+    is_ready: true,
+    image_info: null,
+    video_info: null,
+    content_info: null,
+    metadata: {},
+    tags: {},
+  };
+}
+
+export async function mockProviders(
+  page: Page,
+  uuid: string,
+): Promise<{ uploads: () => number; multipartParts: () => number }> {
   let uploads = 0;
+  let multipartParts = 0;
   await page.route("https://upload.uploadcare.com/**", async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
@@ -30,29 +61,18 @@ export async function mockProviders(page: Page, uuid: string): Promise<{ uploads
       uploads += 1;
       return route.fulfill({ headers: CORS, json: { file: uuid } });
     }
-    if (pathname.startsWith("/info/")) {
-      const size = 5 * 1024 * 1024;
+    if (pathname.startsWith("/multipart/start/")) {
+      uploads += 1;
       return route.fulfill({
         headers: CORS,
-        json: {
-          size,
-          done: size,
-          total: size,
-          uuid,
-          file_id: uuid,
-          original_filename: "clip.mp4",
-          filename: "clip.mp4",
-          mime_type: "video/mp4",
-          is_image: false,
-          is_stored: true,
-          is_ready: true,
-          image_info: null,
-          video_info: null,
-          content_info: null,
-          metadata: {},
-          tags: {},
-        },
+        json: { uuid, parts: [`${MULTIPART_HOST}/fake-bucket/${uuid}/part-1`] },
       });
+    }
+    if (pathname.startsWith("/multipart/complete/")) {
+      return route.fulfill({ headers: CORS, json: fileInfoJson(uuid) });
+    }
+    if (pathname.startsWith("/info/")) {
+      return route.fulfill({ headers: CORS, json: fileInfoJson(uuid) });
     }
     return route.fulfill({
       status: 404,
@@ -60,10 +80,16 @@ export async function mockProviders(page: Page, uuid: string): Promise<{ uploads
       json: { error: { content: `unmocked ${pathname}` } },
     });
   });
+  await page.route(`${MULTIPART_HOST}/**`, async (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    multipartParts += 1;
+    return route.fulfill({ status: 200, headers: CORS_WITH_ETAG });
+  });
   await page.route("https://res.cloudinary.com/**", (route) =>
     route.fulfill({ contentType: "image/png", body: TINY_PNG }),
   );
-  return { uploads: () => uploads };
+  return { uploads: () => uploads, multipartParts: () => multipartParts };
 }
 
 export function dropZone(page: Page): Locator {

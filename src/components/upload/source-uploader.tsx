@@ -129,6 +129,7 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
         maxLocalFileSizeBytes={settings.maxBytes}
         sourceList="local, camera"
         cameraModes="video"
+        qualityInsights={false}
         secureUploadsSignatureResolver={resolveSignature}
         onFileAdded={(entry) => {
           if (!upload.select({ name: entry.name, mimeType: entry.mimeType, size: entry.size })) {

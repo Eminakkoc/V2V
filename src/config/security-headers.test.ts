@@ -22,10 +22,27 @@ describe("security headers", () => {
     const csp = contentSecurityPolicy(false);
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toMatch(/connect-src [^;]*https:\/\/upload\.uploadcare\.com/);
-    expect(csp).toMatch(/connect-src [^;]*https:\/\/tlm\.uploadcare\.com/);
     expect(csp).toMatch(/img-src [^;]*https:\/\/res\.cloudinary\.com/);
     expect(csp).toMatch(/media-src [^;]*https:\/\/res\.cloudinary\.com/);
     expect(csp).toContain("object-src 'none'");
+  });
+
+  it("allows the Uploadcare multipart host so large-file uploads are not blocked", () => {
+    const csp = contentSecurityPolicy(false);
+    expect(csp).toMatch(/connect-src [^;]*https:\/\/uploadcare\.s3-accelerate\.amazonaws\.com/);
+  });
+
+  it("does not allow a wildcard amazonaws host", () => {
+    const csp = contentSecurityPolicy(false);
+    expect(csp).not.toContain("*.amazonaws.com");
+  });
+
+  it("allows blob: stylesheets for the uploader widget", () => {
+    expect(contentSecurityPolicy(false)).toMatch(/style-src [^;]*blob:/);
+  });
+
+  it("no longer reports upload-quality telemetry", () => {
+    expect(contentSecurityPolicy(false)).not.toContain("tlm.uploadcare.com");
   });
 
   it("allows eval only in development", () => {
