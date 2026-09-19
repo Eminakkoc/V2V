@@ -4,6 +4,8 @@ const UPLOADCARE = [
   "https://*.ucarecdn.com",
   "https://*.ucarecd.net",
 ];
+// The uploader widget reports upload-quality telemetry to this host.
+const UPLOADCARE_TELEMETRY = "https://tlm.uploadcare.com";
 const CLOUDINARY = "https://res.cloudinary.com";
 
 export function contentSecurityPolicy(isDevelopment: boolean): string {
@@ -13,7 +15,7 @@ export function contentSecurityPolicy(isDevelopment: boolean): string {
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:", CLOUDINARY, ...UPLOADCARE],
     "media-src": ["'self'", "blob:", "mediastream:", CLOUDINARY],
-    "connect-src": ["'self'", ...UPLOADCARE],
+    "connect-src": ["'self'", ...UPLOADCARE, UPLOADCARE_TELEMETRY],
     "font-src": ["'self'"],
     "worker-src": ["'self'", "blob:"],
     "object-src": ["'none'"],

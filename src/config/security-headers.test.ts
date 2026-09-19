@@ -22,6 +22,7 @@ describe("security headers", () => {
     const csp = contentSecurityPolicy(false);
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toMatch(/connect-src [^;]*https:\/\/upload\.uploadcare\.com/);
+    expect(csp).toMatch(/connect-src [^;]*https:\/\/tlm\.uploadcare\.com/);
     expect(csp).toMatch(/img-src [^;]*https:\/\/res\.cloudinary\.com/);
     expect(csp).toMatch(/media-src [^;]*https:\/\/res\.cloudinary\.com/);
     expect(csp).toContain("object-src 'none'");
