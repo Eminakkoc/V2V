@@ -1,0 +1,18 @@
+export const E2E_PORT = 3100;
+
+export const E2E_ENV: Record<string, string> = {
+  PROVIDER_MODE: "fake",
+  NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY: "e2e-public-key",
+  UPLOADCARE_SECRET_KEY: "e2e-uploadcare-secret",
+  CLOUDINARY_CLOUD_NAME: "e2e-cloud",
+  CLOUDINARY_API_KEY: "e2e-cloudinary-key",
+  CLOUDINARY_API_SECRET: "e2e-cloudinary-secret",
+  MAGIC_HOUR_API_KEY: "e2e-magic-hour-key",
+  MAGIC_HOUR_WEBHOOK_SECRET: "e2e-webhook-secret",
+  MONGODB_DB_NAME: "v2v_e2e",
+  SESSION_COOKIE_SECRET: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  MAX_UPLOAD_BYTES: "104857600",
+  ALLOWED_VIDEO_FORMATS: "video/mp4,video/quicktime,video/webm",
+  MAX_CLIP_SECONDS: "30",
+  JOB_GRACE_MINUTES: "120",
+};
