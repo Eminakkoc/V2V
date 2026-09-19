@@ -6,6 +6,7 @@ import type { UploadCtxProvider } from "@uploadcare/react-uploader";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSourceUpload, type UploadState } from "@/hooks/use-source-upload";
+import { useUploadFocus } from "@/hooks/use-upload-focus";
 import { apiFetch, toErrorLike } from "@/lib/api-client";
 import { messageFor, type ErrorLike } from "@/lib/error-messages";
 import { describeFormats, formatBytes } from "@/lib/format";
@@ -13,7 +14,7 @@ import { uploadSignatureSchema } from "@/lib/upload-contract";
 import { createVideoRules } from "@/lib/video-rules";
 import { DropZone } from "./drop-zone";
 import { SourceSummary } from "./source-summary";
-import { UploadError, UploadProgress } from "./upload-feedback";
+import { UploadError, UploadProgress, UploadWaitRetry } from "./upload-feedback";
 
 export type UploaderSettings = {
   publicKey: string;
@@ -54,6 +55,7 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
   );
   const upload = useSourceUpload(rules, { onServerError });
   const { state, signatureFailed } = upload;
+  const { progressLabelRef, dropZoneTitleRef, focusAfter } = useUploadFocus(state.status);
 
   const resolveSignature = useCallback(async () => {
     try {
@@ -107,14 +109,22 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
   }
 
   function replace() {
+    focusAfter("dropzone");
     api()?.removeAllFiles();
     upload.reset();
   }
 
+  function retryUpload() {
+    focusAfter("progress");
+    upload.retry();
+  }
+
   const problem =
-    state.status === "rejected" || state.status === "failed"
-      ? messageFor(state.error, limits)
-      : null;
+    state.status === "rejected"
+      ? messageFor(state.error, limits, { stage: "rejected" })
+      : state.status === "failed"
+        ? messageFor(state.error, limits, { stage: "failed" })
+        : null;
   const hint = `${describeFormats(settings.allowedFormats)} · up to ${formatBytes(settings.maxBytes)} · pick a clip of up to ${settings.maxClipSeconds} seconds next`;
 
   return (
@@ -149,23 +159,31 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
       {state.status === "ready" ? (
         <SourceSummary result={state.result} onReplace={replace} />
       ) : state.status === "uploading" || state.status === "storing" ? (
-        <UploadProgress state={state} />
+        <UploadProgress state={state} labelRef={progressLabelRef} />
       ) : (
         <DropZone
           hint={hint}
           invalid={problem !== null}
           describedBy={problem ? ERROR_ID : undefined}
           disabled={!ready}
+          titleRef={dropZoneTitleRef}
           onFile={addDroppedFile}
           onChoose={openChooser}
           onRecord={openCamera}
         />
       )}
-      {problem ? (
+      {problem && problem.action === "wait-retry" && state.status === "failed" ? (
+        <UploadWaitRetry
+          id={ERROR_ID}
+          message={problem}
+          retryAfterSeconds={state.error.retryAfterSeconds ?? 60}
+          onRetry={retryUpload}
+        />
+      ) : problem ? (
         <UploadError
           id={ERROR_ID}
           message={problem}
-          onRetry={upload.retry}
+          onRetry={retryUpload}
           onChooseAnother={chooseAnother}
         />
       ) : null}

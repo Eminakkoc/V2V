@@ -1,7 +1,7 @@
 "use client";
 
 import { Camera, FolderOpen, Upload } from "lucide-react";
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,9 @@ type DropZoneProps = {
   invalid: boolean;
   describedBy?: string | undefined;
   disabled?: boolean;
+  // Focus target after "Upload a different video", so focus lands here instead
+  // of being lost when the source summary it replaces unmounts.
+  titleRef?: Ref<HTMLParagraphElement>;
   onFile: (file: File) => void;
   onChoose: () => void;
   onRecord: () => void;
@@ -20,6 +23,7 @@ export function DropZone({
   invalid,
   describedBy,
   disabled = false,
+  titleRef,
   onFile,
   onChoose,
   onRecord,
@@ -52,7 +56,7 @@ export function DropZone({
     >
       <Upload aria-hidden className="size-8 text-muted-foreground" />
       <div className="flex flex-col gap-1">
-        <p id="drop-zone-title" className="font-medium">
+        <p id="drop-zone-title" ref={titleRef} tabIndex={-1} className="font-medium">
           Drop a video here
         </p>
         <p className="text-sm text-muted-foreground">{hint}</p>

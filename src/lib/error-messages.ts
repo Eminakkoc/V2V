@@ -7,17 +7,42 @@ export type ErrorLike = {
   retryAfterSeconds?: number;
 };
 
-export type ErrorAction = "retry" | "choose-another-file" | "wait" | "none";
+export type ErrorAction = "retry" | "choose-another-file" | "wait" | "wait-retry" | "none";
 
 export type ErrorMessage = { title: string; description: string; action: ErrorAction };
 
 export type UploadLimits = { maxBytes: number; allowedFormats: readonly string[] };
 
+// Before anything has uploaded (rejected) there is no cdnUrl to retry, and once bytes
+// are stored (failed) a rate limit can offer a timed retry instead of a plain wait.
+export type MessageStage = "rejected" | "failed";
+
 function seconds(value: number): string {
   return value === 1 ? "1 second" : `${value} seconds`;
 }
 
-export function messageFor(error: ErrorLike, limits: UploadLimits): ErrorMessage {
+function waitCopy(retryAfterSeconds: number): string {
+  if (retryAfterSeconds < 60) return seconds(retryAfterSeconds);
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
+export function messageFor(
+  error: ErrorLike,
+  limits: UploadLimits,
+  options?: { stage?: MessageStage },
+): ErrorMessage {
+  const message = baseMessageFor(error, limits);
+  if (options?.stage === "rejected" && message.action === "retry") {
+    return { ...message, action: "choose-another-file" };
+  }
+  if (options?.stage === "failed" && message.action === "wait") {
+    return { ...message, action: "wait-retry" };
+  }
+  return message;
+}
+
+function baseMessageFor(error: ErrorLike, limits: UploadLimits): ErrorMessage {
   switch (error.code) {
     case "UNSUPPORTED_FORMAT":
       return {
@@ -70,7 +95,7 @@ export function messageFor(error: ErrorLike, limits: UploadLimits): ErrorMessage
     case "RATE_LIMITED":
       return {
         title: "Too many uploads",
-        description: `Try again in ${seconds(error.retryAfterSeconds ?? 60)}.`,
+        description: `Try again in ${waitCopy(error.retryAfterSeconds ?? 60)}.`,
         action: "wait",
       };
     case "DATABASE_UNAVAILABLE":

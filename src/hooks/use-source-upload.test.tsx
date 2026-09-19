@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { UploadError, UploadWaitRetry } from "@/components/upload/upload-feedback";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { messageFor } from "@/lib/error-messages";
 import { createVideoRules } from "@/lib/video-rules";
-import { useSourceUpload } from "./use-source-upload";
+import { useSourceUpload, type UploadState } from "./use-source-upload";
 
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClientModule>()),
@@ -13,6 +15,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
 
 const fetchMock = vi.mocked(apiFetch);
 const rules = createVideoRules({ allowedFormats: ["video/mp4"], maxBytes: 100 });
+const limits = { allowedFormats: ["video/mp4"], maxBytes: 100 };
 const cdnUrl = "https://ucarecdn.com/3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a/";
 const result = {
   sourceId: "s1",
@@ -124,5 +127,93 @@ describe("useSourceUpload", () => {
     act(() => hook.current.reset());
     await act(async () => resolve(result));
     expect(hook.current.state).toEqual({ status: "idle" });
+  });
+
+  it("does not offer a dead Try again after a signature failure, since nothing has uploaded yet", () => {
+    const { result: hook } = renderHook(() => useSourceUpload(rules));
+    act(() => void hook.current.select({ name: "a.mp4", mimeType: "video/mp4", size: 50 }));
+    act(() =>
+      hook.current.signatureFailed({
+        code: "DATABASE_UNAVAILABLE",
+        message: "Service unavailable, try again shortly.",
+        retryable: true,
+      }),
+    );
+    act(() => hook.current.uploadFailed());
+    expect(hook.current.state).toMatchObject({
+      status: "rejected",
+      error: { code: "DATABASE_UNAVAILABLE" },
+    });
+
+    const { error } = hook.current.state as Extract<UploadState, { status: "rejected" }>;
+    const message = messageFor(error, limits, { stage: "rejected" });
+    render(
+      <UploadError
+        id="upload-error"
+        message={message}
+        onRetry={vi.fn()}
+        onChooseAnother={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Choose another file" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  it("re-enables Try again only after the wait and re-posts the same upload", async () => {
+    vi.useFakeTimers();
+    try {
+      const rateLimited = new ApiError({
+        status: 429,
+        code: "RATE_LIMITED",
+        message: "Too many requests. Please wait and try again.",
+        retryable: true,
+        retryAfterSeconds: 5,
+      });
+      fetchMock.mockRejectedValueOnce(rateLimited).mockResolvedValueOnce(result);
+
+      function Harness() {
+        const upload = useSourceUpload(rules);
+        const { state } = upload;
+        const message =
+          state.status === "failed" ? messageFor(state.error, limits, { stage: "failed" }) : null;
+        return (
+          <div>
+            {message?.action === "wait-retry" && state.status === "failed" ? (
+              <UploadWaitRetry
+                id="upload-error"
+                message={message}
+                retryAfterSeconds={state.error.retryAfterSeconds ?? 60}
+                onRetry={upload.retry}
+              />
+            ) : null}
+            <button onClick={() => upload.uploaded(cdnUrl)}>upload</button>
+          </div>
+        );
+      }
+
+      render(<Harness />);
+      fireEvent.click(screen.getByText("upload"));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const button = screen.getByRole("button", { name: "Try again" });
+      expect(button).toBeDisabled();
+      act(() => vi.advanceTimersByTime(4999));
+      expect(button).toBeDisabled();
+      act(() => vi.advanceTimersByTime(1));
+      expect(button).toBeEnabled();
+
+      fireEvent.click(button);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ body: { cdnUrl } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

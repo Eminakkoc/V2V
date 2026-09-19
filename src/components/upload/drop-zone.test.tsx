@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createRef } from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DropZone } from "./drop-zone";
 
@@ -40,5 +41,12 @@ describe("DropZone", () => {
       "aria-describedby",
       "upload-error",
     );
+  });
+
+  it("forwards a focusable ref to the title, for focus management after replacing a video", () => {
+    const ref = createRef<HTMLParagraphElement>();
+    renderZone({ titleRef: ref });
+    act(() => ref.current?.focus());
+    expect(document.activeElement).toBe(screen.getByText("Drop a video here"));
   });
 });
