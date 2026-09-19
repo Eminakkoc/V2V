@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/check-env.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -65,7 +66,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=22.22.2"
+    "node": "^22.22.2"
   },
   "lint-staged": {
     "*.{ts,tsx,mjs,js}": [
