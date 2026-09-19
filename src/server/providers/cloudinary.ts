@@ -94,9 +94,19 @@ function toAppError(error: unknown): AppError {
   });
 }
 
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
 function toStoredVideo(result: CloudinaryUploadResult, expectedBytes: number): StoredVideo {
   const duration = typeof result.duration === "number" ? result.duration : 0;
   if (duration <= 0) throw sanityFailure({ reason: "missing-duration" });
+  if (!isPositiveInteger(result.width) || !isPositiveInteger(result.height)) {
+    throw sanityFailure({ reason: "missing-dimensions" });
+  }
+  if (typeof result.format !== "string" || result.format.length === 0) {
+    throw sanityFailure({ reason: "missing-format" });
+  }
   if (Math.abs(result.bytes - expectedBytes) > SIZE_TOLERANCE * expectedBytes) {
     throw sanityFailure({ reason: "size-mismatch", expectedBytes, actualBytes: result.bytes });
   }

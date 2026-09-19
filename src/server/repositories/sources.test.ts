@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 import { setupTestDb } from "@/test/mongo";
 import { createSourcesRepository, type NewSource } from "./sources";
 
@@ -36,7 +37,11 @@ describe("sources repository", () => {
   });
 
   it("refuses an invalid record on write", async () => {
-    await expect(sources.insert("user-1", { ...input, bytes: -1 })).rejects.toThrow();
+    const attempt = sources.insert("user-1", { ...input, bytes: -1 });
+    await expect(attempt).rejects.toThrow(/Invalid sources document on write/);
+    // Not a ZodError: withErrorHandling would otherwise report our own bad
+    // write as a 400 client error instead of a logged 500.
+    await expect(attempt).rejects.not.toBeInstanceOf(ZodError);
   });
 
   it("fails loudly when a stored document does not match the schema", async () => {

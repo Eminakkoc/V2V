@@ -1,7 +1,7 @@
 import "server-only";
 import { jobRecordSchema, type JobRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
-import { parseStored, toObjectId } from "./documents";
+import { parseForWrite, parseStored, toObjectId } from "./documents";
 import { withDb, type DbGetter } from "./mongo-client";
 
 export type Job = JobRecord & { id: string };
@@ -18,7 +18,7 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
     insert: (userId, input) =>
       withDb(getDb, async (db) => {
         const now = new Date();
-        const record = jobRecordSchema.parse({
+        const record = parseForWrite(COLLECTIONS.jobs, jobRecordSchema, {
           ...input,
           userId,
           schemaVersion: 1,

@@ -98,6 +98,29 @@ describe("Cloudinary adapter", () => {
     });
   });
 
+  it.each([
+    ["missing width", { width: 0 }],
+    ["a non-integer width", { width: 1080.5 }],
+    ["missing height", { height: 0 }],
+    ["a negative height", { height: -1 }],
+  ])("rejects a result with %s", async (_label, overrides) => {
+    const upload = vi.fn(async () => uploaded(overrides));
+    await expect(adapterWith(upload).copyVideoFromUrl(url, options)).rejects.toMatchObject({
+      code: "CLOUDINARY_UPLOAD_FAILED",
+      retryable: false,
+      details: { reason: "missing-dimensions" },
+    });
+  });
+
+  it("rejects a result without a format", async () => {
+    const upload = vi.fn(async () => uploaded({ format: "" }));
+    await expect(adapterWith(upload).copyVideoFromUrl(url, options)).rejects.toMatchObject({
+      code: "CLOUDINARY_UPLOAD_FAILED",
+      retryable: false,
+      details: { reason: "missing-format" },
+    });
+  });
+
   it("accepts a size within 1% and rejects one outside it", async () => {
     await expect(
       adapterWith(vi.fn(async () => uploaded({ bytes: 1_005_000 }))).copyVideoFromUrl(url, options),

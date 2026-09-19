@@ -4,7 +4,10 @@ import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
 import { AppError } from "@/server/errors/app-error";
 import { createCloudinaryAdapter, type CloudinaryUpload } from "@/server/providers/cloudinary";
 import type { Providers, UploadcareAdapter, UploadcareFileInfo } from "@/server/providers/types";
+import { createJobsRepository } from "@/server/repositories/jobs";
 import { createDbGetter } from "@/server/repositories/mongo-client";
+import { createRateLimitHitsRepository } from "@/server/repositories/rate-limit-hits";
+import { createRateLimiter } from "@/server/services/rate-limit";
 import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
 import { apiRequest, cookieValue, identityCookie } from "@/test/requests";
@@ -205,6 +208,34 @@ describe("POST /api/upload", () => {
     });
     expect(response.status).toBe(413);
     expect((await errorOf(response)).code).toBe("REQUEST_TOO_LARGE");
+  });
+
+  it("reports our own bad write as a logged 500, not a client-facing 400", async () => {
+    // Defence in depth for the repository-write fix: a source our own server
+    // built badly (never a request the caller sent) must never surface as
+    // VALIDATION_FAILED, which would blame the request and skip the log.
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const db = await getDb();
+    setServerDepsForTests({
+      config: testConfig,
+      sources: {
+        insert: async () => {
+          throw new Error("Invalid sources document on write: bytes: Too small");
+        },
+        findById: async () => null,
+      },
+      jobs: createJobsRepository(() => Promise.resolve(db)),
+      rateLimiter: createRateLimiter(createRateLimitHitsRepository(() => Promise.resolve(db))),
+      uploadcare: { getFileInfo },
+      cloudinary: createCloudinaryAdapter(testConfig.cloudinary, {
+        upload: cloudinaryUpload,
+        sleep: async () => {},
+      }),
+    });
+    const response = await upload();
+    expect(response.status).toBe(500);
+    expect(await errorOf(response)).toMatchObject({ code: "INTERNAL" });
+    expect(log).toHaveBeenCalled();
   });
 
   it("answers 503 when the database is unreachable", async () => {

@@ -1,7 +1,7 @@
 import "server-only";
 import { sourceRecordSchema, type SourceRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
-import { parseStored, toObjectId } from "./documents";
+import { parseForWrite, parseStored, toObjectId } from "./documents";
 import { withDb, type DbGetter } from "./mongo-client";
 
 export type Source = SourceRecord & { id: string };
@@ -17,7 +17,7 @@ export function createSourcesRepository(getDb: DbGetter): SourcesRepository {
   return {
     insert: (userId, input) =>
       withDb(getDb, async (db) => {
-        const record = sourceRecordSchema.parse({
+        const record = parseForWrite(COLLECTIONS.sources, sourceRecordSchema, {
           ...input,
           userId,
           schemaVersion: 1,

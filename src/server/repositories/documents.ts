@@ -20,3 +20,19 @@ export function parseStored<S extends z.ZodObject>(
   }
   return { ...result.data, id };
 }
+
+// A record our own server built badly (a provider response with an unexpected
+// shape, for example) is our bug, not the caller's: this throws a plain Error,
+// never a ZodError, so withErrorHandling reports it as a logged 500 INTERNAL
+// instead of a 400 VALIDATION_FAILED that hides it and blames the request.
+export function parseForWrite<S extends z.ZodObject>(
+  collection: string,
+  schema: S,
+  input: unknown,
+): z.output<S> {
+  const result = schema.safeParse(input);
+  if (!result.success) {
+    throw new Error(`Invalid ${collection} document on write: ${z.prettifyError(result.error)}`);
+  }
+  return result.data;
+}

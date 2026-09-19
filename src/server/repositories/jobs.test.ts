@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 import { setupTestDb } from "@/test/mongo";
 import { createJobsRepository, type NewJob } from "./jobs";
 
@@ -26,15 +27,16 @@ describe("jobs repository", () => {
   });
 
   it("rejects null for optional fields", async () => {
-    await expect(
-      jobs.insert("user-1", { ...input, magicHourId: null } as unknown as NewJob),
-    ).rejects.toThrow();
+    const attempt = jobs.insert("user-1", { ...input, magicHourId: null } as unknown as NewJob);
+    await expect(attempt).rejects.toThrow(/Invalid jobs document on write/);
+    // Not a ZodError: our own bad write must become a logged 500, not a 400.
+    await expect(attempt).rejects.not.toBeInstanceOf(ZodError);
   });
 
   it("rejects an unknown status", async () => {
     await expect(
       jobs.insert("user-1", { ...input, status: "done" } as unknown as NewJob),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/Invalid jobs document on write/);
   });
 
   it("scopes reads by user", async () => {
