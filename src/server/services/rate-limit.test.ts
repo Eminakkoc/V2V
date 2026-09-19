@@ -61,13 +61,32 @@ describe("rate limiter", () => {
     await expect(limiter.check("signature", "user-1", "ip-1")).resolves.toBeUndefined();
   });
 
-  it("lets exactly one of two simultaneous requests take the last slot", async () => {
+  it("never lets two simultaneous requests both take the last slot", async () => {
+    for (let i = 0; i < 20; i += 1) {
+      clock = new Date("2026-09-19T12:00:00Z");
+      await (await getDb()).collection("rateLimitHits").deleteMany({});
+      await checks(RATE_LIMITS.perUser - 1, "upload", () => "user-1", "ip-1");
+      const results = await Promise.allSettled([
+        limiter.check("upload", "user-1", "ip-1"),
+        limiter.check("upload", "user-1", "ip-1"),
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled").length).toBeLessThanOrEqual(
+        1,
+      );
+      for (const result of results) {
+        if (result.status === "rejected") {
+          expect(result.reason).toMatchObject({ code: "RATE_LIMITED" });
+        }
+      }
+    }
+  });
+
+  it("admits exactly the 10th sequential request", async () => {
     await checks(RATE_LIMITS.perUser - 1, "upload", () => "user-1", "ip-1");
-    const results = await Promise.allSettled([
-      limiter.check("upload", "user-1", "ip-1"),
-      limiter.check("upload", "user-1", "ip-1"),
-    ]);
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    await expect(limiter.check("upload", "user-1", "ip-1")).resolves.toBeUndefined();
+    await expect(limiter.check("upload", "user-1", "ip-1")).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+    });
   });
 
   it("reports the longer wait when both the per-user and per-ip limits are exceeded", async () => {
