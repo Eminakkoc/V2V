@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:indexes": "tsx --env-file=.env.local --conditions=react-server scripts/create-indexes.ts"
   },
   "dependencies": {
     "@uploadcare/react-uploader": "^1.17.0",
@@ -58,6 +59,7 @@
     "prettier": "^3.9.8",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^5.0.1"
   },
