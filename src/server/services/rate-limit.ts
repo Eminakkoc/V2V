@@ -39,14 +39,21 @@ export function createRateLimiter(
           rank: await hits.rank(counter.key, counter.hitId, since),
         })),
       );
-      const exceeded = ranked.find((counter) => counter.rank > counter.limit);
-      if (!exceeded) return;
+      const exceeded = ranked.filter((counter) => counter.rank > counter.limit);
+      if (exceeded.length === 0) return;
 
       await hits.remove(ranked.map((counter) => counter.hitId));
-      const oldest = await hits.oldestSince(exceeded.key, since);
-      const retryAfterSeconds = oldest
-        ? Math.max(1, Math.ceil((oldest.getTime() + WINDOW_MS - at.getTime()) / 1000))
-        : 1;
+      // When both the user and IP counters are exceeded at once, Retry-After must be
+      // truthful for both, so report the longer of the two waits, not just the first.
+      const waits = await Promise.all(
+        exceeded.map(async (counter) => {
+          const oldest = await hits.oldestSince(counter.key, since);
+          return oldest
+            ? Math.max(1, Math.ceil((oldest.getTime() + WINDOW_MS - at.getTime()) / 1000))
+            : 1;
+        }),
+      );
+      const retryAfterSeconds = Math.max(...waits);
       throw new AppError("RATE_LIMITED", { retryAfterSeconds, details: { retryAfterSeconds } });
     },
   };
