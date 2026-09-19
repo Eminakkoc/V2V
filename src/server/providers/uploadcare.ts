@@ -12,7 +12,13 @@ export function createUploadcareAdapter(
   const authSchema = new UploadcareSimpleAuthSchema({ publicKey, secretKey });
   return {
     async getFileInfo(uuid) {
-      const info = await fetchFileInfo({ uuid }, { authSchema }).catch((error: unknown) => {
+      // The rest-client retries throttled and network errors on its own; bounded
+      // to one retry each so a single call cannot eat into the route's own
+      // Cloudinary copy budget (COPY_BUDGET_MS) before we ever see it fail.
+      const info = await fetchFileInfo(
+        { uuid },
+        { authSchema, retryThrottledRequestMaxTimes: 1, retryNetworkErrorMaxTimes: 1 },
+      ).catch((error: unknown) => {
         throw toAppError(error);
       });
       if (!info.isReady || !info.originalFileUrl) {

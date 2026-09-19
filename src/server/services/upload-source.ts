@@ -41,6 +41,10 @@ export async function uploadSource(
   deps: UploadSourceDeps,
   now: () => number = Date.now,
 ): Promise<UploadResponse> {
+  // Anchored before any provider call, so a slow getFileInfo eats into the
+  // budget instead of leaving the Cloudinary copy the full COPY_BUDGET_MS
+  // regardless of how long the request has already been running.
+  const deadline = now() + COPY_BUDGET_MS;
   const { uuid, canonicalUrl } = parseUploadcareCdnUrl(cdnUrl);
   const file = await deps.uploadcare.getFileInfo(uuid);
   const check = createVideoRules(deps.config.upload).checkFile({
@@ -51,7 +55,7 @@ export async function uploadSource(
 
   const video = await deps.cloudinary.copyVideoFromUrl(file.originalFileUrl, {
     expectedBytes: file.size,
-    deadline: now() + COPY_BUDGET_MS,
+    deadline,
   });
   const source = await deps.sources.insert(userId, {
     uploadcareUuid: uuid,

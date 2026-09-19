@@ -79,4 +79,17 @@ describe("Uploadcare adapter", () => {
       retryable: true,
     });
   });
+
+  it("bounds the rest-client's own retries so one call cannot run away with the route's time budget", async () => {
+    const fetchFileInfo = vi.fn(async () => info());
+    const adapter = createUploadcareAdapter(keys, fetchFileInfo);
+    await adapter.getFileInfo(uuid);
+    expect(fetchFileInfo).toHaveBeenCalledWith(
+      { uuid },
+      expect.objectContaining({
+        retryThrottledRequestMaxTimes: 1,
+        retryNetworkErrorMaxTimes: 1,
+      }),
+    );
+  });
 });

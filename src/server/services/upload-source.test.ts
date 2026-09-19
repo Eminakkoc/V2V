@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { parseUploadcareCdnUrl } from "./upload-source";
+import { describe, expect, it, vi } from "vitest";
+import type { CopyVideoOptions, StoredVideo, UploadcareFileInfo } from "@/server/providers/types";
+import type { Source } from "@/server/repositories/sources";
+import { testConfig } from "@/test/env";
+import { COPY_BUDGET_MS, parseUploadcareCdnUrl, uploadSource } from "./upload-source";
 
 const uuid = "3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a";
 
@@ -35,5 +38,62 @@ describe("parseUploadcareCdnUrl", () => {
       caught = error;
     }
     expect(caught).toMatchObject({ code: "INVALID_VIDEO_URL" });
+  });
+});
+
+describe("uploadSource", () => {
+  it("anchors the copy deadline at the start of the request, not after getFileInfo", async () => {
+    let now = 0;
+    const clock = () => now;
+    const fileInfo: UploadcareFileInfo = {
+      uuid,
+      mimeType: "video/mp4",
+      size: 1_000,
+      originalFileUrl: `https://ucarecdn.com/${uuid}/clip.mp4`,
+    };
+    const storedVideo: StoredVideo = {
+      publicId: "sources/abc",
+      secureUrl: "https://res.cloudinary.com/test-cloud/video/upload/v1/sources/abc.mp4",
+      format: "mp4",
+      bytes: 1_000,
+      duration: 5,
+      width: 640,
+      height: 360,
+    };
+    // A slow getFileInfo (the first provider call) must not push the deadline
+    // out: it is computed once, before any provider call.
+    const getFileInfo = vi.fn(async (): Promise<UploadcareFileInfo> => {
+      now += 20_000;
+      return fileInfo;
+    });
+    let seenDeadline: number | undefined;
+    const copyVideoFromUrl = vi.fn(async (_url: string, options: CopyVideoOptions) => {
+      seenDeadline = options.deadline;
+      return storedVideo;
+    });
+    const insert = vi.fn(
+      async (userId: string, input: Record<string, unknown>): Promise<Source> =>
+        ({
+          id: "s1",
+          userId,
+          schemaVersion: 1,
+          createdAt: new Date(),
+          ...input,
+        }) as Source,
+    );
+
+    await uploadSource(
+      { cdnUrl: `https://ucarecdn.com/${uuid}/` },
+      "user-1",
+      {
+        config: testConfig,
+        uploadcare: { getFileInfo },
+        cloudinary: { copyVideoFromUrl },
+        sources: { insert, findById: vi.fn() },
+      },
+      clock,
+    );
+
+    expect(seenDeadline).toBe(COPY_BUDGET_MS);
   });
 });
