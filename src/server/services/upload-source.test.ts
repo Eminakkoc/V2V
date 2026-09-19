@@ -16,12 +16,6 @@ describe("parseUploadcareCdnUrl", () => {
     expect(parseUploadcareCdnUrl(url).uuid).toBe(uuid);
   });
 
-  it("returns the canonical CDN URL", () => {
-    expect(parseUploadcareCdnUrl(`https://ucarecdn.com/${uuid}/beach.mov`).canonicalUrl).toBe(
-      `https://ucarecdn.com/${uuid}/`,
-    );
-  });
-
   it.each([
     `http://ucarecdn.com/${uuid}/`,
     `https://evil.com/${uuid}/`,
@@ -95,5 +89,48 @@ describe("uploadSource", () => {
     );
 
     expect(seenDeadline).toBe(COPY_BUDGET_MS);
+  });
+
+  it("stores the CDN URL on the host of Uploadcare's own file info, not the host the client sent", async () => {
+    // The client can address the file through any recognised Uploadcare host
+    // (ucarecdn.com or a ucarecd.net subdomain); the canonical record uses
+    // whichever host Uploadcare itself reports for that uuid.
+    const fileInfo: UploadcareFileInfo = {
+      uuid,
+      mimeType: "video/mp4",
+      size: 1_000,
+      originalFileUrl: `https://cdn123.ucarecd.net/${uuid}/clip.mp4`,
+    };
+    const storedVideo: StoredVideo = {
+      publicId: "sources/abc",
+      secureUrl: "https://res.cloudinary.com/test-cloud/video/upload/v1/sources/abc.mp4",
+      format: "mp4",
+      bytes: 1_000,
+      duration: 5,
+      width: 640,
+      height: 360,
+    };
+    let savedCdnUrl: unknown;
+    const insert = vi.fn(
+      async (userId: string, input: Record<string, unknown>): Promise<Source> => {
+        savedCdnUrl = input.uploadcareCdnUrl;
+        return {
+          id: "s1",
+          userId,
+          schemaVersion: 1,
+          createdAt: new Date(),
+          ...input,
+        } as Source;
+      },
+    );
+
+    await uploadSource({ cdnUrl: `https://ucarecdn.com/${uuid}/` }, "user-1", {
+      config: testConfig,
+      uploadcare: { getFileInfo: vi.fn(async () => fileInfo) },
+      cloudinary: { copyVideoFromUrl: vi.fn(async () => storedVideo) },
+      sources: { insert, findById: vi.fn() },
+    });
+
+    expect(savedCdnUrl).toBe(`https://cdn123.ucarecd.net/${uuid}/`);
   });
 });

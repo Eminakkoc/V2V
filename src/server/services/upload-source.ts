@@ -13,7 +13,7 @@ function isUploadcareCdnHost(host: string): boolean {
   return host === "ucarecdn.com" || host.endsWith(".ucarecdn.com") || host.endsWith(".ucarecd.net");
 }
 
-export function parseUploadcareCdnUrl(cdnUrl: string): { uuid: string; canonicalUrl: string } {
+export function parseUploadcareCdnUrl(cdnUrl: string): { uuid: string } {
   let url: URL;
   try {
     url = new URL(cdnUrl);
@@ -29,8 +29,15 @@ export function parseUploadcareCdnUrl(cdnUrl: string): { uuid: string; canonical
     !url.port &&
     UUID_PATTERN.test(uuid);
   if (!valid) throw new AppError("INVALID_VIDEO_URL");
-  const normalized = uuid.toLowerCase();
-  return { uuid: normalized, canonicalUrl: `https://${url.hostname}/${normalized}/` };
+  return { uuid: uuid.toLowerCase() };
+}
+
+// The stored record uses the host Uploadcare itself reports for this uuid
+// (via getFileInfo), not the host the client happened to send: the client's
+// URL only proves it is some recognised Uploadcare host, not the canonical one.
+function canonicalCdnUrl(originalFileUrl: string, uuid: string): string {
+  const host = new URL(originalFileUrl).hostname;
+  return `https://${host}/${uuid}/`;
 }
 
 type UploadSourceDeps = Pick<ServerDeps, "config" | "uploadcare" | "cloudinary" | "sources">;
@@ -45,7 +52,7 @@ export async function uploadSource(
   // budget instead of leaving the Cloudinary copy the full COPY_BUDGET_MS
   // regardless of how long the request has already been running.
   const deadline = now() + COPY_BUDGET_MS;
-  const { uuid, canonicalUrl } = parseUploadcareCdnUrl(cdnUrl);
+  const { uuid } = parseUploadcareCdnUrl(cdnUrl);
   const file = await deps.uploadcare.getFileInfo(uuid);
   const check = createVideoRules(deps.config.upload).checkFile({
     mimeType: file.mimeType,
@@ -59,7 +66,7 @@ export async function uploadSource(
   });
   const source = await deps.sources.insert(userId, {
     uploadcareUuid: uuid,
-    uploadcareCdnUrl: canonicalUrl,
+    uploadcareCdnUrl: canonicalCdnUrl(file.originalFileUrl, uuid),
     cloudinaryPublicId: video.publicId,
     cloudinaryUrl: video.secureUrl,
     format: video.format,
