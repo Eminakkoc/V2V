@@ -1,9 +1,9 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { useTestDb } from "@/test/mongo";
+import { setupTestDb } from "@/test/mongo";
 import { createJobsRepository, type NewJob } from "./jobs";
 
-const { getDb } = useTestDb();
+const { getDb } = setupTestDb();
 const jobs = createJobsRepository(getDb);
 
 const input: NewJob = {

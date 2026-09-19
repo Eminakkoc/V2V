@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { useTestDb } from "@/test/mongo";
+import { setupTestDb } from "@/test/mongo";
 import { createSourcesRepository, type NewSource } from "./sources";
 
-const { getDb } = useTestDb();
+const { getDb } = setupTestDb();
 const sources = createSourcesRepository(getDb);
 
 const input: NewSource = {

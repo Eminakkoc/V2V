@@ -2,6 +2,7 @@ import "server-only";
 import {
   MongoClient,
   MongoNetworkError,
+  MongoOperationTimeoutError,
   MongoServerSelectionError,
   MongoTopologyClosedError,
   type Db,
@@ -25,10 +26,10 @@ export function createDbGetter(
 function connect(uri: string, serverSelectionTimeoutMS: number): Promise<MongoClient> {
   const cached = globalForMongo.__v2vMongo;
   if (cached?.uri === uri) return cached.client;
-  const client = new MongoClient(uri, { serverSelectionTimeoutMS })
+  const client: Promise<MongoClient> = new MongoClient(uri, { serverSelectionTimeoutMS })
     .connect()
     .catch((error: unknown) => {
-      globalForMongo.__v2vMongo = undefined;
+      if (globalForMongo.__v2vMongo?.client === client) globalForMongo.__v2vMongo = undefined;
       throw error;
     });
   globalForMongo.__v2vMongo = { uri, client };
@@ -39,7 +40,8 @@ function isConnectionError(error: unknown): boolean {
   return (
     error instanceof MongoServerSelectionError ||
     error instanceof MongoNetworkError ||
-    error instanceof MongoTopologyClosedError
+    error instanceof MongoTopologyClosedError ||
+    error instanceof MongoOperationTimeoutError
   );
 }
 

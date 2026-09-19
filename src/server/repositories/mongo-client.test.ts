@@ -1,7 +1,7 @@
-import { MongoNetworkError } from "mongodb";
-import { describe, expect, it } from "vitest";
+import { MongoClient, MongoNetworkError } from "mongodb";
+import { describe, expect, inject, it, vi } from "vitest";
 import { AppError } from "@/server/errors/app-error";
-import { createDbGetter, withDb } from "./mongo-client";
+import { closeDbClient, createDbGetter, withDb } from "./mongo-client";
 
 describe("withDb", () => {
   it("turns an unreachable database into DATABASE_UNAVAILABLE", async () => {
@@ -33,5 +33,26 @@ describe("withDb", () => {
         async () => "never",
       ),
     ).rejects.toBe(boom);
+  });
+
+  it("keeps a newer cached client when an older failed attempt settles later", async () => {
+    const failing = createDbGetter("mongodb://127.0.0.1:1", "v2v", {
+      serverSelectionTimeoutMS: 200,
+    });
+    const failingAttempt = withDb(failing, async (db) =>
+      db.collection("sources").findOne({}),
+    ).catch((caught: unknown) => caught);
+
+    const reachable = createDbGetter(inject("mongoUri"), "mongo-client-race-test");
+    await withDb(reachable, async (db) => db.collection("sources").findOne({}));
+
+    expect(await failingAttempt).toBeInstanceOf(AppError);
+
+    const connectSpy = vi.spyOn(MongoClient.prototype, "connect");
+    await withDb(reachable, async (db) => db.collection("sources").findOne({}));
+    expect(connectSpy).not.toHaveBeenCalled();
+
+    connectSpy.mockRestore();
+    await closeDbClient();
   });
 });

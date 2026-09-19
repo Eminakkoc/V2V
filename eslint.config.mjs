@@ -29,13 +29,6 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/consistent-type-imports": "error",
     },
   },
-  {
-    files: ["src/server/repositories/*.test.ts"],
-    rules: {
-      // useTestDb is a plain test helper, not a React hook; src/server never touches React.
-      "react-hooks/rules-of-hooks": "off",
-    },
-  },
   globalIgnores([
     ".next/**",
     "out/**",
