@@ -3,7 +3,7 @@ import { AppError } from "@/server/errors/app-error";
 import { RATE_LIMIT_WINDOW_SECONDS } from "@/server/repositories/indexes";
 import type { RateLimitHitsRepository } from "@/server/repositories/rate-limit-hits";
 
-export type RateLimitScope = "upload" | "signature";
+export type RateLimitScope = "upload" | "signature" | "transform";
 
 export const RATE_LIMITS = { perUser: 10, perIp: 30 } as const;
 
