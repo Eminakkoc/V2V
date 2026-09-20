@@ -1,6 +1,6 @@
 import "server-only";
 import type { Document } from "mongodb";
-import type { JobPhase, JobStatus } from "@/lib/job-status";
+import { JOB_PHASES, type JobPhase, type JobStatus } from "@/lib/job-status";
 import { jobRecordSchema, type JobRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
 import { parseForWrite, parseStored, toObjectId } from "./documents";
@@ -61,8 +61,14 @@ export type JobsRepository = {
   markSuperseded(id: string, bySupersedingJobId: string): Promise<Job | null>;
   setLastError(id: string, lastError: string): Promise<void>;
   listForUser(userId: string, query: HistoryQuery): Promise<Job[]>;
-  countActive(userId: string): Promise<ActiveCounts>;
+  countActive(userId: string, now: Date, graceMs: number): Promise<ActiveCounts>;
 };
+
+// The rank of each phase in its declared order, so a write can be guarded to
+// only ever move a job's phase forward.
+const PHASE_RANK: Record<JobPhase, number> = Object.fromEntries(
+  JOB_PHASES.map((phase, index) => [phase, index]),
+) as Record<JobPhase, number>;
 
 export function createJobsRepository(getDb: DbGetter): JobsRepository {
   return {
@@ -180,15 +186,21 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
       }),
 
     // Guarded on status: "processing" so a late video.started (or any other phase
-    // update) cannot drag a job that already moved on backwards.
+    // update) cannot drag a job that already moved on backwards. Also guarded on
+    // phase rank so, independent of status, a phase update can only advance —
+    // e.g. the create call's own "queued" write must not overwrite "rendering"
+    // when a video.started webhook won the race.
     setPhase: (id, phase) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
         if (!_id) return null;
+        const notAhead = JOB_PHASES.filter(
+          (candidate) => PHASE_RANK[candidate] <= PHASE_RANK[phase],
+        );
         const doc = await db
           .collection(COLLECTIONS.jobs)
           .findOneAndUpdate(
-            { _id, status: "processing" },
+            { _id, status: "processing", phase: { $in: notAhead } },
             { $set: { phase, updatedAt: new Date() } },
             { returnDocument: "after" },
           );
@@ -244,12 +256,16 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
+    // Guarded to only retryable states: a job that already completed (and was
+    // paid for) or is mid-flight must never be hidden by a same-named retry.
+    // A guarded-out call returns null; the caller proceeds with the new job
+    // regardless — only the link between the two is refused.
     markSuperseded: (id, bySupersedingJobId) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
         if (!_id) return null;
         const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
-          { _id },
+          { _id, status: { $in: ["failed", "timed_out", "abandoned"] } },
           {
             $set: {
               status: "superseded",
@@ -299,8 +315,14 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
       }),
 
-    countActive: (userId) =>
+    // timed_out and superseded jobs are still reachable by claimForFinalize (a
+    // late result is genuinely still saved), but that window is not forever:
+    // past deadlineAt + graceMs no further delivery is plausible, and counting
+    // them past that point would drive polling forever with nothing left to
+    // check (nothing else ever clears these statuses this cycle).
+    countActive: (userId, now, graceMs) =>
       withDb(getDb, async (db) => {
+        const graceFloor = new Date(now.getTime() - graceMs);
         const [result] = await db
           .collection(COLLECTIONS.jobs)
           .aggregate<ActiveCountsFacet>([
@@ -309,8 +331,14 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
               $facet: {
                 processing: [{ $match: { status: "processing" } }, { $count: "count" }],
                 finalizing: [{ $match: { status: "finalizing" } }, { $count: "count" }],
-                timedOut: [{ $match: { status: "timed_out" } }, { $count: "count" }],
-                superseded: [{ $match: { status: "superseded" } }, { $count: "count" }],
+                timedOut: [
+                  { $match: { status: "timed_out", deadlineAt: { $gt: graceFloor } } },
+                  { $count: "count" },
+                ],
+                superseded: [
+                  { $match: { status: "superseded", deadlineAt: { $gt: graceFloor } } },
+                  { $count: "count" },
+                ],
               },
             },
           ])

@@ -288,40 +288,71 @@ describe("POST /api/transform", () => {
     expect(saved?.magicHourId).toBeUndefined();
   });
 
-  it("marks the old job superseded and links both jobs when retryOfJobId is given", async () => {
+  it("marks the old job superseded and links both jobs when retryOfJobId names a failed job", async () => {
+    const source = await insertSource(userId);
+    // A retry is only ever offered in the UI for a job in a retryable state;
+    // drive the original there for real via a definite provider rejection.
+    createJob.mockRejectedValueOnce(
+      new AppError("MAGIC_HOUR_INVALID_PARAMS", { details: { definite: true } }),
+    );
+    await transform(makeBody(source.id));
+    const originalDoc = await (await getDb()).collection("jobs").findOne({});
+    const originalId = originalDoc!._id.toHexString();
+    expect(originalDoc?.status).toBe("failed");
+
+    const retryResponse = await transform(makeBody(source.id, { retryOfJobId: originalId }));
+    expect(retryResponse.status).toBe(202);
+    const retryJob = transformResponseSchema.parse(await retryResponse.json()).job;
+    expect(retryJob.retryOfJobId).toBe(originalId);
+
+    const oldDoc = await jobDoc(originalId);
+    expect(oldDoc).toMatchObject({ status: "superseded", supersededByJobId: retryJob.id });
+  });
+
+  it("does not supersede a job that is not in a retryable state, and still creates the new job", async () => {
     const source = await insertSource(userId);
     const original = transformResponseSchema.parse(
       await (await transform(makeBody(source.id))).json(),
     ).job;
+    expect(original.status).toBe("processing");
 
+    // Naming a still-live (or complete) job's id must not be able to make a
+    // render the user paid for permanently invisible.
     const retryResponse = await transform(makeBody(source.id, { retryOfJobId: original.id }));
     expect(retryResponse.status).toBe(202);
     const retryJob = transformResponseSchema.parse(await retryResponse.json()).job;
     expect(retryJob.retryOfJobId).toBe(original.id);
 
-    const oldDoc = await jobDoc(original.id);
-    expect(oldDoc).toMatchObject({ status: "superseded", supersededByJobId: retryJob.id });
+    const originalDoc = await jobDoc(original.id);
+    expect(originalDoc?.status).toBe("processing");
+    expect(originalDoc?.supersededByJobId).toBeUndefined();
   });
 
   it("allows retryOfJobId to reference another user's job, but the source owner check still refuses a source the caller does not own", async () => {
     const otherSource = await insertSource(otherUserId);
-    const otherJob = transformResponseSchema.parse(
-      await (
-        await transform(makeBody(otherSource.id), { cookie: identityCookie(otherUserId) })
-      ).json(),
-    ).job;
+    createJob.mockRejectedValueOnce(
+      new AppError("MAGIC_HOUR_INVALID_PARAMS", { details: { definite: true } }),
+    );
+    await transform(makeBody(otherSource.id), { cookie: identityCookie(otherUserId) });
+    const otherJobDocBefore = await (
+      await getDb()
+    )
+      .collection("jobs")
+      .findOne({ userId: otherUserId });
+    const otherJobId = otherJobDocBefore!._id.toHexString();
+    expect(otherJobDocBefore?.status).toBe("failed");
 
     // Retrying another user's job is accepted when the caller's own source is used.
     const ownSource = await insertSource(userId);
-    const retryResponse = await transform(makeBody(ownSource.id, { retryOfJobId: otherJob.id }));
+    const retryResponse = await transform(makeBody(ownSource.id, { retryOfJobId: otherJobId }));
     expect(retryResponse.status).toBe(202);
     const retryJob = transformResponseSchema.parse(await retryResponse.json()).job;
-    expect(retryJob.retryOfJobId).toBe(otherJob.id);
-    const otherJobDoc = await jobDoc(otherJob.id);
+    expect(retryJob.retryOfJobId).toBe(otherJobId);
+    const otherJobDoc = await jobDoc(otherJobId);
     expect(otherJobDoc).toMatchObject({ status: "superseded", supersededByJobId: retryJob.id });
 
     // But a source the caller does not own is still refused, retryOfJobId or not.
-    const refused = await transform(makeBody(otherSource.id, { retryOfJobId: otherJob.id }));
+    const refused = await transform(makeBody(otherSource.id, { retryOfJobId: otherJobId }));
     expect(refused.status).toBe(404);
     expect((await errorOf(refused)).code).toBe("SOURCE_NOT_FOUND");
   });

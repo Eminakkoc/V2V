@@ -172,6 +172,62 @@ describe("markFailed", () => {
   });
 });
 
+describe("markSuperseded", () => {
+  it.each(["failed", "timed_out", "abandoned"] as const)("supersedes a %s job", async (status) => {
+    const created = await jobs.insert("user-1", { ...input, status });
+    const superseded = await jobs.markSuperseded(created.id, "new-job-id");
+    expect(superseded?.status).toBe("superseded");
+    expect(superseded?.supersededByJobId).toBe("new-job-id");
+  });
+
+  it("refuses to supersede a complete job, keeping its output visible", async () => {
+    const created = await jobs.insert("user-1", { ...input, status: "processing" });
+    const completed = await jobs.markComplete(created.id, {
+      output: { cloudinaryPublicId: "sources/abc", cloudinaryUrl: "https://example.com/abc.mp4" },
+    });
+    expect(completed?.status).toBe("complete");
+
+    // A retry naming a completed job's id must not be able to hide a render
+    // the user already paid for.
+    expect(await jobs.markSuperseded(created.id, "new-job-id")).toBeNull();
+    const after = await jobs.findByIdUnscoped(created.id);
+    expect(after?.status).toBe("complete");
+    expect(after?.output).toEqual(completed?.output);
+    expect(after?.supersededByJobId).toBeUndefined();
+  });
+
+  it.each(["processing", "finalizing"] as const)(
+    "refuses to supersede a %s job that is still in flight",
+    async (status) => {
+      const created = await jobs.insert("user-1", { ...input, status });
+      expect(await jobs.markSuperseded(created.id, "new-job-id")).toBeNull();
+      expect((await jobs.findByIdUnscoped(created.id))?.status).toBe(status);
+    },
+  );
+});
+
+describe("setPhase", () => {
+  it("advances phase forward", async () => {
+    const created = await jobs.insert("user-1", { ...input, phase: "submitting" });
+    const updated = await jobs.setPhase(created.id, "queued");
+    expect(updated?.phase).toBe("queued");
+  });
+
+  it("refuses to move phase backwards", async () => {
+    const created = await jobs.insert("user-1", { ...input, phase: "rendering" });
+    // e.g. the create call's own "queued" write losing a race against a
+    // video.started webhook that already advanced the job to "rendering".
+    expect(await jobs.setPhase(created.id, "queued")).toBeNull();
+    expect((await jobs.findByIdUnscoped(created.id))?.phase).toBe("rendering");
+  });
+
+  it("allows setting the same phase again", async () => {
+    const created = await jobs.insert("user-1", { ...input, phase: "queued" });
+    const updated = await jobs.setPhase(created.id, "queued");
+    expect(updated?.phase).toBe("queued");
+  });
+});
+
 describe("listForUser", () => {
   it("excludes superseded jobs unless asked for", async () => {
     await jobs.insert("user-1", input);
@@ -199,17 +255,52 @@ describe("listForUser", () => {
 });
 
 describe("countActive", () => {
-  it("counts each active status separately", async () => {
+  const now = new Date("2026-09-20T12:00:00Z");
+  const graceMs = 60 * 60_000; // 1 hour
+
+  it("counts each active status separately, within the grace window", async () => {
     await jobs.insert("user-1", input);
     await jobs.insert("user-1", { ...input, idempotencyKey: "k2", status: "finalizing" });
-    await jobs.insert("user-1", { ...input, idempotencyKey: "k3", status: "timed_out" });
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: "k3",
+      status: "timed_out",
+      deadlineAt: new Date("2026-09-20T11:30:00Z"),
+    });
     await jobs.insert("user-1", { ...input, idempotencyKey: "k4", status: "complete" });
     await jobs.insert("user-2", { ...input, idempotencyKey: "k5" });
-    expect(await jobs.countActive("user-1")).toEqual({
+    expect(await jobs.countActive("user-1", now, graceMs)).toEqual({
       processing: 1,
       finalizing: 1,
       timedOut: 1,
       superseded: 0,
     });
+  });
+
+  it("stops counting a superseded job once its deadline plus the grace window has passed", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: "k6",
+      status: "superseded",
+      // Well past deadlineAt + graceMs relative to `now`: no further Magic
+      // Hour delivery is plausible, so this must no longer drive polling.
+      deadlineAt: new Date("2026-09-20T01:00:00Z"),
+    });
+    expect(await jobs.countActive("user-1", now, graceMs)).toEqual({
+      processing: 0,
+      finalizing: 0,
+      timedOut: 0,
+      superseded: 0,
+    });
+  });
+
+  it("still counts a superseded job whose deadline plus grace window has not yet passed", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: "k7",
+      status: "superseded",
+      deadlineAt: new Date("2026-09-20T11:30:00Z"),
+    });
+    expect((await jobs.countActive("user-1", now, graceMs)).superseded).toBe(1);
   });
 });

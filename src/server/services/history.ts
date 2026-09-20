@@ -59,7 +59,8 @@ function encodeCursor(job: Job): string {
 export async function listHistory(
   query: HistoryQuery,
   userId: string,
-  deps: Pick<ServerDeps, "jobs">,
+  deps: Pick<ServerDeps, "jobs" | "config">,
+  now: () => Date = () => new Date(),
 ): Promise<HistoryResponse> {
   const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
   // One extra row decides nextCursor without a second round trip.
@@ -74,7 +75,7 @@ export async function listHistory(
   const hasMore = rows.length > query.limit;
   const items = hasMore ? rows.slice(0, query.limit) : rows;
   const last = items.at(-1);
-  const active = await deps.jobs.countActive(userId);
+  const active = await deps.jobs.countActive(userId, now(), deps.config.jobGraceMinutes * 60_000);
   return {
     items: items.map(toJobView),
     nextCursor: hasMore && last ? encodeCursor(last) : null,

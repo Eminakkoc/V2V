@@ -16,6 +16,9 @@ export function nextDelayMs(active: ActiveCounts, ageMs: number): number | null 
     if (ageMs < 120_000) return 10_000;
     return 30_000;
   }
+  // A late result is only plausible for so long — countActive stops counting
+  // a timed_out/superseded job here once its deadline plus the grace window
+  // has passed, so this branch does eventually see 0 and fall through to null.
   if (active.timedOut + active.superseded > 0) return 30_000;
   return null;
 }
