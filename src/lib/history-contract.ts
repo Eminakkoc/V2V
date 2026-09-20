@@ -101,7 +101,7 @@ export const attemptViewSchema = jobViewSchema;
 export type AttemptView = z.infer<typeof attemptViewSchema>;
 
 export const historyJobViewSchema = jobViewSchema.extend({
-  source: sourceProjectionSchema,
+  source: sourceProjectionSchema.nullable(),
   attempts: z.array(attemptViewSchema),
 });
 

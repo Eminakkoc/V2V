@@ -118,7 +118,7 @@ describe("listHistory", () => {
     });
   });
 
-  it("falls back to job-derived data, without throwing, when the source record is missing", async () => {
+  it("returns source: null, without throwing, when the source record is missing -- and still renders the rest of the row", async () => {
     const missingSourceId = "65f0000000000000000000ff";
     const job = await insertJob(userId, { sourceId: missingSourceId, status: "complete" });
 
@@ -126,10 +126,11 @@ describe("listHistory", () => {
 
     expect(result.items).toHaveLength(1);
     const item = result.items[0]!;
+    expect(item.source).toBeNull();
     expect(item.id).toBe(job.id);
-    expect(item.source.cloudinaryPublicId).toBe(missingSourceId);
-    expect(item.source.cloudinaryUrl).toContain(missingSourceId);
-    expect(item.source.duration).toBe(0);
+    expect(item.status).toBe("complete");
+    expect(item.params).toEqual(job.params);
+    expect(item.attempts).toEqual([]);
   });
 
   it("attaches a retried job's predecessor as its attempts, oldest to newest", async () => {
@@ -292,7 +293,7 @@ describe("listHistory", () => {
     });
     // Every changeable row still renders complete: the projection is
     // present on this path too, not only the default paginated one.
-    for (const item of result.items) expect(item.source.cloudinaryPublicId).toBeDefined();
+    for (const item of result.items) expect(item.source!.cloudinaryPublicId).toBeDefined();
   });
 
   it("ids returns only the caller's own rows, nextCursor null, still carries active", async () => {

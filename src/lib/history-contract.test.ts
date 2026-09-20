@@ -153,7 +153,7 @@ describe("history response contract", () => {
       nextCursor: null,
       active: { processing: 0, finalizing: 0, timedOut: 0, superseded: 0 },
     });
-    expect(parsed.items[0]!.source.duration).toBe(12.5);
+    expect(parsed.items[0]!.source!.duration).toBe(12.5);
     expect(parsed.items[0]!.attempts).toEqual([]);
     expect(
       historyJobsResponseSchema.safeParse({

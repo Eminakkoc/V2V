@@ -1,6 +1,4 @@
 import "server-only";
-import type { AppConfig } from "@/config/env";
-import { videoUrl } from "@/lib/cloudinary-urls";
 import type {
   HistoryJobsResponse,
   HistoryJobView,
@@ -145,11 +143,16 @@ async function decorate(rows: Job[], userId: string, deps: Deps): Promise<Histor
         duration: source.duration,
       };
     }
+    // The job record carries no Cloudinary data of its own for its source --
+    // there is nothing truthful to derive a projection from. The source URL
+    // is shown to the user as a real, copyable link (HIS-004), so a
+    // synthesised one would hand them a link to nothing plus a broken player
+    // and poster. null lets the row still render everything else.
     if (!warnedMissingSourceIds.has(row.sourceId)) {
       warnedMissingSourceIds.add(row.sourceId);
-      console.warn(`[history] source ${row.sourceId} not found; falling back to job data`);
+      console.warn(`[history] source ${row.sourceId} not found; returning source: null`);
     }
-    return fallbackProjection(row, deps.config);
+    return null;
   }
 
   function chainFor(row: Job): Job[] {
@@ -205,16 +208,4 @@ async function collectAttemptChains(
     toFetch = next;
   }
   return ancestorsById;
-}
-
-// A source record can vanish (or, in a test, simply never have existed)
-// without the job that references it ceasing to exist. The row must still
-// render, so this derives a best-effort projection from the one thing the
-// job itself carries: its sourceId.
-function fallbackProjection(row: Job, config: Pick<AppConfig, "cloudinary">) {
-  return {
-    cloudinaryPublicId: row.sourceId,
-    cloudinaryUrl: videoUrl(config.cloudinary.cloudName, row.sourceId, "mp4"),
-    duration: 0,
-  };
 }
