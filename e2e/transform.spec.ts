@@ -80,11 +80,22 @@ test("upload, trim, choose a style and transform shows a job card immediately", 
   expect(job.id).toBeTruthy();
 });
 
-test("a correctly signed webhook completes the job and the result appears without a reload", async ({
+test("a correctly signed webhook is accepted and the result reaches the page without a reload", async ({
   page,
   request,
 }) => {
   test.setTimeout(45_000);
+  // This job carries no status trigger, so it reports "complete" to both the
+  // webhook below and to reconciliation (which /api/history now schedules on
+  // every request, including useJobPolling's own mount and post-submit
+  // fetches). Whichever path reaches the job first finalizes it; the other
+  // finds it already complete and no-ops -- that race is the single-claim
+  // guarantee working as intended, not a defect. So this test cannot pin
+  // *which* path stored the result: it proves the delivery is accepted (200)
+  // and that the UI picks up the change through polling alone, with no
+  // page.reload() anywhere below. Webhook-driven finalization in isolation,
+  // independent of reconciliation, is covered by
+  // src/app/api/webhook/route.test.ts's "finalizes the job on video.completed".
   await uploadTrimAndChooseStyle(page);
   const { job } = await submitTransform(page);
 
