@@ -17,6 +17,21 @@ export const JOB_STATUSES = [
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
+// The statuses reconciliation can still act on. Lives here, not in the
+// server-only jobs repository, because the History refresh hook
+// (src/hooks/use-history-refresh.ts) needs the same set client-side to seed
+// its baseline of what the account currently considers changeable -- a
+// second, hand-copied list would let the refresh set and the reconciliation
+// set drift apart. src/server/repositories/jobs.ts re-exports this rather
+// than defining its own.
+export const CHANGEABLE_STATUSES: readonly JobStatus[] = [
+  "processing",
+  "finalizing",
+  "timed_out",
+  "superseded",
+  "abandoned",
+];
+
 export const JOB_PHASES = ["submitting", "queued", "rendering"] as const;
 
 export type JobPhase = (typeof JOB_PHASES)[number];

@@ -1,6 +1,6 @@
 import "server-only";
 import type { Document, ObjectId, WithId } from "mongodb";
-import { JOB_PHASES, type JobPhase, type JobStatus } from "@/lib/job-status";
+import { CHANGEABLE_STATUSES, JOB_PHASES, type JobPhase, type JobStatus } from "@/lib/job-status";
 import { jobRecordSchema, type JobRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
 import { parseForWrite, parseStored, toObjectId } from "./documents";
@@ -101,16 +101,11 @@ const PHASE_RANK: Record<JobPhase, number> = Object.fromEntries(
   JOB_PHASES.map((phase, index) => [phase, index]),
 ) as Record<JobPhase, number>;
 
-// The statuses reconciliation can still act on. The History refresh asks for
-// exactly this set, which is what makes "the set came back empty" a correct
-// reason to stop polling rather than merely a convenient one.
-export const CHANGEABLE_STATUSES = [
-  "processing",
-  "finalizing",
-  "timed_out",
-  "superseded",
-  "abandoned",
-] as const satisfies readonly JobStatus[];
+// Re-exported rather than redefined here -- see the definition in
+// @/lib/job-status for why it lives there (the client-side History refresh
+// hook needs the same set). Kept exported from this module too so existing
+// importers of it from the repository keep compiling.
+export { CHANGEABLE_STATUSES };
 
 export function createJobsRepository(getDb: DbGetter): JobsRepository {
   return {

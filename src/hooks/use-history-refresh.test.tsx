@@ -123,6 +123,54 @@ describe("useHistoryRefresh", () => {
     await waitFor(() => expect(result.current.jobs).toEqual([row]));
   });
 
+  it("looks up a job that already finished before the hook's first poll, seeded from `initial`", async () => {
+    const stale = job({ id: "job-a", status: "processing" });
+    const finalA = job({ id: "job-a", status: "complete" });
+
+    // The account no longer considers job-a changeable by the time the
+    // first client poll runs -- exactly what reconciliation's after() pass
+    // (scheduled on the same request that rendered `initial`) can produce
+    // before this hook ever gets to run. Without seeding the baseline from
+    // `initial`, job-a's absence here would look like "was never
+    // changeable" rather than "just left", and no ids call would follow.
+    fetchMock
+      .mockResolvedValueOnce(changeableResponse([]))
+      .mockResolvedValueOnce(changeableResponse([finalA]));
+
+    const { result } = renderHook(() => useHistoryRefresh(defaultOptions({ initial: [stale] })));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/history?changeable=true",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/history?ids=job-a",
+      expect.objectContaining({ method: "GET" }),
+    );
+    await waitFor(() => expect(result.current.jobs).toEqual([finalA]));
+  });
+
+  it("does not look up an already-terminal `initial` row just because the first poll omits it", async () => {
+    const doneAlready = job({ id: "job-b", status: "complete" });
+    fetchMock.mockResolvedValueOnce(changeableResponse([]));
+
+    const { result } = renderHook(() =>
+      useHistoryRefresh(defaultOptions({ initial: [doneAlready] })),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // A wrongly-triggered follow-up would fire synchronously in the same
+    // tick as the first call, not on a later timer -- these extra
+    // microtask round trips give it every chance to show up before the
+    // absence is asserted.
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.jobs).toEqual([doneAlready]);
+  });
+
   it("issues exactly one ids follow-up when a job leaves the changeable set, and merges its final state", async () => {
     vi.useFakeTimers();
     try {
@@ -314,9 +362,13 @@ describe("useHistoryRefresh", () => {
 
   it("does not surface a refreshed superseded row as a top-level card when includePrevious is false", async () => {
     const nestedBeforeRefresh = attempt({ id: "job-old", status: "processing" });
+    // Terminal (not in CHANGEABLE_STATUSES) so it isn't seeded into the
+    // changeable baseline -- this test is about the superseded fold, not
+    // about the owner itself leaving the changeable set, which would need
+    // its own mocked ids follow-up and is exercised elsewhere.
     const owner = job({
       id: "job-latest",
-      status: "processing",
+      status: "complete",
       attempts: [nestedBeforeRefresh],
     });
     const supersededRefresh = job({

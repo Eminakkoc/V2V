@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api-client";
 import { historyJobsResponseSchema, type HistoryJobView } from "@/lib/history-contract";
 import type { StatusFilter } from "@/lib/history-filters";
 import { mergeRefreshed } from "@/lib/history-merge";
-import type { JobStatus } from "@/lib/job-status";
+import { CHANGEABLE_STATUSES, type JobStatus } from "@/lib/job-status";
 import { nextRefreshDelayMs } from "@/lib/history-refresh-schedule";
 
 function subscribeVisibility(onChange: () => void) {
@@ -75,7 +75,18 @@ export function useHistoryRefresh({
   // set -- i.e. it finished -- which is exactly the trigger for the one-off
   // `ids` follow-up below. Committed only once a tick fully succeeds, so a
   // follow-up that fails is retried next tick rather than forgotten.
-  const previousChangeableIdsRef = useRef<Set<string>>(new Set());
+  //
+  // Seeded from `initial` rather than starting empty: the server-rendered
+  // page schedules reconciliation via `after()` on the very request that
+  // rendered it, so a job can already have finished -- and already have
+  // left the changeable set -- before this hook's first client poll ever
+  // runs. Starting from an empty baseline would read that as "nothing left"
+  // and never issue the `ids` lookup, leaving the card stale until a reload.
+  // The rows the server rendered are exactly what the page currently
+  // believes is changeable, so they are the correct starting baseline.
+  const previousChangeableIdsRef = useRef<Set<string>>(
+    new Set(initial.filter((row) => CHANGEABLE_STATUSES.includes(row.status)).map((row) => row.id)),
+  );
   // When the currently-live streak started, so the schedule can back off the
   // longer it runs. Reset to null the moment nothing is live.
   const activeSinceRef = useRef<number | null>(null);
