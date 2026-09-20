@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeFormats, formatBytes, formatDuration } from "./format";
+import { describeFormats, formatBytes, formatDuration, formatTimestamp } from "./format";
 
 describe("formatBytes", () => {
   it.each([
@@ -18,6 +18,16 @@ describe("formatDuration", () => {
     [65, "1:05"],
     [3723, "1:02:03"],
   ])("%d → %s", (seconds, text) => expect(formatDuration(seconds)).toBe(text));
+});
+
+describe("formatTimestamp", () => {
+  it("renders an absolute, UTC date and time regardless of the runtime's own locale/timezone", () => {
+    expect(formatTimestamp("2026-01-01T00:05:00.000Z")).toBe("Jan 1, 2026, 12:05 AM");
+  });
+
+  it("does not shift across a UTC day boundary the way a local-timezone format could", () => {
+    expect(formatTimestamp("2026-03-15T23:45:00.000Z")).toBe("Mar 15, 2026, 11:45 PM");
+  });
 });
 
 describe("describeFormats", () => {

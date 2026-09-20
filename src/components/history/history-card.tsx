@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { JobStatus } from "@/components/job/job-status";
+import { formatTimestamp } from "@/lib/format";
 import type { HistoryJobView } from "@/lib/history-contract";
 import { ParamSummary } from "./param-summary";
 import { VideoPair } from "./video-pair";
@@ -36,6 +37,20 @@ export function HistoryCard({ job, cloudName, variant = "top" }: HistoryCardProp
         </Heading>
         <JobStatus job={job} />
       </div>
+      {/* HIS-005: "status, timestamps, parameters and -- when complete --
+          the video". Absolute and fixed-locale/timezone rather than
+          relative -- see formatTimestamp -- so this needs no live region
+          and never ticks (docs/design-findings.md W5). */}
+      <p className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        <span>
+          Created <time dateTime={job.createdAt}>{formatTimestamp(job.createdAt)}</time>
+        </span>
+        {job.completedAt ? (
+          <span>
+            Completed <time dateTime={job.completedAt}>{formatTimestamp(job.completedAt)}</time>
+          </span>
+        ) : null}
+      </p>
       <ParamSummary params={job.params} />
       <VideoPair
         name={job.params.name}

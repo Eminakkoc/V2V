@@ -130,4 +130,53 @@ describe("HistoryCard", () => {
     rerender(<HistoryCard job={job} cloudName="demo" variant="attempt" />);
     expect(screen.getByRole("heading", { level: 3, name: job.params.name })).toBeInTheDocument();
   });
+
+  it("shows the job's created time as a machine-readable <time>, on both variants", () => {
+    const job = buildJob({ createdAt: "2026-01-01T00:05:00.000Z" });
+
+    const top = render(<HistoryCard job={job} cloudName="demo" variant="top" />);
+    const topTime = top.container.querySelector('time[datetime="2026-01-01T00:05:00.000Z"]');
+    expect(topTime).toBeInTheDocument();
+    expect(topTime).toHaveTextContent("Jan 1, 2026");
+
+    const attempt = render(<HistoryCard job={job} cloudName="demo" variant="attempt" />);
+    expect(
+      attempt.container.querySelector('time[datetime="2026-01-01T00:05:00.000Z"]'),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the job's completed time only once it has actually completed", () => {
+    const notYet = buildJob({ completedAt: undefined });
+    const notYetRendered = render(<HistoryCard job={notYet} cloudName="demo" />);
+    expect(notYetRendered.getByText("Created", { exact: false })).toBeInTheDocument();
+    expect(notYetRendered.queryByText("Completed", { exact: false })).not.toBeInTheDocument();
+
+    const done = buildJob({ completedAt: "2026-01-01T00:12:00.000Z" });
+    const doneRendered = render(<HistoryCard job={done} cloudName="demo" />);
+    const completedTime = doneRendered.container.querySelector(
+      'time[datetime="2026-01-01T00:12:00.000Z"]',
+    );
+    expect(completedTime).toBeInTheDocument();
+    expect(completedTime).toHaveTextContent("Jan 1, 2026");
+  });
+
+  it("renders the result player for a nested attempt that completed with output", () => {
+    const job = buildJob({
+      status: "complete",
+      output: {
+        cloudinaryPublicId: "results/xyz789",
+        cloudinaryUrl: "https://res.cloudinary.com/demo/video/upload/v1/results/xyz789.mp4",
+      },
+    });
+    const { container } = render(<HistoryCard job={job} cloudName="demo" variant="attempt" />);
+
+    expect(container.querySelector('video[aria-label^="Result:"]')).toBeInTheDocument();
+  });
+
+  it("renders no result player for a nested attempt that has not produced output", () => {
+    const job = buildJob({ status: "processing", output: undefined });
+    const { container } = render(<HistoryCard job={job} cloudName="demo" variant="attempt" />);
+
+    expect(container.querySelector('video[aria-label^="Result:"]')).not.toBeInTheDocument();
+  });
 });

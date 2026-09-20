@@ -23,6 +23,22 @@ export function formatDuration(seconds: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
 }
 
+// Fixed locale and fixed UTC timezone, not the runtime's own -- an absolute
+// timestamp formatted from the runtime's locale/timezone would render
+// differently on the server (SSR) than in the browser (hydration) depending
+// on where each happens to run, and a relative form ("8s ago") would need
+// the live-region-and-never-tick discipline docs/design-findings.md W5
+// requires. This sidesteps both by being the same string everywhere.
+const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
+export function formatTimestamp(iso: string): string {
+  return TIMESTAMP_FORMATTER.format(new Date(iso));
+}
+
 export function describeFormats(mimeTypes: readonly string[]): string {
   const labels = mimeTypes.map(
     (type) => FORMAT_LABELS[type] ?? (type.split("/")[1] ?? type).toUpperCase(),
