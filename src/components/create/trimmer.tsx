@@ -9,9 +9,11 @@ import { clampRange, type TrimRange } from "@/lib/trim-range";
 // A trim shorter than this reads as a mis-click rather than an intended clip,
 // and it keeps the two handles from ever landing on the same value.
 const MIN_GAP_SECONDS = 0.1;
-// Keyboard granularity for a single Arrow press; Shift+Arrow and Home/End use
-// the vendored slider's own multiplier on top of this. PageUp/PageDown are
-// overridden below to a fixed 5s jump instead of Radix's default (10 * step).
+// Keyboard granularity for a single Arrow press; Shift+Arrow uses the
+// vendored slider's own multiplier on top of this. PageUp/PageDown and
+// Home/End are overridden below: Radix's Home/End always target thumb 0 and
+// the last thumb respectively, regardless of which one has focus, and its
+// PageUp/PageDown jump is 10 * step rather than the fixed figure below.
 const STEP_SECONDS = 0.1;
 const PAGE_STEP_SECONDS = 5;
 
@@ -87,19 +89,37 @@ export function Trimmer({
     commit({ startSeconds: start, endSeconds: end });
   }
 
-  function handlePageKey(which: "start" | "end") {
+  // PageUp/PageDown and Home/End all need to act on whichever thumb is
+  // actually focused, which Radix's own handling doesn't do (its Home/End are
+  // hardwired to thumb 0 / the last thumb, and its Page step is 10 * step).
+  // Each is intercepted here, on the focused thumb itself, and stopped from
+  // bubbling to the slider's internal handler before it can also fire.
+  function handleBoundaryKeys(which: "start" | "end") {
     return (event: React.KeyboardEvent) => {
-      if (event.key !== "PageUp" && event.key !== "PageDown") return;
-      // Stops this from also bubbling into the slider's own Page handling
-      // (which would otherwise apply its default 10x-step jump as well).
-      event.preventDefault();
-      event.stopPropagation();
-      const delta = (event.key === "PageUp" ? 1 : -1) * PAGE_STEP_SECONDS;
-      commit(
-        which === "start"
-          ? { startSeconds: value.startSeconds + delta, endSeconds: value.endSeconds }
-          : { startSeconds: value.startSeconds, endSeconds: value.endSeconds + delta },
-      );
+      if (event.key === "PageUp" || event.key === "PageDown") {
+        event.preventDefault();
+        event.stopPropagation();
+        const delta = (event.key === "PageUp" ? 1 : -1) * PAGE_STEP_SECONDS;
+        commit(
+          which === "start"
+            ? { startSeconds: value.startSeconds + delta, endSeconds: value.endSeconds }
+            : { startSeconds: value.startSeconds, endSeconds: value.endSeconds + delta },
+        );
+        return;
+      }
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        event.stopPropagation();
+        // Propose the absolute boundary in that direction; clampRange pulls
+        // it back to the furthest valid position (short of the other handle
+        // by minGap) exactly as it does for an over-long Page/drag proposal.
+        const target = event.key === "Home" ? 0 : duration;
+        commit(
+          which === "start"
+            ? { startSeconds: target, endSeconds: value.endSeconds }
+            : { startSeconds: value.startSeconds, endSeconds: target },
+        );
+      }
     };
   }
 
@@ -129,12 +149,12 @@ export function Trimmer({
           {
             "aria-label": "Clip start",
             "aria-valuetext": valueText(value.startSeconds),
-            onKeyDown: handlePageKey("start"),
+            onKeyDown: handleBoundaryKeys("start"),
           },
           {
             "aria-label": "Clip end",
             "aria-valuetext": valueText(value.endSeconds),
-            onKeyDown: handlePageKey("end"),
+            onKeyDown: handleBoundaryKeys("end"),
           },
         ]}
       />

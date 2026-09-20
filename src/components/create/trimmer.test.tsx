@@ -126,6 +126,29 @@ describe("Trimmer", () => {
     expect(range.startSeconds).toBeCloseTo(5.1, 5);
   });
 
+  it("Home on the focused end handle moves only the end handle to its own minimum", () => {
+    const props = renderTrimmer({ value: { startSeconds: 5, endSeconds: 20 } });
+    const endThumb = screen.getByRole("slider", { name: "Clip end" });
+    fireEvent.focus(endThumb);
+    fireEvent.keyDown(endThumb, { key: "Home" });
+
+    // The end handle's own minimum is bounded by the start handle plus the
+    // minimum gap, not the slider's overall minimum (0) -- that's thumb 0's
+    // Home target, and pressing Home on the *end* handle must not reach it.
+    expect(props.onChange).toHaveBeenCalledWith({ startSeconds: 5, endSeconds: 5.1 });
+  });
+
+  it("End on the focused start handle moves only the start handle to its own maximum", () => {
+    const props = renderTrimmer({ value: { startSeconds: 5, endSeconds: 20 } });
+    const startThumb = screen.getByRole("slider", { name: "Clip start" });
+    fireEvent.focus(startThumb);
+    fireEvent.keyDown(startThumb, { key: "End" });
+
+    // Likewise, the start handle's own maximum is short of the end handle by
+    // the minimum gap, not the slider's overall maximum (duration).
+    expect(props.onChange).toHaveBeenCalledWith({ startSeconds: 19.9, endSeconds: 20 });
+  });
+
   it("the handles cannot cross, no matter how many times the gap is pressed shut", () => {
     const onChange = vi.fn();
     render(
