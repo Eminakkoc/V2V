@@ -553,3 +553,147 @@ describe("changeable, id lookup and source counts", () => {
     expect(counts.get("65f0000000000000000000c3")).toBeUndefined();
   });
 });
+
+describe("selectForReconcile", () => {
+  const now = new Date("2026-09-20T12:00:00Z");
+  const windows = {
+    recentMs: 60_000,
+    staleClaimMs: 5 * 60_000,
+    hourlyMs: 60 * 60_000,
+    redeliveryMs: 24 * 60 * 60_000,
+  };
+
+  it("selects a processing job with a magicHourId and no lastCheckedAt, and stamps lastCheckedAt", async () => {
+    const created = await jobs.insert("user-1", { ...input, magicHourId: "mh-1" });
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).toEqual([created.id]);
+    expect(selected[0]?.lastCheckedAt).toEqual(now);
+  });
+
+  it("does not select a processing job checked 10s ago, but does select one checked 90s ago", async () => {
+    const recent = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      magicHourId: "mh-recent",
+      lastCheckedAt: new Date(now.getTime() - 10_000),
+    });
+    const stale = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      magicHourId: "mh-stale",
+      lastCheckedAt: new Date(now.getTime() - 90_000),
+    });
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).toEqual([stale.id]);
+    expect(selected.map((j) => j.id)).not.toContain(recent.id);
+  });
+
+  it("never selects a processing job with no magicHourId -- the SUBMISSION_UNCONFIRMED dormancy", async () => {
+    await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
+    expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
+  });
+
+  it("does not select a finalizing job claimed 1 min ago, but does select one claimed 10 min ago", async () => {
+    const recentlyClaimed = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "finalizing",
+      claimedAt: new Date(now.getTime() - 60_000),
+    });
+    const staleClaim = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "finalizing",
+      claimedAt: new Date(now.getTime() - 10 * 60_000),
+    });
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).toEqual([staleClaim.id]);
+    expect(selected.map((j) => j.id)).not.toContain(recentlyClaimed.id);
+  });
+
+  it("selects an abandoned job checked 2h ago within 24h of its deadline, but not one checked 5 min ago or one 30h past its deadline", async () => {
+    const checkedRecently = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "abandoned",
+      magicHourId: "mh-a",
+      lastCheckedAt: new Date(now.getTime() - 5 * 60_000),
+      deadlineAt: new Date(now.getTime() - 60_000),
+    });
+    const eligible = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "abandoned",
+      magicHourId: "mh-b",
+      lastCheckedAt: new Date(now.getTime() - 2 * 60 * 60_000),
+      deadlineAt: new Date(now.getTime() - 60_000),
+    });
+    const pastRedelivery = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "abandoned",
+      magicHourId: "mh-c",
+      lastCheckedAt: new Date(now.getTime() - 2 * 60 * 60_000),
+      deadlineAt: new Date(now.getTime() - 30 * 60 * 60_000),
+    });
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).toEqual([eligible.id]);
+    expect(selected.map((j) => j.id)).not.toContain(checkedRecently.id);
+    expect(selected.map((j) => j.id)).not.toContain(pastRedelivery.id);
+  });
+
+  it("never selects a complete or a failed job", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "complete",
+      magicHourId: "mh-d",
+    });
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "failed",
+      magicHourId: "mh-e",
+    });
+    expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
+  });
+
+  it("caps selection at the given limit even with more eligible jobs", async () => {
+    for (let i = 0; i < 8; i += 1) {
+      await jobs.insert("user-1", {
+        ...input,
+        idempotencyKey: randomUUID(),
+        magicHourId: `mh-${i}`,
+      });
+    }
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected).toHaveLength(5);
+  });
+
+  it("never lets two overlapping passes select the same job", async () => {
+    for (let i = 0; i < 8; i += 1) {
+      await jobs.insert("user-1", {
+        ...input,
+        idempotencyKey: randomUUID(),
+        magicHourId: `mh-${i}`,
+      });
+    }
+    const [first, second] = await Promise.all([
+      jobs.selectForReconcile("user-1", now, windows, 5),
+      jobs.selectForReconcile("user-1", now, windows, 5),
+    ]);
+    const firstIds = new Set(first.map((j) => j.id));
+    const secondIds = new Set(second.map((j) => j.id));
+    const intersection = [...firstIds].filter((id) => secondIds.has(id));
+    expect(intersection).toEqual([]);
+  });
+
+  it("never selects another user's jobs", async () => {
+    await jobs.insert("user-2", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      magicHourId: "mh-other",
+    });
+    expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
+  });
+});

@@ -80,6 +80,12 @@ export type JobsRepository = {
   listChangeable(userId: string): Promise<Job[]>;
   findByIds(userId: string, ids: string[]): Promise<Job[]>;
   countBySourceIds(userId: string, sourceIds: string[]): Promise<Map<string, number>>;
+  selectForReconcile(
+    userId: string,
+    now: Date,
+    windows: { recentMs: number; staleClaimMs: number; hourlyMs: number; redeliveryMs: number },
+    limit: number,
+  ): Promise<Job[]>;
 };
 
 // The rank of each phase in its declared order, so a write can be guarded to
@@ -470,6 +476,59 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           ])
           .toArray();
         return new Map(rows.map((row) => [row._id, row.count]));
+      }),
+
+    // Five sequential findOneAndUpdate calls rather than a find-then-updateMany
+    // pair: updateMany does not report which documents it matched, so the caller
+    // could not know which jobs it actually won. Stamping lastCheckedAt inside
+    // the same write that matches on it IS the no-double-selection guarantee --
+    // two overlapping requests interleave safely with no lock.
+    selectForReconcile: (userId, now, windows, limit) =>
+      withDb(getDb, async (db) => {
+        const uncheckedBefore = (ms: number) => ({
+          $or: [
+            { lastCheckedAt: { $exists: false } },
+            { lastCheckedAt: { $lt: new Date(now.getTime() - ms) } },
+          ],
+        });
+        const filter = {
+          userId,
+          $or: [
+            {
+              status: { $in: ["processing", "timed_out", "superseded"] },
+              magicHourId: { $exists: true },
+              ...uncheckedBefore(windows.recentMs),
+            },
+            {
+              status: "finalizing",
+              claimedAt: { $lt: new Date(now.getTime() - windows.staleClaimMs) },
+              ...uncheckedBefore(windows.recentMs),
+            },
+            {
+              status: "abandoned",
+              magicHourId: { $exists: true },
+              ...uncheckedBefore(windows.hourlyMs),
+              deadlineAt: {
+                $lt: now,
+                $gte: new Date(now.getTime() - windows.redeliveryMs),
+              },
+            },
+          ],
+        };
+
+        const selected: Job[] = [];
+        for (let taken = 0; taken < limit; taken += 1) {
+          const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+            filter,
+            { $set: { lastCheckedAt: now } },
+            // A missing lastCheckedAt sorts before any date, so a job that has
+            // never been checked is always taken first.
+            { sort: { lastCheckedAt: 1 }, returnDocument: "after" },
+          );
+          if (!doc) break;
+          selected.push(parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
+        }
+        return selected;
       }),
   };
 }

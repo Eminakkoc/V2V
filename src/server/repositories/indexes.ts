@@ -23,6 +23,10 @@ export const INDEXES: Record<(typeof COLLECTIONS)[keyof typeof COLLECTIONS], Ind
       unique: true,
       partialFilterExpression: { idempotencyKey: { $type: "string" } },
     },
+    // Extends the userId_status prefix for the reconciliation selection query,
+    // which filters on status and orders by lastCheckedAt. createIndexes is
+    // idempotent, so this is an index add, not a migration.
+    { key: { userId: 1, status: 1, lastCheckedAt: 1 }, name: "userId_status_lastCheckedAt" },
   ],
   [COLLECTIONS.sources]: [{ key: { userId: 1, createdAt: -1 }, name: "userId_createdAt" }],
   [COLLECTIONS.rateLimitHits]: [
