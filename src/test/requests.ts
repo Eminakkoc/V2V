@@ -27,6 +27,16 @@ export function apiRequest(path: string, init: RequestInit = {}): NextRequest {
   });
 }
 
+export function apiGetRequest(
+  path: string,
+  init: { cookie?: string; ip?: string } = {},
+): NextRequest {
+  const headers = new Headers();
+  if (init.cookie) headers.set("cookie", init.cookie);
+  if (init.ip) headers.set("x-real-ip", init.ip);
+  return new NextRequest(`http://localhost${path}`, { method: "GET", headers });
+}
+
 export function identityCookie(userId: string, issuedAt = Math.floor(Date.now() / 1000)): string {
   return `${IDENTITY_COOKIE}=${signIdentity(userId, issuedAt, testConfig.sessionCookieSecret)}`;
 }
