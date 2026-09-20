@@ -218,6 +218,49 @@ describe("reconcileUserJobs", () => {
     expect(stored?.errorCode).toBe("JOB_ABANDONED");
   });
 
+  // The tests above use margins of 30 minutes to 5 hours, which pass whether
+  // the boundary is a strict `>` or a `>=` -- they would not notice a wrong
+  // comparison operator. These pin the exact boundary instead.
+  it("pins the deadline edge: now === deadlineAt exactly stays processing", async () => {
+    const job = await insertJob({ deadlineAt: new Date(NOW.getTime()) });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "rendering" }));
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails }), now);
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("processing");
+    expect(stored?.errorCode).toBeUndefined();
+  });
+
+  it("pins the deadline edge: now === deadlineAt + 1ms times out", async () => {
+    const job = await insertJob({ deadlineAt: new Date(NOW.getTime() - 1) });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "rendering" }));
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails }), now);
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("timed_out");
+    expect(stored?.errorCode).toBe("WEBHOOK_TIMEOUT");
+  });
+
+  it("pins the grace edge: now === deadlineAt + graceMs exactly stays timed_out, not abandoned", async () => {
+    const job = await insertJob({ deadlineAt: new Date(NOW.getTime() - GRACE_MS) });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "rendering" }));
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails }), now);
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("timed_out");
+    expect(stored?.errorCode).toBe("WEBHOOK_TIMEOUT");
+  });
+
+  it("pins the grace edge: now === deadlineAt + graceMs + 1ms abandons", async () => {
+    const job = await insertJob({ deadlineAt: new Date(NOW.getTime() - GRACE_MS - 1) });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "rendering" }));
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails }), now);
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("abandoned");
+    expect(stored?.errorCode).toBe("JOB_ABANDONED");
+  });
+
   it("leaves an already-abandoned job abandoned when the provider still reports rendering", async () => {
     const job = await insertJob({
       status: "abandoned",
@@ -274,6 +317,76 @@ describe("reconcileUserJobs", () => {
     expect(getJobDetails).not.toHaveBeenCalled();
     expect(copyVideoFromUrl).not.toHaveBeenCalled();
 
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("abandoned");
+    expect(stored?.errorCode).toBe("JOB_ABANDONED");
+  });
+
+  it("pins the grace edge on the finalizing path: now === deadlineAt + graceMs exactly still finalizes", async () => {
+    const job = await insertJob({
+      status: "finalizing",
+      claimedAt: new Date(NOW.getTime() - 10 * 60_000),
+      preFinalizeStatus: "processing",
+      deadlineAt: new Date(NOW.getTime() - GRACE_MS),
+    });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "complete" }));
+    const copyVideoFromUrl = vi.fn(async () => makeVideo());
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails, copyVideoFromUrl }), now);
+
+    expect(getJobDetails).toHaveBeenCalledTimes(1);
+    expect(copyVideoFromUrl).toHaveBeenCalledTimes(1);
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("complete");
+  });
+
+  it("pins the grace edge on the finalizing path: now === deadlineAt + graceMs + 1ms abandons instead of finalizing", async () => {
+    const job = await insertJob({
+      status: "finalizing",
+      claimedAt: new Date(NOW.getTime() - 10 * 60_000),
+      preFinalizeStatus: "processing",
+      deadlineAt: new Date(NOW.getTime() - GRACE_MS - 1),
+    });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "complete" }));
+    const copyVideoFromUrl = vi.fn(async () => makeVideo());
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails, copyVideoFromUrl }), now);
+
+    // finalizeJob was never given the chance to run.
+    expect(getJobDetails).not.toHaveBeenCalled();
+    expect(copyVideoFromUrl).not.toHaveBeenCalled();
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("abandoned");
+    expect(stored?.errorCode).toBe("JOB_ABANDONED");
+  });
+
+  it("re-reads now() at the finalizing grace check instead of using a value memoized at entry", async () => {
+    // deadlineAt sits exactly at NOW -- the selection-time clock value -- so
+    // this can only come out abandoned if the grace check re-reads the clock
+    // afterwards and sees it has moved past deadlineAt + graceMs. A `const t
+    // = now()` memoized once at reconcileOne's entry (or reused from
+    // reconcileUserJobs' own startedAt) would still hold NOW, which is not
+    // past deadlineAt(NOW) + graceMs, so the job would be wrongly finalized
+    // instead of abandoned.
+    const job = await insertJob({
+      status: "finalizing",
+      claimedAt: new Date(NOW.getTime() - 10 * 60_000),
+      preFinalizeStatus: "processing",
+      deadlineAt: new Date(NOW.getTime()),
+    });
+    const getJobDetails = vi.fn(async () => makeDetails({ status: "complete" }));
+    const copyVideoFromUrl = vi.fn(async () => makeVideo());
+
+    // First call is reconcileUserJobs' own startedAt/selection stamp; every
+    // call after that -- reconcileOne's own grace check among them -- reports
+    // a time already past deadlineAt + graceMs.
+    const clock = vi
+      .fn<() => Date>()
+      .mockReturnValueOnce(NOW)
+      .mockReturnValue(new Date(NOW.getTime() + GRACE_MS + 1));
+
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails, copyVideoFromUrl }), clock);
+
+    expect(getJobDetails).not.toHaveBeenCalled();
+    expect(copyVideoFromUrl).not.toHaveBeenCalled();
     const stored = await jobs.findByIdUnscoped(job.id);
     expect(stored?.status).toBe("abandoned");
     expect(stored?.errorCode).toBe("JOB_ABANDONED");
