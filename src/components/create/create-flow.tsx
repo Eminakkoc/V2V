@@ -128,7 +128,7 @@ function reducer(state: FlowState, action: Action): FlowState {
 
 export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const { jobs, insertOptimistic, stalled } = useJobPolling();
+  const { jobs, insertOptimistic, refresh, stalled } = useJobPolling();
   const previewRef = useRef<HTMLVideoElement>(null);
   // React batches the state updates from two synchronous clicks before either
   // commits, so `state.submitting` alone can't stop a second click in the same
@@ -167,6 +167,11 @@ export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
         schema: transformResponseSchema,
       });
       insertOptimistic(response.job);
+      // The polling hook only reschedules itself off its own fetch results, so a
+      // session that mounted with nothing active never starts checking again on
+      // its own -- this new job would sit un-refreshed until a reload. Nudging a
+      // fetch now hands it a live job to see, which is what starts the interval.
+      refresh();
       dispatch({ type: "submit-succeeded" });
     } catch (error) {
       dispatch({ type: "submit-failed", error: messageFor(toErrorLike(error), settings) });
@@ -194,6 +199,7 @@ export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
         schema: transformResponseSchema,
       });
       insertOptimistic(response.job);
+      refresh();
       dispatch({ type: "retry-succeeded" });
     } catch (error) {
       dispatch({ type: "retry-failed", error: messageFor(toErrorLike(error), settings) });
