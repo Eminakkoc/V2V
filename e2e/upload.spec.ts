@@ -53,3 +53,21 @@ test("a file at the multipart threshold is uploaded over the S3 host", async ({ 
   await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
   expect(providers.multipartParts()).toBeGreaterThan(0);
 });
+
+test("an upload logs no blocked-request errors", async ({ page }) => {
+  // The uploader's telemetry host is deliberately absent from connect-src, so
+  // anything it sends is blocked and logged. Asserting silence here is what
+  // keeps that opt-out working: when it regresses, the console fills up on
+  // every page load rather than only on upload.
+  const blocked: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Content Security Policy/i.test(message.text())) {
+      blocked.push(message.text());
+    }
+  });
+  await mockProviders(page, fakeUuid());
+  await page.goto("/");
+  await dropFile(dropZone(page), clip);
+  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  expect(blocked).toEqual([]);
+});

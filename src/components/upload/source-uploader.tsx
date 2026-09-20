@@ -38,6 +38,14 @@ function announcementFor(state: UploadState): string {
   }
 }
 
+// The React wrapper writes qualityInsights in a layout effect, which runs after
+// <uc-config> has upgraded and its telemetry manager has already read the
+// built-in default (on). Three events go out in that window and CSP blocks each
+// one, so every page load logged blocked-request errors. Passing the uploader's
+// own dashed attribute form as well puts the value in the initial render, so the
+// element upgrades with telemetry already off.
+const TELEMETRY_OFF = { "quality-insights": "false" } as const;
+
 export function SourceUploader({ settings }: { settings: UploaderSettings }) {
   const uploaderRef = useRef<UploadCtxProvider>(null);
   const pendingFileRef = useRef<File | null>(null);
@@ -140,6 +148,7 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
         sourceList="local, camera"
         cameraModes="video"
         qualityInsights={false}
+        {...TELEMETRY_OFF}
         secureUploadsSignatureResolver={resolveSignature}
         onFileAdded={(entry) => {
           if (!upload.select({ name: entry.name, mimeType: entry.mimeType, size: entry.size })) {
