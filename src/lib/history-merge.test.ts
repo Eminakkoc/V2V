@@ -181,6 +181,125 @@ describe("mergeRefreshed: superseded rows fold into their latest job's attempts"
   });
 });
 
+describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's toggle", () => {
+  it("inserts a not-yet-loaded, unowned-locally superseded row as its own top-level card at its sort position", () => {
+    const newest = job({ id: "newest", createdAt: T3, status: "processing" });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T2,
+      status: "superseded",
+      supersededByJobId: "not-loaded",
+    });
+
+    const merged = mergeRefreshed(
+      [newest],
+      [refreshedOld],
+      options({ filter: {}, includePrevious: true, hasMore: false }),
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(["newest", "old-1"]);
+    expect(merged.find((r) => r.id === "old-1")?.status).toBe("superseded");
+    // Never folded into some unrelated row's attempts -- there is no other
+    // row loaded here for it to fold into.
+    expect(merged.find((r) => r.id === "newest")?.attempts).toEqual([]);
+  });
+
+  it("updates an already-loaded superseded row's own card in place rather than nesting it", () => {
+    const oldTopLevel = job({ id: "old-1", createdAt: T1, status: "processing" });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "not-loaded",
+      errorMessage: "final reason",
+    });
+
+    const merged = mergeRefreshed(
+      [oldTopLevel],
+      [refreshedOld],
+      options({ filter: {}, includePrevious: true }),
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(["old-1"]);
+    expect(merged[0]?.status).toBe("superseded");
+    expect(merged[0]?.errorMessage).toBe("final reason");
+  });
+
+  it("keeps a superseded row's own top-level card AND its owner's nested copy both current, when both are loaded", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    const oldTopLevel = job({ id: "old-1", createdAt: T1, status: "processing" });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "latest",
+      errorMessage: "final reason",
+    });
+
+    const merged = mergeRefreshed(
+      [oldTopLevel, latest],
+      [refreshedOld],
+      options({ filter: {}, includePrevious: true }),
+    );
+
+    const topLevelOld = merged.find((r) => r.id === "old-1");
+    const owner = merged.find((r) => r.id === "latest");
+
+    // Half 1, per HIS-005's "lists the earlier attempts as their own
+    // top-level cards": old-1 is present top-level with fresh content.
+    expect(topLevelOld?.status).toBe("superseded");
+    expect(topLevelOld?.errorMessage).toBe("final reason");
+
+    // Half 2, per HIS-005's "each latest card keeps its nested section":
+    // the owner still carries a nested entry for old-1, and that entry
+    // carries the same fresh content the top-level card just got -- a
+    // reader should never see the two copies of the same job disagree.
+    const nestedOld = owner?.attempts.find((a) => a.id === "old-1");
+    expect(nestedOld?.status).toBe("superseded");
+    expect(nestedOld?.errorMessage).toBe("final reason");
+  });
+
+  it("keeps the two views of the same superseded row in agreement with each other", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    const oldTopLevel = job({ id: "old-1", createdAt: T1, status: "processing" });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "latest",
+      errorMessage: "final reason",
+    });
+
+    const merged = mergeRefreshed(
+      [oldTopLevel, latest],
+      [refreshedOld],
+      options({ filter: {}, includePrevious: true }),
+    );
+
+    const topLevelOld = merged.find((r) => r.id === "old-1")!;
+    const nestedOld = merged
+      .find((r) => r.id === "latest")!
+      .attempts.find((a) => a.id === "old-1")!;
+
+    // Pinned directly rather than inferred from two separate assertions
+    // against literals: the top-level card and the nested copy must report
+    // the same status and error for the same job, or a reader can see the
+    // count HIS-005 derives from the nested copy disagree with the card.
+    expect({ status: nestedOld.status, errorMessage: nestedOld.errorMessage }).toEqual({
+      status: topLevelOld.status,
+      errorMessage: topLevelOld.errorMessage,
+    });
+  });
+});
+
 describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
   it("inserts a fresh row at its sort position when it falls inside the loaded window", () => {
     const newest = job({ id: "newest", createdAt: T3 });

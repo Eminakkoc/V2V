@@ -79,9 +79,15 @@ function matchesActiveFilter(row: HistoryJobView, options: MergeRefreshedOptions
 //
 //   - Merge is by id. A row already loaded is replaced, never appended --
 //     appending would duplicate a row a later `load more` returns again.
-//   - A refreshed `superseded` row (when includePrevious is false) never
-//     becomes/stays a top-level card. Instead its entry inside its latest
-//     job's `attempts` chain -- if that job is loaded -- is updated in place.
+//   - A refreshed `superseded` row always updates its entry inside its
+//     latest job's `attempts` chain, if that job is loaded -- HIS-005's
+//     "Previous attempts" finished-count is read from those nested entries
+//     and carries no `includePrevious` qualifier, so it must stay current
+//     either way. With `includePrevious: false` that is *all* it does: the
+//     row itself never becomes/stays a top-level card. With
+//     `includePrevious: true` it additionally follows the normal top-level
+//     rules below -- HIS-005 "promotes" the row to a top-level card, it does
+//     not relocate it, so both copies exist and must agree.
 //   - A not-yet-loaded row that matches the active filter is inserted at its
 //     sort position, but only if that position falls inside the loaded
 //     window (at or before the last loaded row). If it would sort after the
@@ -100,13 +106,19 @@ export function mergeRefreshed(
   const boundary = loaded.length > 0 ? sortKeyOf(loaded[loaded.length - 1]!, options.sort) : null;
 
   let inserted = false;
-  const hiddenSuperseded: HistoryJobView[] = [];
+  const supersededRows: HistoryJobView[] = [];
 
   for (const row of refreshed) {
-    if (row.status === "superseded" && !options.includePrevious) {
-      byId.delete(row.id);
-      hiddenSuperseded.push(row);
-      continue;
+    if (row.status === "superseded") {
+      // Recorded for the fold below regardless of includePrevious -- the
+      // nested copy is kept current unconditionally.
+      supersededRows.push(row);
+      if (!options.includePrevious) {
+        byId.delete(row.id);
+        continue;
+      }
+      // includePrevious: true -- also runs the normal top-level rules just
+      // below, so the row can additionally stand as its own card.
     }
 
     if (byId.has(row.id)) {
@@ -125,10 +137,12 @@ export function mergeRefreshed(
     inserted = true;
   }
 
-  // Second pass: a superseded row's chain owner may only just have been
-  // inserted above (its retry can arrive in the same refresh batch), so this
-  // has to run after every top-level insertion/replacement is settled.
-  for (const row of hiddenSuperseded) {
+  // Second pass: every superseded row folds into its owner's nested
+  // `attempts`, whether or not it also stands as its own top-level card. The
+  // owner may only just have been inserted/replaced above (its retry can
+  // arrive in the same refresh batch), so this has to run after every
+  // top-level insertion/replacement is settled.
+  for (const row of supersededRows) {
     const targetId = row.supersededByJobId;
     if (!targetId) continue;
     const target = byId.get(targetId);
