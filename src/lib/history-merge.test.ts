@@ -298,6 +298,38 @@ describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's t
       errorMessage: topLevelOld.errorMessage,
     });
   });
+
+  it("folds a superseded row into its owner's attempts even when it is windowed out of the top level", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    const other = job({ id: "other", createdAt: T2 });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "latest",
+      errorMessage: "final reason",
+    });
+
+    const merged = mergeRefreshed(
+      [latest, other],
+      [refreshedOld],
+      options({ filter: {}, includePrevious: true, hasMore: true }),
+    );
+
+    // Windowed out: old-1 sorts after "other" (the last loaded row) and more
+    // pages remain, so the window rule keeps it off the top level this time.
+    expect(merged.some((r) => r.id === "old-1")).toBe(false);
+
+    // The fold loop runs unconditionally regardless of the window rule, so
+    // the owner's nested copy is still kept current.
+    const nestedOld = merged.find((r) => r.id === "latest")!.attempts.find((a) => a.id === "old-1");
+    expect(nestedOld?.status).toBe("superseded");
+    expect(nestedOld?.errorMessage).toBe("final reason");
+  });
 });
 
 describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
@@ -313,7 +345,7 @@ describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
     expect(merged.map((r) => r.id)).toEqual(["newest", "middle", "oldest"]);
   });
 
-  it("leaves a fresh row for load-more when it sorts after the last loaded row and more pages remain", () => {
+  it("does not insert a row that sorts after the last loaded row while more pages remain", () => {
     const a = job({ id: "a", createdAt: T3 });
     const b = job({ id: "b", createdAt: T2 });
     const c = job({ id: "c", createdAt: T1 });
@@ -321,6 +353,29 @@ describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
     const merged = mergeRefreshed([a, b], [c], options({ hasMore: true }));
 
     expect(merged.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("recovers that same row once load-more actually supplies it, rather than discarding it", () => {
+    const a = job({ id: "a", createdAt: T3 });
+    const b = job({ id: "b", createdAt: T2 });
+    const c = job({ id: "c", createdAt: T1, status: "processing" });
+
+    // mergeRefreshed is stateless, so "excluded this time" and "discarded
+    // forever" produce the same output from a single call -- only a second
+    // call, with the row now present in `loaded` as `load more` would
+    // supply it, can show the difference.
+    const afterFirstRefresh = mergeRefreshed([a, b], [c], options({ hasMore: true }));
+    expect(afterFirstRefresh.map((r) => r.id)).toEqual(["a", "b"]);
+
+    const cRefreshedAgain = job({ id: "c", createdAt: T1, status: "complete" });
+    const afterLoadMore = mergeRefreshed(
+      [...afterFirstRefresh, c],
+      [cRefreshedAgain],
+      options({ hasMore: false }),
+    );
+
+    expect(afterLoadMore.map((r) => r.id)).toEqual(["a", "b", "c"]);
+    expect(afterLoadMore.find((r) => r.id === "c")?.status).toBe("complete");
   });
 
   it("inserts that same trailing row once hasMore is false, since nothing remains missing", () => {
@@ -435,6 +490,34 @@ describe("mergeRefreshed: ordering", () => {
     const merged = mergeRefreshed([], [a, b, c], options({ sort: "createdAt", dir: "asc" }));
 
     expect(merged.map((r) => r.id)).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("mergeRefreshed: deterministic tiebreak when both leading sort components are equal", () => {
+  it("breaks a createdAt tie by id, and the tiebreak itself follows the sort direction", () => {
+    const tiedA = job({ id: "a-tie", createdAt: T1 });
+    const tiedB = job({ id: "b-tie", createdAt: T1 });
+
+    // Without the id tiebreak, both rows compare equal under both sorts here,
+    // so a stable sort would just preserve input order regardless of `dir` --
+    // it could never produce the reverse-id result the desc call demands.
+    const asc = mergeRefreshed([], [tiedB, tiedA], options({ sort: "createdAt", dir: "asc" }));
+    expect(asc.map((r) => r.id)).toEqual(["a-tie", "b-tie"]);
+
+    const desc = mergeRefreshed([], [tiedB, tiedA], options({ sort: "createdAt", dir: "desc" }));
+    expect(desc.map((r) => r.id)).toEqual(["b-tie", "a-tie"]);
+  });
+
+  it("breaks a duration tie (equal clip length AND equal createdAt) by id, following the sort direction", () => {
+    const params = { startSeconds: 0, endSeconds: 5 };
+    const tiedA = job({ id: "a-tie", createdAt: T1, params });
+    const tiedB = job({ id: "b-tie", createdAt: T1, params });
+
+    const asc = mergeRefreshed([], [tiedB, tiedA], options({ sort: "duration", dir: "asc" }));
+    expect(asc.map((r) => r.id)).toEqual(["a-tie", "b-tie"]);
+
+    const desc = mergeRefreshed([], [tiedB, tiedA], options({ sort: "duration", dir: "desc" }));
+    expect(desc.map((r) => r.id)).toEqual(["b-tie", "a-tie"]);
   });
 });
 
