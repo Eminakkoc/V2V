@@ -251,6 +251,88 @@ describe("HistoryView -- load more (jobs)", () => {
   });
 });
 
+// Several microtask round trips, mirroring use-history-refresh.test.tsx's own
+// `flush` helper: a tick here can chain a changeable poll into an `ids`
+// follow-up, so settling it needs more than one hop.
+async function flushMicrotasks(times = 3) {
+  for (let i = 0; i < times; i++) {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+}
+
+describe("HistoryView -- a load-more row still receives live refresh (Finding 1 regression)", () => {
+  it("updates a load-more row's status once the changeable poll reports it, while further pages remain exhausted", async () => {
+    vi.useFakeTimers();
+    try {
+      const firstPageJob = buildJob("First page job", { status: "processing" });
+      const loadedOlder = buildJob("Loaded via load more", {
+        status: "timed_out",
+        createdAt: "2025-01-01T00:00:00.000Z",
+      });
+      const loadedOlderComplete: HistoryJobView = { ...loadedOlder, status: "complete" };
+
+      // Mount tick: firstPageJob is still processing, so the schedule keeps
+      // polling (the 3s "live" rung) after this response.
+      fetchMock.mockImplementation((path: string) => {
+        if (path.includes("changeable=true")) return Promise.resolve(jobsResponse([firstPageJob]));
+        return new Promise(() => {});
+      });
+
+      render(
+        <HistoryView
+          tab="jobs"
+          query={buildQuery()}
+          initial={jobsResponse([firstPageJob], "cursor-1")}
+          hasUploads={false}
+          cloudName="demo"
+        />,
+      );
+      await flushMicrotasks();
+
+      // `load more`: the account's only remaining page, one older row that
+      // has already timed out.
+      fetchMock.mockImplementation((path: string) => {
+        if (path.includes("changeable=true")) return new Promise(() => {});
+        return Promise.resolve(jobsResponse([loadedOlder], null));
+      });
+      await act(async () => {
+        screen.getByRole("button", { name: "Load more" }).click();
+      });
+      await flushMicrotasks();
+
+      expect(screen.getByText("Loaded via load more")).toBeInTheDocument();
+      expect(screen.getByText(/Taking longer than expected/)).toBeInTheDocument();
+      // No more pages remain -- the button that would let a reader page
+      // back to this row again is already gone.
+      expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+
+      // Next scheduled poll: the account-wide ?changeable=true no longer
+      // reports the load-more row at all (it finished), which is exactly
+      // what triggers the one-off `ids` follow-up carrying its real status.
+      fetchMock.mockImplementation((path: string) => {
+        if (path.includes("changeable=true")) return Promise.resolve(jobsResponse([firstPageJob]));
+        if (path.includes("ids="))
+          return Promise.resolve(jobsResponse([loadedOlderComplete], null));
+        return new Promise(() => {});
+      });
+      act(() => vi.advanceTimersByTime(3_000));
+      await flushMicrotasks();
+
+      // The load-more row's card now reflects its true, current status --
+      // it never gets stuck on "Taking longer" just because it arrived
+      // after the first page.
+      expect(screen.queryByText(/Taking longer than expected/)).not.toBeInTheDocument();
+      expect(screen.getByText("Complete")).toBeInTheDocument();
+      expect(screen.getByText("Loaded via load more")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("HistoryView -- load more (sources)", () => {
   it("appends the next page of sources using the shipped cursor", async () => {
     fetchMock.mockImplementation((path: string) => {

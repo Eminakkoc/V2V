@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { randomUUID } from "node:crypto";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import type * as NextServerModule from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
+import { HistoryView } from "@/components/history/history-view";
 import { transformParamsSchema } from "@/lib/transform-contract";
 import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
 import type { MagicHourAdapter, Providers } from "@/server/providers/types";
@@ -118,6 +120,20 @@ function searchParams(
   return Promise.resolve(raw);
 }
 
+// Drills into the page's returned tree for the actual key React would use
+// to decide whether to remount <HistoryView>. Reading `.key` directly off
+// the child element (not via React.Children, which rewrites explicit keys
+// with a positional prefix) so this is the literal value page.tsx computed.
+function historyViewKey(element: ReactElement): unknown {
+  const children = (element.props as { children: ReactNode }).children;
+  const list = Array.isArray(children) ? children : [children];
+  const historyView = list.find(
+    (child): child is ReactElement => isValidElement(child) && child.type === HistoryView,
+  );
+  if (!historyView) throw new Error("HistoryPage's tree has no <HistoryView> child");
+  return historyView.key;
+}
+
 beforeEach(async () => {
   const db = await getDb();
   await db.collection("jobs").deleteMany({});
@@ -216,5 +232,34 @@ describe("HistoryPage", () => {
 
     expect(screen.getByRole("link", { name: "Transform an upload" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Upload your first video" })).not.toBeInTheDocument();
+  });
+});
+
+describe("HistoryPage -- keys the client shell on the serialized search params", () => {
+  it("computes the same key for two navigations with the same search params", async () => {
+    setCookie(userId);
+    const first = await HistoryPage({ searchParams: searchParams({ statusBucket: "complete" }) });
+    const second = await HistoryPage({ searchParams: searchParams({ statusBucket: "complete" }) });
+
+    expect(historyViewKey(first)).toBe(historyViewKey(second));
+  });
+
+  // dir and includePrevious are the two shaping params most likely to be
+  // dropped by a well-meaning tidy-up (e.g. narrowing the key to
+  // `query.tab`, which reads plausible on its own and would still pass
+  // every other page test -- see the mutation check in the task report).
+  it.each([
+    ["dir", { dir: "asc" }],
+    ["includePrevious", { includePrevious: "true" }],
+    ["sort", { sort: "duration" }],
+    ["statusBucket", { statusBucket: "complete" }],
+    ["style", { style: "Watercolor" }],
+    ["tab", { tab: "sources" }],
+  ] as const)("computes a different key when %s changes", async (_name, changed) => {
+    setCookie(userId);
+    const base = await HistoryPage({ searchParams: searchParams({}) });
+    const withChange = await HistoryPage({ searchParams: searchParams(changed) });
+
+    expect(historyViewKey(withChange)).not.toBe(historyViewKey(base));
   });
 });

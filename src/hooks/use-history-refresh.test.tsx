@@ -461,4 +461,93 @@ describe("useHistoryRefresh", () => {
     expect(idsCalls).toHaveLength(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  describe("rows loaded via `additional` (load more)", () => {
+    it("folds a load-more row into its own tracked list, so a later poll updates it in place instead of excluding it under the insertion-window rule", async () => {
+      vi.useFakeTimers();
+      try {
+        // Newer, kept live so the schedule keeps polling after the fold.
+        const stillLive = job({
+          id: "keep-alive",
+          status: "processing",
+          createdAt: "2026-09-20T00:00:00.000Z",
+        });
+        // Older than stillLive on purpose: under createdAt/desc (the
+        // default here), an unfolded row this old always sorts after the
+        // boundary mergeRefreshed's insertion-window rule checks, which is
+        // exactly the case Finding 1 describes -- a `load more` row is, by
+        // construction, always older than what was already on screen.
+        const loadedViaLoadMore = job({
+          id: "job-old",
+          status: "timed_out",
+          createdAt: "2026-09-19T00:00:00.000Z",
+        });
+        const refreshedViaPoll = job({
+          id: "job-old",
+          status: "complete",
+          createdAt: "2026-09-19T00:00:00.000Z",
+        });
+
+        fetchMock.mockResolvedValueOnce(changeableResponse([stillLive]));
+
+        const { result, rerender } = renderHook(
+          (options: UseHistoryRefreshOptions) => useHistoryRefresh(options),
+          { initialProps: defaultOptions({ initial: [stillLive], hasMore: true }) },
+        );
+        await flush();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        // Simulates `load more`: job-old (already timed out) is appended to
+        // the rows on screen while more pages still remain (hasMore stays
+        // true) -- exactly what TransformationsPanel hands the hook as
+        // `additional` after a load-more fetch resolves.
+        rerender(
+          defaultOptions({ initial: [stillLive], hasMore: true, additional: [loadedViaLoadMore] }),
+        );
+        expect(result.current.jobs.map((j) => j.id).sort()).toEqual(["job-old", "keep-alive"]);
+
+        // Next poll: job-old finished and left the changeable set (it's no
+        // longer in the ?changeable=true response), triggering the ids
+        // follow-up; keep-alive is still processing.
+        fetchMock
+          .mockResolvedValueOnce(changeableResponse([stillLive]))
+          .mockResolvedValueOnce(changeableResponse([refreshedViaPoll]));
+
+        act(() => vi.advanceTimersByTime(3_000));
+        await flush();
+
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock).toHaveBeenNthCalledWith(
+          3,
+          "/api/history?ids=job-old",
+          expect.objectContaining({ method: "GET" }),
+        );
+        const jobOld = result.current.jobs.find((j) => j.id === "job-old");
+        expect(jobOld?.status).toBe("complete");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("folds a second load-more page in on top of the first, without duplicating the first page's row", async () => {
+      const pageTwoRow = job({ id: "page-2", status: "timed_out" });
+      const pageThreeRow = job({ id: "page-3", status: "timed_out" });
+      fetchMock.mockResolvedValueOnce(changeableResponse([]));
+
+      const { result, rerender } = renderHook(
+        (options: UseHistoryRefreshOptions) => useHistoryRefresh(options),
+        { initialProps: defaultOptions({ hasMore: true }) },
+      );
+      await flush();
+
+      // First load-more click.
+      rerender(defaultOptions({ hasMore: true, additional: [pageTwoRow] }));
+      // Second load-more click: a brand new array containing BOTH rows, the
+      // same way TransformationsPanel's setExtraPages((prev) => [...prev,
+      // ...page.items]) grows it.
+      rerender(defaultOptions({ hasMore: true, additional: [pageTwoRow, pageThreeRow] }));
+
+      expect(result.current.jobs.map((j) => j.id).sort()).toEqual(["page-2", "page-3"]);
+    });
+  });
 });

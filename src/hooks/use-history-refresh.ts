@@ -40,8 +40,19 @@ const MAX_CONSECUTIVE_FAILURES = 5;
 // one tick from building a request the server would reject outright.
 const MAX_IDS_PER_REQUEST = 50;
 
+// Stable reference so an unset `additional` never appears to "change" from
+// one render to the next and re-run the fold effect below for no reason.
+const NO_ADDITIONAL_ROWS: readonly HistoryJobView[] = [];
+
 export type UseHistoryRefreshOptions = {
   initial: readonly HistoryJobView[];
+  // Rows loaded after mount by `load more`, growing as more pages come in.
+  // Distinct from `initial`: the changeable-id baseline below is seeded
+  // from `initial` alone, once, at mount; each of these is folded into this
+  // hook's own tracked list -- and seeds its own baseline entry -- only once
+  // it actually arrives (see the fold effect below for why this is not
+  // optional). `initial` never changes across a mount; this can.
+  additional?: readonly HistoryJobView[];
   sort: "createdAt" | "duration";
   dir: "asc" | "desc";
   filter: StatusFilter;
@@ -58,6 +69,7 @@ export type UseHistoryRefreshResult = {
 
 export function useHistoryRefresh({
   initial,
+  additional = NO_ADDITIONAL_ROWS,
   sort,
   dir,
   filter,
@@ -87,6 +99,35 @@ export function useHistoryRefresh({
   const previousChangeableIdsRef = useRef<Set<string>>(
     new Set(initial.filter((row) => CHANGEABLE_STATUSES.includes(row.status)).map((row) => row.id)),
   );
+  // Every id this hook's own `jobs` state already knows about -- `initial`'s
+  // at mount, plus each `additional` row's the moment it is folded in below.
+  const knownIdsRef = useRef<Set<string>>(new Set(initial.map((row) => row.id)));
+
+  // Folds a newly-loaded page into this hook's own tracked list. Without
+  // this, a row `load more` appends is invisible to `jobs` (the list
+  // mergeRefreshed treats as "already loaded"), so the next poll's merge
+  // sees it as not-yet-loaded and applies the insertion-window rule instead
+  // of replacing it in place -- and a `load more` row, being strictly older
+  // than everything already on screen, always sorts after the boundary that
+  // rule checks, so it is excluded from live refresh for as long as further
+  // pages remain, not merely delayed. Folding also seeds this row's own
+  // entry in the changeable-id baseline above, mirroring what the mount-time
+  // seed does for `initial`, so a row that leaves the changeable set on the
+  // very next poll is still looked up via the `ids` follow-up rather than
+  // read as "was never changeable".
+  useEffect(() => {
+    const unseen = additional.filter((row) => !knownIdsRef.current.has(row.id));
+    if (unseen.length === 0) return;
+    for (const row of unseen) {
+      knownIdsRef.current.add(row.id);
+      if (CHANGEABLE_STATUSES.includes(row.status)) previousChangeableIdsRef.current.add(row.id);
+    }
+    // Appended, never re-sorted: a `load more` page is fetched from the
+    // cursor of the last row already on screen, so it is always correctly
+    // ordered after everything currently in `jobs` under the active sort.
+    setJobs((prev) => [...prev, ...unseen]);
+  }, [additional]);
+
   // When the currently-live streak started, so the schedule can back off the
   // longer it runs. Reset to null the moment nothing is live.
   const activeSinceRef = useRef<number | null>(null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useHistoryRefresh } from "@/hooks/use-history-refresh";
 import { apiFetch } from "@/lib/api-client";
 import {
@@ -97,18 +97,21 @@ function TransformationsPanel({
   cloudName,
 }: TransformationsPanelProps) {
   // Rows fetched by `load more`, beyond the server-rendered first page.
-  // Kept separate from `useHistoryRefresh`'s own state (which owns the first
-  // page's live statuses) and folded together below for rendering -- the
-  // hook has no way to accept an externally-loaded page into its own state,
-  // and does not need one: its periodic poll is filter-independent and
-  // account-wide, so it keeps every loaded row's status current regardless
-  // of which page first loaded it.
+  // Handed to useHistoryRefresh as `additional` (not merged here) so the
+  // hook's own tracked list includes them: without that, the account-wide
+  // poll would still report a status change for one of these rows, but
+  // mergeRefreshed would treat it as not-yet-loaded and defer it under the
+  // insertion-window rule for as long as more pages remain -- a load-more
+  // row, being strictly older, always sorts after the boundary that rule
+  // checks. Folding it into the hook itself is what makes the "already
+  // loaded -> replace in place" path apply instead.
   const [extraPages, setExtraPages] = useState<readonly HistoryJobView[]>([]);
   const [cursor, setCursor] = useState<string | null>(initial.nextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const { jobs: refreshed, stalled } = useHistoryRefresh({
+  const { jobs, stalled } = useHistoryRefresh({
     initial: initial.items,
+    additional: extraPages,
     sort: query.sort,
     dir: query.dir,
     filter: { status: query.status, statusBucket: query.statusBucket },
@@ -116,12 +119,6 @@ function TransformationsPanel({
     includePrevious: query.includePrevious,
     hasMore: cursor !== null,
   });
-
-  const jobs = useMemo(() => {
-    const byId = new Map(refreshed.map((job) => [job.id, job]));
-    for (const job of extraPages) if (!byId.has(job.id)) byId.set(job.id, job);
-    return [...byId.values()];
-  }, [refreshed, extraPages]);
 
   const handleLoadMore = useCallback(() => {
     if (cursor === null || loadingMore) return;
