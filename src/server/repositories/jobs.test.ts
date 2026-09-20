@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
+import { JOB_STATUSES } from "@/lib/job-status";
 import { clipSecondsOf } from "@/server/services/history-cursor";
 import { setupTestDb } from "@/test/mongo";
 import { createJobsRepository, type NewJob } from "./jobs";
@@ -480,5 +481,75 @@ describe("listForUser sorting and filtering", () => {
       });
       expect(rows).toEqual([]);
     }
+  });
+});
+
+describe("changeable, id lookup and source counts", () => {
+  it("returns exactly the statuses reconciliation can select", async () => {
+    const ids: Record<string, string> = {};
+    for (const status of JOB_STATUSES) {
+      const created = await jobs.insert("user-1", {
+        ...input,
+        idempotencyKey: randomUUID(),
+        status,
+      });
+      ids[status] = created.id;
+    }
+    const rows = await jobs.listChangeable("user-1");
+    expect(rows.map((row) => row.status).sort()).toEqual(
+      ["abandoned", "finalizing", "processing", "superseded", "timed_out"].sort(),
+    );
+    expect(rows.map((row) => row.id)).not.toContain(ids.complete);
+    expect(rows.map((row) => row.id)).not.toContain(ids.failed);
+  });
+
+  it("never returns another user's changeable rows", async () => {
+    await jobs.insert("user-2", { ...input, idempotencyKey: randomUUID() });
+    expect(await jobs.listChangeable("user-1")).toEqual([]);
+  });
+
+  it("looks jobs up by id, omitting unknown and other users' ids", async () => {
+    const mine = await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
+    const theirs = await jobs.insert("user-2", { ...input, idempotencyKey: randomUUID() });
+    const rows = await jobs.findByIds("user-1", [
+      mine.id,
+      theirs.id,
+      "65f0000000000000000000ff",
+      "not-an-object-id",
+    ]);
+    expect(rows.map((row) => row.id)).toEqual([mine.id]);
+  });
+
+  it("returns an empty array for an empty id list", async () => {
+    expect(await jobs.findByIds("user-1", [])).toEqual([]);
+  });
+
+  it("counts every job per source regardless of status, retries included", async () => {
+    const sourceA = "65f0000000000000000000a1";
+    const sourceB = "65f0000000000000000000b2";
+    await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID(), sourceId: sourceA });
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      sourceId: sourceA,
+      status: "superseded",
+    });
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      sourceId: sourceA,
+      status: "failed",
+    });
+    await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID(), sourceId: sourceB });
+    await jobs.insert("user-2", { ...input, idempotencyKey: randomUUID(), sourceId: sourceA });
+
+    const counts = await jobs.countBySourceIds("user-1", [
+      sourceA,
+      sourceB,
+      "65f0000000000000000000c3",
+    ]);
+    expect(counts.get(sourceA)).toBe(3);
+    expect(counts.get(sourceB)).toBe(1);
+    expect(counts.get("65f0000000000000000000c3")).toBeUndefined();
   });
 });

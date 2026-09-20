@@ -1,5 +1,5 @@
 import "server-only";
-import type { Document, WithId } from "mongodb";
+import type { Document, ObjectId, WithId } from "mongodb";
 import { JOB_PHASES, type JobPhase, type JobStatus } from "@/lib/job-status";
 import { jobRecordSchema, type JobRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
@@ -77,6 +77,9 @@ export type JobsRepository = {
   setLastError(id: string, lastError: string): Promise<void>;
   listForUser(userId: string, query: HistoryQuery): Promise<Job[]>;
   countActive(userId: string, now: Date, graceMs: number): Promise<ActiveCounts>;
+  listChangeable(userId: string): Promise<Job[]>;
+  findByIds(userId: string, ids: string[]): Promise<Job[]>;
+  countBySourceIds(userId: string, sourceIds: string[]): Promise<Map<string, number>>;
 };
 
 // The rank of each phase in its declared order, so a write can be guarded to
@@ -84,6 +87,17 @@ export type JobsRepository = {
 const PHASE_RANK: Record<JobPhase, number> = Object.fromEntries(
   JOB_PHASES.map((phase, index) => [phase, index]),
 ) as Record<JobPhase, number>;
+
+// The statuses reconciliation can still act on. The History refresh asks for
+// exactly this set, which is what makes "the set came back empty" a correct
+// reason to stop polling rather than merely a convenient one.
+export const CHANGEABLE_STATUSES = [
+  "processing",
+  "finalizing",
+  "timed_out",
+  "superseded",
+  "abandoned",
+] as const satisfies readonly JobStatus[];
 
 export function createJobsRepository(getDb: DbGetter): JobsRepository {
   return {
@@ -418,6 +432,44 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           timedOut: result?.timedOut[0]?.count ?? 0,
           superseded: result?.superseded[0]?.count ?? 0,
         };
+      }),
+
+    listChangeable: (userId) =>
+      withDb(getDb, async (db) => {
+        const docs = await db
+          .collection(COLLECTIONS.jobs)
+          .find({ userId, status: { $in: [...CHANGEABLE_STATUSES] } })
+          .sort({ createdAt: -1, _id: -1 })
+          .toArray();
+        return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
+      }),
+
+    // Owner-scoped by the same { userId } every read here uses, so an id that is
+    // unknown or belongs to someone else is simply absent from the result rather
+    // than reported -- the caller cannot tell those two cases apart, which is
+    // what stops the parameter revealing that another user's job exists.
+    findByIds: (userId, ids) =>
+      withDb(getDb, async (db) => {
+        const objectIds = ids.map(toObjectId).filter((id): id is ObjectId => id !== null);
+        if (objectIds.length === 0) return [];
+        const docs = await db
+          .collection(COLLECTIONS.jobs)
+          .find({ userId, _id: { $in: objectIds } })
+          .toArray();
+        return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
+      }),
+
+    countBySourceIds: (userId, sourceIds) =>
+      withDb(getDb, async (db) => {
+        if (sourceIds.length === 0) return new Map<string, number>();
+        const rows = await db
+          .collection(COLLECTIONS.jobs)
+          .aggregate<{ _id: string; count: number }>([
+            { $match: { userId, sourceId: { $in: sourceIds } } },
+            { $group: { _id: "$sourceId", count: { $sum: 1 } } },
+          ])
+          .toArray();
+        return new Map(rows.map((row) => [row._id, row.count]));
       }),
   };
 }
