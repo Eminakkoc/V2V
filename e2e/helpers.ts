@@ -11,12 +11,16 @@ export const FAKE_UUID_PREFIXES = {
 // Must match FAKE_JOB_NAME_TRIGGERS in src/server/providers/fakes.ts. Put one
 // of these in the job name to steer the fake provider down a branch it would
 // otherwise never reach: an uncertain create (no magicHourId, so the webhook's
-// v2v:<jobId> name fallback is the only way back to the job), or a Cloudinary
-// copy that fails once / permanently inside finalize.
+// v2v:<jobId> name fallback is the only way back to the job), a Cloudinary
+// copy that fails once / permanently inside finalize, or a getJobDetails
+// status other than the default "complete".
 export const FAKE_JOB_NAME_TRIGGERS = {
   createUncertain: "fake:create-uncertain",
   copyFailsOnce: "fake:copy-fails-once",
   copyUnreadable: "fake:copy-unreadable",
+  statusRendering: "fake:status-rendering",
+  statusError: "fake:status-error",
+  statusCanceled: "fake:status-canceled",
 } as const;
 
 export function fakeUuid(prefix = ""): string {
@@ -26,9 +30,12 @@ export function fakeUuid(prefix = ""): string {
 
 // Must match fakeMagicHourId in src/server/providers/fakes.ts. Pass the same
 // FAKE_UUID_PREFIXES value the job name asked for, because createJob encodes
-// the copy trigger into the id it hands back.
-export function fakeMagicHourId(jobId: string, copyPrefix = ""): string {
-  return `fake-mh-${copyPrefix}${jobId}`;
+// the copy trigger into the id it hands back. statusTag (one of "rendering" /
+// "error" / "canceled") trails the id rather than leading it, because the
+// copy prefix has to stay the first path segment of the download URL.
+export function fakeMagicHourId(jobId: string, copyPrefix = "", statusTag = ""): string {
+  const tail = statusTag ? `~s=${statusTag}` : "";
+  return `fake-mh-${copyPrefix}${jobId}${tail}`;
 }
 
 // The job name Magic Hour reports back, which the webhook's resolveJob parses

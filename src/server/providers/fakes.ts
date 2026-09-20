@@ -1,6 +1,7 @@
 import "server-only";
 import { AppError } from "@/server/errors/app-error";
 import { verifyWebhookSignature } from "./magic-hour-signature";
+import type { ProviderStatus } from "./magic-hour-mapping";
 import type { Providers } from "./types";
 
 export const FAKE_UUID_PREFIXES = {
@@ -34,9 +35,15 @@ export const FAKE_JOB_NAME_TRIGGERS = {
   // finalize's Cloudinary copy fails permanently — the branch that markFailed's
   // the job rather than inviting another delivery.
   copyUnreadable: "fake:copy-unreadable",
+  // Reconciliation calls getJobDetails with nothing but the id, so a status
+  // the caller wants reported has to be encoded into that id at create time.
+  statusRendering: "fake:status-rendering",
+  statusError: "fake:status-error",
+  statusCanceled: "fake:status-canceled",
 } as const;
 
 const FAKE_MH_PREFIX = "fake-mh-";
+const STATUS_TAG = "~s=";
 // Used only when the caller has no real webhook secret to hand in (e.g. plain unit
 // tests). Deps wiring passes config.magicHour.webhookSecret so PROVIDER_MODE=fake
 // e2e runs still exercise fail-closed verification against the configured secret.
@@ -57,21 +64,61 @@ function copyPrefixFor(jobName: string): string {
   return "";
 }
 
-// The fake Magic Hour id is the carrier for a copy trigger: getJobDetails is
-// handed nothing but the id, so createJob encodes the caller's choice into it
+// The status trigger, if any, that a job name asks getJobDetails to report.
+function statusTagFor(jobName: string): string {
+  if (jobName.includes(FAKE_JOB_NAME_TRIGGERS.statusRendering)) return "rendering";
+  if (jobName.includes(FAKE_JOB_NAME_TRIGGERS.statusError)) return "error";
+  if (jobName.includes(FAKE_JOB_NAME_TRIGGERS.statusCanceled)) return "canceled";
+  return "";
+}
+
+// The fake Magic Hour id is the carrier for both triggers: getJobDetails is
+// handed nothing but the id, so createJob encodes the caller's choices into it
 // rather than keeping per-process state that a server restart would lose.
-export function fakeMagicHourId(jobId: string, copyPrefix = ""): string {
-  return `${FAKE_MH_PREFIX}${copyPrefix}${jobId}`;
+// The status tag trails the id rather than leading it, because the copy
+// prefix has to stay the FIRST path segment of the download URL, which is
+// where the fake Cloudinary adapter reads its failure mode.
+export function fakeMagicHourId(jobId: string, copyPrefix = "", statusTag = ""): string {
+  const tail = statusTag ? `${STATUS_TAG}${statusTag}` : "";
+  return `${FAKE_MH_PREFIX}${copyPrefix}${jobId}${tail}`;
 }
 
 // The first path segment of the download URL is exactly what the fake
 // Cloudinary adapter reads its failure mode from, so the trigger prefix has to
 // lead it. Stripping FAKE_MH_PREFIX is what puts it there; the remainder stays
-// unique per job, which keeps the fails-once bookkeeping per-job.
+// unique per job, which keeps the fails-once bookkeeping per-job. The trailing
+// status tag (if any) rides along harmlessly -- nothing downstream parses this
+// URL as anything but an opaque path.
 function downloadSegment(magicHourId: string): string {
   return magicHourId.startsWith(FAKE_MH_PREFIX)
     ? magicHourId.slice(FAKE_MH_PREFIX.length)
     : magicHourId;
+}
+
+// With no trigger this must report "complete" -- every shipped e2e spec
+// depends on that default.
+function statusFromId(magicHourId: string): ProviderStatus {
+  const index = magicHourId.indexOf(STATUS_TAG);
+  if (index === -1) return "complete";
+  const tag = magicHourId.slice(index + STATUS_TAG.length);
+  return tag === "rendering" || tag === "error" || tag === "canceled" ? tag : "complete";
+}
+
+// A populated error object for the two statuses whose mapping carries a
+// reason (mapProviderStatus's "failed" branches) -- otherwise those
+// reason-carrying branches (failureMessage's provider-message fallback,
+// markFailedFromCheck's magicHourError) would be unreachable through the fake.
+function errorFor(status: ProviderStatus): { code: string; message: string } | null {
+  if (status === "error") {
+    return { code: "fake_render_error", message: "The fake provider reported a render error." };
+  }
+  if (status === "canceled") {
+    return {
+      code: "fake_render_canceled",
+      message: "The fake provider reported a canceled render.",
+    };
+  }
+  return null;
 }
 
 export function createFakeProviders(
@@ -125,12 +172,19 @@ export function createFakeProviders(
           // job processing/submitting with no magicHourId, not mark it failed.
           throw new AppError("MAGIC_HOUR_REQUEST_FAILED", { details: { definite: false } });
         }
-        return { magicHourId: fakeMagicHourId(jobId, copyPrefixFor(params.name)) };
+        return {
+          magicHourId: fakeMagicHourId(
+            jobId,
+            copyPrefixFor(params.name),
+            statusTagFor(params.name),
+          ),
+        };
       },
       async getJobDetails(magicHourId) {
+        const status = statusFromId(magicHourId);
         return {
           magicHourId,
-          status: "complete",
+          status,
           name: null,
           downloads: [
             {
@@ -139,7 +193,7 @@ export function createFakeProviders(
             },
           ],
           creditsCharged: 1,
-          error: null,
+          error: errorFor(status),
         };
       },
       // Delegates to the real crypto so PROVIDER_MODE=fake still fails closed on a

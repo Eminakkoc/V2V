@@ -1,8 +1,12 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
+// Not "@/..." -- this file's whole point is pinning e2e/helpers.ts's copy of
+// this vocabulary against the server's, so it has to import the real thing.
+import { fakeMagicHourId as e2eFakeMagicHourId } from "../../../e2e/helpers";
 import type { TransformParams } from "@/lib/transform-contract";
 import {
   createFakeProviders,
+  fakeMagicHourId,
   FAKE_FILE_SIZE,
   FAKE_JOB_NAME_TRIGGERS,
   FAKE_LONG_SOURCE_SECONDS,
@@ -139,6 +143,90 @@ describe("fake providers", () => {
     await expect(
       cloudinary.copyVideoFromUrl(details.downloads[0]?.url ?? "", options),
     ).resolves.toBeDefined();
+  });
+
+  it.each([
+    [FAKE_JOB_NAME_TRIGGERS.statusRendering, "rendering"],
+    [FAKE_JOB_NAME_TRIGGERS.statusError, "error"],
+    [FAKE_JOB_NAME_TRIGGERS.statusCanceled, "canceled"],
+  ] as const)(
+    "reports %s as the %s status, with a populated error where the mapping expects one",
+    async (trigger, status) => {
+      const { magicHour } = createFakeProviders("test-cloud");
+      const { magicHourId } = await magicHour.createJob({
+        jobId,
+        videoUrl: "https://example.test/in.mp4",
+        params: { ...fakeParams, name: `beach ${trigger}` },
+      });
+      expect(magicHourId).toBe(`fake-mh-${jobId}~s=${status}`);
+
+      const details = await magicHour.getJobDetails(magicHourId);
+      expect(details.status).toBe(status);
+      if (status === "rendering") {
+        expect(details.error).toBeNull();
+      } else {
+        // error and canceled are the branches mapProviderStatus reports as
+        // "failed", and both carry a reason -- so the fake must populate one.
+        expect(details.error).toMatchObject({
+          code: expect.any(String),
+          message: expect.any(String),
+        });
+      }
+    },
+  );
+
+  it("reports complete with no error when the job name carries no status trigger", async () => {
+    const { magicHour } = createFakeProviders("test-cloud");
+    const { magicHourId } = await magicHour.createJob({
+      jobId,
+      videoUrl: "https://example.test/in.mp4",
+      params: fakeParams,
+    });
+    const details = await magicHour.getJobDetails(magicHourId);
+    expect(details.status).toBe("complete");
+    expect(details.error).toBeNull();
+  });
+
+  // L-006: a fake-provider trigger must resolve at every call site that
+  // consumes it, not just the first. A name carrying both the copy-failure
+  // and the status trigger has to keep routing the download URL through the
+  // copy-failure branch -- the trailing status tag must not displace the
+  // leading copy prefix that the fake Cloudinary adapter reads.
+  it("keeps the copy-fails-once prefix leading the download URL even when a status trigger is also present", async () => {
+    const { magicHour, cloudinary } = createFakeProviders("test-cloud");
+    const { magicHourId } = await magicHour.createJob({
+      jobId,
+      videoUrl: "https://example.test/in.mp4",
+      params: {
+        ...fakeParams,
+        name: `beach ${FAKE_JOB_NAME_TRIGGERS.copyFailsOnce} ${FAKE_JOB_NAME_TRIGGERS.statusRendering}`,
+      },
+    });
+    expect(magicHourId).toBe(`fake-mh-${FAKE_UUID_PREFIXES.failsOnce}${jobId}~s=rendering`);
+
+    const details = await magicHour.getJobDetails(magicHourId);
+    expect(details.status).toBe("rendering");
+    const url = details.downloads[0]?.url ?? "";
+    expect(new URL(url).pathname.split("/")[1]?.startsWith(FAKE_UUID_PREFIXES.failsOnce)).toBe(
+      true,
+    );
+    await expect(cloudinary.copyVideoFromUrl(url, options)).rejects.toMatchObject({
+      code: "CLOUDINARY_UPLOAD_FAILED",
+      retryable: true,
+    });
+  });
+
+  it("keeps e2e/helpers.ts's fakeMagicHourId byte-identical to the server's for the same arguments", () => {
+    expect(e2eFakeMagicHourId(jobId)).toBe(fakeMagicHourId(jobId));
+    expect(e2eFakeMagicHourId(jobId, FAKE_UUID_PREFIXES.failsOnce)).toBe(
+      fakeMagicHourId(jobId, FAKE_UUID_PREFIXES.failsOnce),
+    );
+    expect(e2eFakeMagicHourId(jobId, "", "rendering")).toBe(
+      fakeMagicHourId(jobId, "", "rendering"),
+    );
+    expect(e2eFakeMagicHourId(jobId, FAKE_UUID_PREFIXES.failsOnce, "rendering")).toBe(
+      fakeMagicHourId(jobId, FAKE_UUID_PREFIXES.failsOnce, "rendering"),
+    );
   });
 
   // This is the one guard standing between PROVIDER_MODE=fake and a webhook

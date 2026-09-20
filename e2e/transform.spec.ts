@@ -4,6 +4,7 @@ import { E2E_WEBHOOK_SECRET } from "./env";
 import {
   dropFile,
   dropZone,
+  FAKE_JOB_NAME_TRIGGERS,
   fakeMagicHourId,
   fakeUuid,
   mockProviders,
@@ -12,10 +13,19 @@ import {
 
 const clip = { name: "clip.mp4", mimeType: "video/mp4", size: 5 * 1024 * 1024 };
 
-async function uploadTrimAndChooseStyle(page: Page) {
+// GET /api/history now schedules reconciliation (after() -- see reconcile.ts),
+// and useJobPolling fires one on mount plus one right after a successful
+// submit. With the fake provider's default status ("complete"), that
+// background call would race ahead of a test's own webhook and finalize the
+// job first. Any test that needs the job to stay non-terminal while it drives
+// its own webhook drops this trigger into the file name so reconciliation
+// sees "rendering" instead.
+const rendering = FAKE_JOB_NAME_TRIGGERS.statusRendering;
+
+async function uploadTrimAndChooseStyle(page: Page, fileName: string = clip.name) {
   await mockProviders(page, fakeUuid());
   await page.goto("/");
-  await dropFile(dropZone(page), clip);
+  await dropFile(dropZone(page), { ...clip, name: fileName });
   await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
 
   // Trim: the source is a 12.5s fixture clip, narrow it to a 5s window. The
@@ -97,10 +107,11 @@ test("a webhook with a bad signature is rejected and the job stays processing", 
   page,
   request,
 }) => {
-  await uploadTrimAndChooseStyle(page);
+  const fileName = `${clip.name} ${rendering}`;
+  await uploadTrimAndChooseStyle(page, fileName);
   const { job } = await submitTransform(page);
 
-  const magicHourId = fakeMagicHourId(job.id);
+  const magicHourId = fakeMagicHourId(job.id, "", "rendering");
   const rawBody = JSON.stringify({ type: "video.completed", payload: { id: magicHourId } });
   // Same shape as a real delivery, signed with the wrong secret: a well-formed
   // signature that the server must still reject, proving the fake provider's
@@ -121,7 +132,7 @@ test("a webhook with a bad signature is rejected and the job stays processing", 
 
   // Still true after giving the polling hook a chance to pick up any (wrong) change.
   await page.waitForTimeout(3_500);
-  await expect(page.locator('video[aria-label="Result: clip.mp4"]')).toHaveCount(0);
+  await expect(page.locator(`video[aria-label="Result: ${fileName}"]`)).toHaveCount(0);
 });
 
 test("retry shows its confirmation and starts a second job linked to the first", async ({
@@ -129,10 +140,11 @@ test("retry shows its confirmation and starts a second job linked to the first",
   request,
 }) => {
   test.setTimeout(45_000);
-  await uploadTrimAndChooseStyle(page);
+  const fileName = `${clip.name} ${rendering}`;
+  await uploadTrimAndChooseStyle(page, fileName);
   const { job } = await submitTransform(page);
 
-  const magicHourId = fakeMagicHourId(job.id);
+  const magicHourId = fakeMagicHourId(job.id, "", "rendering");
   const rawBody = JSON.stringify({
     type: "video.errored",
     payload: { id: magicHourId, error: { code: "render_failed", message: "simulated failure" } },
