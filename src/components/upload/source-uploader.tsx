@@ -3,7 +3,7 @@
 import "@uploadcare/react-uploader/core.css";
 import { FileUploaderRegular } from "@uploadcare/react-uploader/next";
 import type { UploadCtxProvider } from "@uploadcare/react-uploader";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSourceUpload, type UploadState } from "@/hooks/use-source-upload";
 import { useUploadFocus } from "@/hooks/use-upload-focus";
@@ -46,7 +46,17 @@ function announcementFor(state: UploadState): string {
 // element upgrades with telemetry already off.
 const TELEMETRY_OFF = { "quality-insights": "false" } as const;
 
-export function SourceUploader({ settings }: { settings: UploaderSettings }) {
+export type SourceUploaderProps = {
+  settings: UploaderSettings;
+  // The container (create-flow.tsx) needs the source id, duration and original
+  // file name once upload settles, none of which it can otherwise observe from
+  // this component's own reducer state. Both are optional and no-op by default,
+  // so every existing behavior here is unchanged.
+  onStateChange?: (state: UploadState) => void;
+  onFileSelected?: (name: string) => void;
+};
+
+export function SourceUploader({ settings, onStateChange, onFileSelected }: SourceUploaderProps) {
   const uploaderRef = useRef<UploadCtxProvider>(null);
   const pendingFileRef = useRef<File | null>(null);
   const [ready, setReady] = useState(false);
@@ -64,6 +74,10 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
   const upload = useSourceUpload(rules, { onServerError });
   const { state, signatureFailed } = upload;
   const { progressLabelRef, dropZoneTitleRef, focusAfter } = useUploadFocus(state.status);
+
+  useEffect(() => {
+    onStateChange?.(state);
+  }, [state, onStateChange]);
 
   const resolveSignature = useCallback(async () => {
     try {
@@ -151,7 +165,9 @@ export function SourceUploader({ settings }: { settings: UploaderSettings }) {
         {...TELEMETRY_OFF}
         secureUploadsSignatureResolver={resolveSignature}
         onFileAdded={(entry) => {
-          if (!upload.select({ name: entry.name, mimeType: entry.mimeType, size: entry.size })) {
+          if (upload.select({ name: entry.name, mimeType: entry.mimeType, size: entry.size })) {
+            onFileSelected?.(entry.name);
+          } else {
             api()?.removeFileByInternalId(entry.internalId);
           }
         }}
