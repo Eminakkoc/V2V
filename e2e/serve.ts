@@ -37,6 +37,11 @@ async function main() {
   const isCi = Boolean(process.env.CI);
   if (isCi) await run(["next", "build"], env);
 
+  // The in-memory database starts with no indexes, unlike a real deploy (README:
+  // "Deploy, then create the indexes"); without this, unique-constraint behavior
+  // (e.g. the idempotency-key and magicHourId guards) would silently no-op.
+  await run(["tsx", "--conditions=react-server", "scripts/create-indexes.ts"], env);
+
   child = spawn("pnpm", ["exec", "next", isCi ? "start" : "dev", "--port", String(E2E_PORT)], {
     env,
     stdio: "inherit",

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import type { Locator, Page } from "@playwright/test";
 
 // Must match FAKE_UUID_PREFIXES in src/server/providers/fakes.ts.
@@ -7,6 +7,25 @@ export const FAKE_UUID_PREFIXES = { failsOnce: "f0000000-", unreadable: "e000000
 export function fakeUuid(prefix = ""): string {
   const uuid = randomUUID();
   return `${prefix}${uuid.slice(prefix.length)}`;
+}
+
+// Must match createFakeProviders' magicHour.createJob in src/server/providers/fakes.ts.
+export function fakeMagicHourId(jobId: string): string {
+  return `fake-mh-${jobId}`;
+}
+
+// Reimplements the HMAC scheme src/server/providers/magic-hour-signature.ts verifies,
+// so a simulated webhook delivery is authenticated the same way a real one is -- there
+// is deliberately no test-only bypass of that check.
+export function signWebhook(
+  rawBody: string,
+  secret: string,
+  timestamp = Math.floor(Date.now() / 1000),
+): { signature: string; timestamp: string } {
+  const signature = createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`, "utf8")
+    .digest("hex");
+  return { signature, timestamp: String(timestamp) };
 }
 
 const CORS = {
