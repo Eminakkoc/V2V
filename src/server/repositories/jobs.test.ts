@@ -611,6 +611,24 @@ describe("selectForReconcile", () => {
     expect(selected.map((j) => j.id)).not.toContain(recentlyClaimed.id);
   });
 
+  // Rule (b) must gate on recentMs (lastCheckedAt), not on staleClaimMs a
+  // second time: a finalizing job's claim can be stale while it was still
+  // checked moments ago by an earlier pass. Swapping windows.recentMs and
+  // windows.staleClaimMs on this rule would let a stale-claimed-but-just-
+  // checked job through, since 10s is well within staleClaimMs (5 min) --
+  // only comparing it against recentMs (60s) catches that swap.
+  it("does not select a finalizing job whose claim is stale but was checked 10s ago", async () => {
+    const staleClaimRecentlyChecked = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "finalizing",
+      claimedAt: new Date(now.getTime() - 10 * 60_000),
+      lastCheckedAt: new Date(now.getTime() - 10_000),
+    });
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).not.toContain(staleClaimRecentlyChecked.id);
+  });
+
   it("selects an abandoned job checked 2h ago within 24h of its deadline, but not one checked 5 min ago or one 30h past its deadline", async () => {
     const checkedRecently = await jobs.insert("user-1", {
       ...input,

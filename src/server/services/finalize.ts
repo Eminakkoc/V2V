@@ -23,7 +23,7 @@ export type FinalizeOutcome =
 
 export type FinalizeDeps = Pick<ServerDeps, "config" | "jobs" | "cloudinary" | "magicHour">;
 
-function failureMessage(code: JobErrorCode, providerMessage: string | undefined): string {
+export function failureMessage(code: JobErrorCode, providerMessage: string | undefined): string {
   if (providerMessage) return providerMessage;
   switch (code) {
     case "MAGIC_HOUR_JOB_FAILED":
