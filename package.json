@@ -69,7 +69,7 @@
     "node": "^22.22.2"
   },
   "lint-staged": {
-    "*.{ts,tsx,mjs,js}": [
+    "*.{ts,tsx,mts,mjs,js}": [
       "eslint --fix",
       "prettier --write"
     ],
