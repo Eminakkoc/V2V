@@ -27,6 +27,18 @@ if (typeof Element !== "undefined") {
   }
 }
 
+// The Slider thumb measures itself with ResizeObserver, which jsdom also
+// doesn't implement. Never firing is fine: it only affects an in-bounds
+// pixel offset, not the value the thumb reports.
+if (typeof ResizeObserver === "undefined") {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub;
+}
+
 afterEach(() => {
   cleanup();
 });

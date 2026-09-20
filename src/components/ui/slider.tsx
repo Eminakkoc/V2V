@@ -4,14 +4,23 @@ import * as React from "react"
 import { cn } from "cn"
 import { Slider as SliderPrimitive } from "radix-ui"
 
+type ThumbProps = React.ComponentProps<typeof SliderPrimitive.Thumb>
+
 function Slider({
   className,
   defaultValue,
   value,
   min = 0,
   max = 100,
+  thumbProps,
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+}: React.ComponentProps<typeof SliderPrimitive.Root> & {
+  // Per-thumb overrides (aria-label, aria-valuetext, onKeyDown, ...), indexed
+  // to match `value`/`defaultValue`. A generic multi-thumb slider has no way
+  // to know what each handle means, so callers with named handles (start/end)
+  // supply that here instead of forking the primitive.
+  thumbProps?: ThumbProps[]
+}) {
   const _values = React.useMemo(
     () =>
       Array.isArray(value)
@@ -44,13 +53,20 @@ function Slider({
           className="absolute bg-primary select-none data-horizontal:h-full data-vertical:w-full"
         />
       </SliderPrimitive.Track>
-      {Array.from({ length: _values.length }, (_, index) => (
-        <SliderPrimitive.Thumb
-          data-slot="slider-thumb"
-          key={index}
-          className="relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring transition-[color,box-shadow] select-none after:absolute after:-inset-4 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
-        />
-      ))}
+      {Array.from({ length: _values.length }, (_, index) => {
+        const { className: thumbClassName, ...thumbOverrides } = thumbProps?.[index] ?? {}
+        return (
+          <SliderPrimitive.Thumb
+            data-slot="slider-thumb"
+            key={index}
+            {...thumbOverrides}
+            className={cn(
+              "relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring transition-[color,box-shadow] select-none after:absolute after:-inset-4 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
+              thumbClassName
+            )}
+          />
+        )
+      })}
     </SliderPrimitive.Root>
   )
 }
