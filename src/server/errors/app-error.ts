@@ -36,6 +36,46 @@ export const ERROR_SPECS: Record<ErrorCode, ErrorSpec> = {
     retryable: true,
     message: "We could not store your video. Please try again.",
   },
+  SOURCE_NOT_FOUND: {
+    status: 404,
+    retryable: false,
+    message: "We could not find that video. Please upload it again.",
+  },
+  CLIP_TOO_LONG: {
+    status: 400,
+    retryable: false,
+    message: "That clip is longer than the allowed length. Trim it and try again.",
+  },
+  MAGIC_HOUR_INSUFFICIENT_CREDITS: {
+    status: 402,
+    retryable: false,
+    message: "There are not enough credits to transform this video.",
+  },
+  MAGIC_HOUR_INVALID_PARAMS: {
+    status: 422,
+    retryable: false,
+    message: "These transform settings were rejected. Try different options.",
+  },
+  MAGIC_HOUR_MISCONFIGURED: {
+    status: 500,
+    retryable: false,
+    message: "Something went wrong on our side.",
+  },
+  MAGIC_HOUR_REQUEST_FAILED: {
+    status: 502,
+    retryable: true,
+    message: "We could not reach the transform service. Please try again.",
+  },
+  WEBHOOK_INVALID_SIGNATURE: {
+    status: 401,
+    retryable: false,
+    message: "Signature verification failed.",
+  },
+  WEBHOOK_STALE_TIMESTAMP: {
+    status: 401,
+    retryable: false,
+    message: "Signature timestamp is outside the accepted window.",
+  },
   DATABASE_UNAVAILABLE: {
     status: 503,
     retryable: true,
