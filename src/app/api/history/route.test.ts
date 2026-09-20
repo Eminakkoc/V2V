@@ -183,15 +183,20 @@ describe("GET /api/history", () => {
     expect((await errorOf(response)).code).toBe("VALIDATION_FAILED");
   });
 
-  it("returns 400 VALIDATION_FAILED for sort=duration -- the parameter does not exist this cycle", async () => {
+  // historyQuerySchema now accepts sort and tab=sources (src/lib/history-contract.ts);
+  // the route still parses with that schema directly, so both values are valid
+  // input. The route does not yet branch on either -- listHistory hard-codes
+  // sort:"createdAt" and always returns the jobs shape -- so both requests
+  // succeed without (yet) changing what comes back. Wiring that behaviour is a
+  // later task.
+  it("accepts sort=duration now that the contract supports it", async () => {
     const response = await history("?sort=duration");
-    expect(response.status).toBe(400);
-    expect((await errorOf(response)).code).toBe("VALIDATION_FAILED");
+    expect(response.status).toBe(200);
   });
 
-  it("rejects tab=sources, which ships with the History page next cycle", async () => {
+  it("accepts tab=sources now that the contract supports it", async () => {
     const response = await history("?tab=sources");
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
   });
 
   it("carries Cache-Control: private, no-store", async () => {

@@ -1,7 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { JOB_STATUSES } from "@/lib/job-status";
-import { ART_STYLES } from "@/lib/magic-hour-styles";
+import type { HistoryQueryInput } from "@/lib/history-contract";
 import type { HistoryResponse } from "@/lib/transform-contract";
 import type { ServerDeps } from "@/server/deps";
 import { AppError } from "@/server/errors/app-error";
@@ -9,22 +8,9 @@ import { toObjectId } from "@/server/repositories/documents";
 import type { Job } from "@/server/repositories/jobs";
 import { toJobView } from "@/server/services/job-view";
 
-// tab is a literal, not the spec's jobs|sources enum: the sources listing
-// belongs to the History page next cycle, and Task 5 provides no sources
-// query. Widening this later is additive.
-export const historyQuerySchema = z
-  .object({
-    tab: z.literal("jobs").default("jobs"),
-    status: z.enum(JOB_STATUSES).optional(),
-    style: z.enum(ART_STYLES).optional(),
-    includePrevious: z.stringbool().default(false),
-    dir: z.enum(["asc", "desc"]).default("desc"),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-    cursor: z.string().optional(),
-  })
-  .strict();
+export { historyQuerySchema, parseHistoryQuery } from "@/lib/history-contract";
 
-type HistoryQuery = z.infer<typeof historyQuerySchema>;
+type HistoryQuery = HistoryQueryInput;
 
 const cursorSchema = z.object({ createdAt: z.string(), id: z.string() });
 
