@@ -237,6 +237,8 @@ export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
                 if (previewRef.current) previewRef.current.currentTime = second;
               }}
               disabled={state.submitting}
+              src={videoUrl(settings.cloudName, source.sourceVideo.cloudinaryPublicId, "mp4")}
+              previewRef={previewRef}
             />
           </div>
           <OptionsForm

@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { clampRange, type TrimRange } from "@/lib/trim-range";
+import { Filmstrip } from "./filmstrip";
 
 // A trim shorter than this reads as a mis-click rather than an intended clip,
 // and it keeps the two handles from ever landing on the same value.
@@ -24,10 +25,41 @@ export type TrimmerProps = {
   onChange: (next: TrimRange) => void;
   onSeek: (second: number) => void;
   disabled?: boolean;
+  // The preview video's own URL and ref, for the filmstrip thumbnails and
+  // for looping playback inside the trimmed range. Both are optional: a
+  // trimmer with neither still works, just without those two extras.
+  src?: string;
+  previewRef?: React.RefObject<HTMLVideoElement | null>;
 };
 
 function valueText(seconds: number): string {
   return `${seconds.toFixed(1)} seconds`;
+}
+
+// The preview <video> lives one level up (in CreateFlow), so looping is done
+// by listening to it directly rather than by owning playback here. The
+// listener is attached once per video element; `useEffectEvent` reads the
+// live `range`/`looping` on every tick without making either a dependency
+// that would tear the listener down and re-add it on every trim change.
+function useLoopPlayback(
+  previewRef: React.RefObject<HTMLVideoElement | null> | undefined,
+  range: TrimRange,
+  looping: boolean,
+) {
+  const onTimeUpdate = useEffectEvent((video: HTMLVideoElement) => {
+    if (!looping) return;
+    if (video.currentTime >= range.endSeconds) {
+      video.currentTime = range.startSeconds;
+    }
+  });
+
+  useEffect(() => {
+    const video = previewRef?.current;
+    if (!video) return;
+    const handleTimeUpdate = () => onTimeUpdate(video);
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
+  }, [previewRef]);
 }
 
 // Dragging fires far more pointermove events than a video element needs
@@ -66,11 +98,17 @@ export function Trimmer({
   onChange,
   onSeek,
   disabled = false,
+  src,
+  previewRef,
 }: TrimmerProps) {
   const startInputId = useId();
   const endInputId = useId();
+  const loopToggleId = useId();
   const bounds = { duration, minGap: MIN_GAP_SECONDS, maxClipSeconds };
   const seek = useThrottledSeek(onSeek);
+  const [looping, setLooping] = useState(true);
+  useLoopPlayback(previewRef, value, looping);
+  const selectedSeconds = value.endSeconds - value.startSeconds;
 
   // Which handle the proposal is dragging is read off `next` (compared to the
   // current, still-uncommitted `value`), before clampRange resolves it -- the
@@ -137,27 +175,55 @@ export function Trimmer({
 
   return (
     <div className="flex flex-col gap-4">
-      <Slider
-        min={0}
-        max={duration}
-        step={STEP_SECONDS}
-        minStepsBetweenThumbs={Math.round(MIN_GAP_SECONDS / STEP_SECONDS)}
-        value={[value.startSeconds, value.endSeconds]}
-        disabled={disabled}
-        onValueChange={handleSliderChange}
-        thumbProps={[
-          {
-            "aria-label": "Clip start",
-            "aria-valuetext": valueText(value.startSeconds),
-            onKeyDown: handleBoundaryKeys("start"),
-          },
-          {
-            "aria-label": "Clip end",
-            "aria-valuetext": valueText(value.endSeconds),
-            onKeyDown: handleBoundaryKeys("end"),
-          },
-        ]}
-      />
+      <div className="relative flex h-10 items-center">
+        {src ? (
+          <Filmstrip
+            src={src}
+            duration={duration}
+            className="pointer-events-none absolute inset-0"
+          />
+        ) : null}
+        <Slider
+          min={0}
+          max={duration}
+          step={STEP_SECONDS}
+          minStepsBetweenThumbs={Math.round(MIN_GAP_SECONDS / STEP_SECONDS)}
+          value={[value.startSeconds, value.endSeconds]}
+          disabled={disabled}
+          onValueChange={handleSliderChange}
+          className="relative"
+          thumbProps={[
+            {
+              "aria-label": "Clip start",
+              "aria-valuetext": valueText(value.startSeconds),
+              onKeyDown: handleBoundaryKeys("start"),
+            },
+            {
+              "aria-label": "Clip end",
+              "aria-valuetext": valueText(value.endSeconds),
+              onKeyDown: handleBoundaryKeys("end"),
+            },
+          ]}
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p aria-live="polite" className="text-sm text-muted-foreground">
+          {selectedSeconds.toFixed(2)}s selected
+        </p>
+        <label
+          htmlFor={loopToggleId}
+          className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground"
+        >
+          <input
+            id={loopToggleId}
+            type="checkbox"
+            checked={looping}
+            disabled={disabled}
+            onChange={(event) => setLooping(event.target.checked)}
+          />
+          Loop preview
+        </label>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={startInputId}>Clip start</Label>

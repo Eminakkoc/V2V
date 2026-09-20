@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useRef, useState } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrimRange } from "@/lib/trim-range";
 import { Trimmer, type TrimmerProps } from "./trimmer";
 
@@ -177,5 +177,96 @@ describe("Trimmer", () => {
     expect(screen.getByRole("slider", { name: "Clip start" })).toHaveAttribute("data-disabled", "");
     expect(screen.getByRole("spinbutton", { name: "Clip start" })).toBeDisabled();
     expect(screen.getByRole("spinbutton", { name: "Clip end" })).toBeDisabled();
+  });
+
+  it("announces the selected duration to two decimals in a polite live region", () => {
+    const { container } = render(
+      <Trimmer
+        duration={DURATION}
+        maxClipSeconds={MAX_CLIP_SECONDS}
+        value={{ startSeconds: 2.5, endSeconds: 9 }}
+        onChange={vi.fn()}
+        onSeek={vi.fn()}
+      />,
+    );
+    const region = container.querySelector('[aria-live="polite"]');
+    expect(region).toHaveTextContent("6.50s selected");
+  });
+
+  describe("loop playback", () => {
+    function renderWithPreview(value: TrimRange) {
+      function Wrapper() {
+        const videoRef = useRef<HTMLVideoElement>(null);
+        return (
+          <>
+            <video ref={videoRef} muted data-testid="preview" />
+            <Trimmer
+              duration={DURATION}
+              maxClipSeconds={MAX_CLIP_SECONDS}
+              value={value}
+              onChange={vi.fn()}
+              onSeek={vi.fn()}
+              previewRef={videoRef}
+            />
+          </>
+        );
+      }
+      render(<Wrapper />);
+      return screen.getByTestId("preview") as HTMLVideoElement;
+    }
+
+    it("seeks the preview back to the start once it passes the end while looping is on", () => {
+      const video = renderWithPreview({ startSeconds: 5, endSeconds: 10 });
+      video.currentTime = 10.2;
+      fireEvent(video, new Event("timeupdate"));
+      expect(video.currentTime).toBe(5);
+    });
+
+    it("leaves the preview alone once looping is turned off", () => {
+      const video = renderWithPreview({ startSeconds: 5, endSeconds: 10 });
+      fireEvent.click(screen.getByRole("checkbox", { name: "Loop preview" }));
+
+      video.currentTime = 10.2;
+      fireEvent(video, new Event("timeupdate"));
+      expect(video.currentTime).toBe(10.2);
+    });
+  });
+
+  describe("filmstrip failure", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    // The required case for OPT-004: thumbnail extraction can throw for
+    // reasons entirely outside the trimmer's control (missing CORS headers,
+    // a mobile browser that refuses to seek). The slider and its handles
+    // must stay fully usable regardless.
+    it("keeps the slider handles usable when filmstrip extraction throws", () => {
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+        drawImage: () => {
+          throw new Error("canvas is tainted");
+        },
+      } as unknown as CanvasRenderingContext2D);
+
+      const onChange = vi.fn();
+      const { container } = render(
+        <Trimmer
+          duration={DURATION}
+          maxClipSeconds={MAX_CLIP_SECONDS}
+          value={{ startSeconds: 0, endSeconds: 10 }}
+          onChange={onChange}
+          onSeek={vi.fn()}
+          src="https://res.cloudinary.com/demo/video/upload/sources/a.mp4"
+        />,
+      );
+
+      const hiddenVideo = container.querySelector("video[src]");
+      if (!hiddenVideo) throw new Error("expected the filmstrip's hidden <video>");
+      fireEvent(hiddenVideo, new Event("loadedmetadata"));
+      fireEvent(hiddenVideo, new Event("seeked"));
+
+      const endThumb = screen.getByRole("slider", { name: "Clip end" });
+      fireEvent.focus(endThumb);
+      fireEvent.keyDown(endThumb, { key: "ArrowRight" });
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
   });
 });
