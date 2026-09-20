@@ -1,4 +1,6 @@
 import "server-only";
+import type { Document } from "mongodb";
+import type { JobPhase, JobStatus } from "@/lib/job-status";
 import { jobRecordSchema, type JobRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
 import { parseForWrite, parseStored, toObjectId } from "./documents";
@@ -8,9 +10,58 @@ export type Job = JobRecord & { id: string };
 
 export type NewJob = Omit<JobRecord, "schemaVersion" | "userId" | "createdAt" | "updatedAt">;
 
+export type FailurePatch = {
+  errorCode: string;
+  errorMessage: string;
+  magicHourError?: { code: string; message: string };
+};
+
+export type CompletionPatch = {
+  output: { cloudinaryPublicId: string; cloudinaryUrl: string };
+  creditsCharged?: number;
+};
+
+export type HistoryQuery = {
+  status?: JobStatus;
+  artStyle?: string;
+  includePrevious: boolean;
+  dir: "asc" | "desc";
+  limit: number;
+  cursor?: { createdAt: Date; id: string };
+};
+
+export type ActiveCounts = {
+  processing: number;
+  finalizing: number;
+  timedOut: number;
+  superseded: number;
+};
+
+type FacetCount = { count: number }[];
+
+type ActiveCountsFacet = {
+  processing: FacetCount;
+  finalizing: FacetCount;
+  timedOut: FacetCount;
+  superseded: FacetCount;
+};
+
 export type JobsRepository = {
   insert(userId: string, input: NewJob): Promise<Job>;
   findById(userId: string, id: string): Promise<Job | null>;
+  findByIdempotencyKey(userId: string, key: string): Promise<Job | null>;
+  findByIdUnscoped(id: string): Promise<Job | null>;
+  findByMagicHourId(magicHourId: string): Promise<Job | null>;
+  attachMagicHourId(id: string, magicHourId: string): Promise<Job | null>;
+  claimForFinalize(id: string, now: Date, staleBefore: Date): Promise<Job | null>;
+  releaseClaim(id: string): Promise<void>;
+  setPhase(id: string, phase: JobPhase): Promise<Job | null>;
+  markFailed(id: string, patch: FailurePatch): Promise<Job | null>;
+  markComplete(id: string, patch: CompletionPatch): Promise<Job | null>;
+  markSuperseded(id: string, bySupersedingJobId: string): Promise<Job | null>;
+  setLastError(id: string, lastError: string): Promise<void>;
+  listForUser(userId: string, query: HistoryQuery): Promise<Job[]>;
+  countActive(userId: string): Promise<ActiveCounts>;
 };
 
 export function createJobsRepository(getDb: DbGetter): JobsRepository {
@@ -34,6 +85,240 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         if (!_id) return null;
         const document = await db.collection(COLLECTIONS.jobs).findOne({ _id, userId });
         return document ? parseStored(COLLECTIONS.jobs, jobRecordSchema, document) : null;
+      }),
+
+    findByIdempotencyKey: (userId, key) =>
+      withDb(getDb, async (db) => {
+        const doc = await db.collection(COLLECTIONS.jobs).findOne({ userId, idempotencyKey: key });
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    findByIdUnscoped: (id) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOne({ _id });
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    findByMagicHourId: (magicHourId) =>
+      withDb(getDb, async (db) => {
+        const doc = await db.collection(COLLECTIONS.jobs).findOne({ magicHourId });
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    // Guarded on magicHourId being absent so two deliveries racing the name
+    // fallback cannot both attach. Returns null when someone else won.
+    attachMagicHourId: (id, magicHourId) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db
+          .collection(COLLECTIONS.jobs)
+          .findOneAndUpdate(
+            { _id, magicHourId: { $exists: false } },
+            { $set: { magicHourId, updatedAt: new Date() } },
+            { returnDocument: "after" },
+          );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    // One atomic transition. A job already finalizing is only reclaimable when its
+    // claim predates staleBefore — that is the crashed-mid-finalize recovery.
+    claimForFinalize: (id, now, staleBefore) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          {
+            _id,
+            $or: [
+              { status: { $in: ["processing", "timed_out", "superseded", "abandoned"] } },
+              { status: "finalizing", claimedAt: { $lt: staleBefore } },
+            ],
+          },
+          // A pipeline update so the status being replaced is captured in the same
+          // write. Reading it beforehand would restore a stale value on release.
+          [
+            {
+              $set: {
+                // Re-claiming a stale finalizing job must not overwrite the original
+                // pre-claim status with "finalizing".
+                preFinalizeStatus: {
+                  $cond: [
+                    { $eq: ["$status", "finalizing"] },
+                    { $ifNull: ["$preFinalizeStatus", "processing"] },
+                    "$status",
+                  ],
+                },
+                status: "finalizing",
+                claimedAt: now,
+                updatedAt: now,
+              },
+            },
+          ],
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    // No status argument: restores whatever claimForFinalize recorded as the
+    // pre-claim status, atomically, in the same write that clears the claim.
+    releaseClaim: (id) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return;
+        await db.collection(COLLECTIONS.jobs).updateOne({ _id, status: "finalizing" }, [
+          {
+            $set: {
+              status: { $ifNull: ["$preFinalizeStatus", "processing"] },
+              updatedAt: "$$NOW",
+            },
+          },
+          { $unset: ["claimedAt", "preFinalizeStatus"] },
+        ]);
+      }),
+
+    // Guarded on status: "processing" so a late video.started (or any other phase
+    // update) cannot drag a job that already moved on backwards.
+    setPhase: (id, phase) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db
+          .collection(COLLECTIONS.jobs)
+          .findOneAndUpdate(
+            { _id, status: "processing" },
+            { $set: { phase, updatedAt: new Date() } },
+            { returnDocument: "after" },
+          );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    markFailed: (id, patch) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          { _id },
+          {
+            $set: {
+              status: "failed",
+              errorCode: patch.errorCode,
+              errorMessage: patch.errorMessage,
+              updatedAt: new Date(),
+              ...(patch.magicHourError ? { magicHourError: patch.magicHourError } : {}),
+            },
+            // Failure is terminal: any claim bookkeeping left over from a finalize
+            // attempt no longer means anything.
+            $unset: { claimedAt: "", preFinalizeStatus: "" },
+          },
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    markComplete: (id, patch) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const now = new Date();
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          { _id },
+          {
+            $set: {
+              status: "complete",
+              completedAt: now,
+              updatedAt: now,
+              output: patch.output,
+              ...(patch.creditsCharged !== undefined
+                ? { creditsCharged: patch.creditsCharged }
+                : {}),
+            },
+            $unset: { claimedAt: "", preFinalizeStatus: "" },
+          },
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    markSuperseded: (id, bySupersedingJobId) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          { _id },
+          {
+            $set: {
+              status: "superseded",
+              supersededByJobId: bySupersedingJobId,
+              updatedAt: new Date(),
+            },
+          },
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    setLastError: (id, lastError) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return;
+        await db
+          .collection(COLLECTIONS.jobs)
+          .updateOne({ _id }, { $set: { lastError, updatedAt: new Date() } });
+      }),
+
+    listForUser: (userId, query) =>
+      withDb(getDb, async (db) => {
+        const conditions: Document[] = [{ userId }];
+        if (!query.includePrevious) conditions.push({ status: { $ne: "superseded" } });
+        if (query.status) conditions.push({ status: query.status });
+        if (query.artStyle) conditions.push({ "params.artStyle": query.artStyle });
+        if (query.cursor) {
+          const cursorId = toObjectId(query.cursor.id);
+          const op = query.dir === "desc" ? "$lt" : "$gt";
+          if (cursorId) {
+            conditions.push({
+              $or: [
+                { createdAt: { [op]: query.cursor.createdAt } },
+                { createdAt: query.cursor.createdAt, _id: { [op]: cursorId } },
+              ],
+            });
+          }
+        }
+        const sortDir = query.dir === "asc" ? 1 : -1;
+        const docs = await db
+          .collection(COLLECTIONS.jobs)
+          .find(conditions.length === 1 ? conditions[0]! : { $and: conditions })
+          .sort({ createdAt: sortDir, _id: sortDir })
+          .limit(query.limit)
+          .toArray();
+        return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
+      }),
+
+    countActive: (userId) =>
+      withDb(getDb, async (db) => {
+        const [result] = await db
+          .collection(COLLECTIONS.jobs)
+          .aggregate<ActiveCountsFacet>([
+            { $match: { userId } },
+            {
+              $facet: {
+                processing: [{ $match: { status: "processing" } }, { $count: "count" }],
+                finalizing: [{ $match: { status: "finalizing" } }, { $count: "count" }],
+                timedOut: [{ $match: { status: "timed_out" } }, { $count: "count" }],
+                superseded: [{ $match: { status: "superseded" } }, { $count: "count" }],
+              },
+            },
+          ])
+          .toArray();
+        return {
+          processing: result?.processing[0]?.count ?? 0,
+          finalizing: result?.finalizing[0]?.count ?? 0,
+          timedOut: result?.timedOut[0]?.count ?? 0,
+          superseded: result?.superseded[0]?.count ?? 0,
+        };
       }),
   };
 }

@@ -1,11 +1,18 @@
 import { ObjectId } from "mongodb";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import { setupTestDb } from "@/test/mongo";
 import { createJobsRepository, type NewJob } from "./jobs";
 
 const { getDb } = setupTestDb();
 const jobs = createJobsRepository(getDb);
+
+// setupTestDb() is one db for the whole file; without this, every test's
+// inserts (many sharing input's idempotencyKey and "user-1") would pile up
+// and corrupt the count/lookup assertions below.
+beforeEach(async () => {
+  await (await getDb()).collection("jobs").deleteMany({});
+});
 
 const input: NewJob = {
   sourceId: "65f000000000000000000001",
@@ -52,5 +59,142 @@ describe("jobs repository", () => {
   it("scopes reads by user", async () => {
     const created = await jobs.insert("user-1", input);
     expect(await jobs.findById("user-2", created.id)).toBeNull();
+  });
+});
+
+describe("idempotency", () => {
+  it("finds a job by its idempotency key, scoped to the user", async () => {
+    const created = await jobs.insert("user-1", input);
+    expect(await jobs.findByIdempotencyKey("user-1", input.idempotencyKey)).toEqual(created);
+    expect(await jobs.findByIdempotencyKey("user-2", input.idempotencyKey)).toBeNull();
+  });
+});
+
+describe("attachMagicHourId", () => {
+  it("attaches when the job has no Magic Hour id yet", async () => {
+    const created = await jobs.insert("user-1", input);
+    const attached = await jobs.attachMagicHourId(created.id, "mh-1");
+    expect(attached?.magicHourId).toBe("mh-1");
+    expect(await jobs.findByMagicHourId("mh-1")).toEqual(attached);
+  });
+
+  it("refuses to overwrite an existing Magic Hour id", async () => {
+    const created = await jobs.insert("user-1", { ...input, magicHourId: "mh-first" });
+    // Two deliveries racing on the name fallback must not both claim the job.
+    expect(await jobs.attachMagicHourId(created.id, "mh-second")).toBeNull();
+    expect((await jobs.findByIdUnscoped(created.id))?.magicHourId).toBe("mh-first");
+  });
+});
+
+describe("claimForFinalize", () => {
+  const now = new Date("2026-09-20T12:00:00Z");
+  const staleBefore = new Date("2026-09-20T11:55:00Z");
+
+  it.each(["processing", "timed_out", "superseded", "abandoned"] as const)(
+    "claims a %s job and marks it finalizing",
+    async (status) => {
+      const created = await jobs.insert("user-1", { ...input, status });
+      const claimed = await jobs.claimForFinalize(created.id, now, staleBefore);
+      expect(claimed?.status).toBe("finalizing");
+      expect(claimed?.claimedAt).toEqual(now);
+    },
+  );
+
+  it("refuses a job someone else is already finalizing", async () => {
+    const created = await jobs.insert("user-1", {
+      ...input,
+      status: "finalizing",
+      claimedAt: new Date("2026-09-20T11:59:00Z"),
+    });
+    expect(await jobs.claimForFinalize(created.id, now, staleBefore)).toBeNull();
+  });
+
+  it("reclaims a finalizing job whose claim went stale", async () => {
+    const created = await jobs.insert("user-1", {
+      ...input,
+      status: "finalizing",
+      claimedAt: new Date("2026-09-20T11:50:00Z"),
+    });
+    expect((await jobs.claimForFinalize(created.id, now, staleBefore))?.claimedAt).toEqual(now);
+  });
+
+  it("refuses an already complete job", async () => {
+    const created = await jobs.insert("user-1", { ...input, status: "complete" });
+    expect(await jobs.claimForFinalize(created.id, now, staleBefore)).toBeNull();
+  });
+
+  it("lets only one of two concurrent claims win", async () => {
+    const created = await jobs.insert("user-1", input);
+    const results = await Promise.all([
+      jobs.claimForFinalize(created.id, now, staleBefore),
+      jobs.claimForFinalize(created.id, now, staleBefore),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("records the status it replaced, and restores it on release", async () => {
+    const created = await jobs.insert("user-1", { ...input, status: "timed_out" });
+    const claimed = await jobs.claimForFinalize(created.id, now, staleBefore);
+    expect(claimed?.preFinalizeStatus).toBe("timed_out");
+    await jobs.releaseClaim(created.id);
+    const after = await jobs.findByIdUnscoped(created.id);
+    // A timed-out job must come back timed_out, not processing.
+    expect(after?.status).toBe("timed_out");
+    expect(after?.claimedAt).toBeUndefined();
+    expect(after?.preFinalizeStatus).toBeUndefined();
+  });
+
+  it("keeps the original pre-claim status when reclaiming a stale finalizing job", async () => {
+    const created = await jobs.insert("user-1", {
+      ...input,
+      status: "finalizing",
+      claimedAt: new Date("2026-09-20T11:50:00Z"),
+      preFinalizeStatus: "abandoned",
+    });
+    const reclaimed = await jobs.claimForFinalize(created.id, now, staleBefore);
+    // Re-claiming must not record "finalizing" as the thing to restore.
+    expect(reclaimed?.preFinalizeStatus).toBe("abandoned");
+  });
+});
+
+describe("listForUser", () => {
+  it("excludes superseded jobs unless asked for", async () => {
+    await jobs.insert("user-1", input);
+    await jobs.insert("user-1", { ...input, idempotencyKey: "k2", status: "superseded" });
+    const base = { includePrevious: false, dir: "desc" as const, limit: 20 };
+    expect(await jobs.listForUser("user-1", base)).toHaveLength(1);
+    expect(await jobs.listForUser("user-1", { ...base, includePrevious: true })).toHaveLength(2);
+  });
+
+  it("paginates newest first on a (createdAt, id) cursor", async () => {
+    const made = [];
+    for (let i = 0; i < 3; i += 1) {
+      made.push(await jobs.insert("user-1", { ...input, idempotencyKey: `key-${i}` }));
+    }
+    const base = { includePrevious: true, dir: "desc" as const, limit: 2 };
+    const first = await jobs.listForUser("user-1", base);
+    expect(first).toHaveLength(2);
+    const last = first[1]!;
+    const second = await jobs.listForUser("user-1", {
+      ...base,
+      cursor: { createdAt: last.createdAt, id: last.id },
+    });
+    expect(second.map((j) => j.id)).not.toContain(first[0]!.id);
+  });
+});
+
+describe("countActive", () => {
+  it("counts each active status separately", async () => {
+    await jobs.insert("user-1", input);
+    await jobs.insert("user-1", { ...input, idempotencyKey: "k2", status: "finalizing" });
+    await jobs.insert("user-1", { ...input, idempotencyKey: "k3", status: "timed_out" });
+    await jobs.insert("user-1", { ...input, idempotencyKey: "k4", status: "complete" });
+    await jobs.insert("user-2", { ...input, idempotencyKey: "k5" });
+    expect(await jobs.countActive("user-1")).toEqual({
+      processing: 1,
+      finalizing: 1,
+      timedOut: 1,
+      superseded: 0,
+    });
   });
 });
