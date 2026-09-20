@@ -57,6 +57,7 @@ export async function uploadSource(
   const check = createVideoRules(deps.config.upload).checkFile({
     mimeType: file.mimeType,
     size: file.size,
+    name: file.originalFilename,
   });
   if (!check.ok) throw new AppError(check.code);
 

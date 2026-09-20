@@ -44,6 +44,7 @@ describe("uploadSource", () => {
       mimeType: "video/mp4",
       size: 1_000,
       originalFileUrl: `https://ucarecdn.com/${uuid}/clip.mp4`,
+      originalFilename: "clip.mp4",
     };
     const storedVideo: StoredVideo = {
       publicId: "sources/abc",
@@ -100,6 +101,7 @@ describe("uploadSource", () => {
       mimeType: "video/mp4",
       size: 1_000,
       originalFileUrl: `https://cdn123.ucarecd.net/${uuid}/clip.mp4`,
+      originalFilename: "clip.mp4",
     };
     const storedVideo: StoredVideo = {
       publicId: "sources/abc",
@@ -132,5 +134,60 @@ describe("uploadSource", () => {
     });
 
     expect(savedCdnUrl).toBe(`https://cdn123.ucarecd.net/${uuid}/`);
+  });
+
+  it("accepts a file whose recorded type is generic by falling back to its filename", async () => {
+    // Uploadcare records "application/octet-stream" whenever the uploading
+    // client declared no content type, and sniffs nothing for this file. The
+    // browser accepted it on File.name; the server must reach the same verdict
+    // rather than rejecting it with UNSUPPORTED_FORMAT.
+    const fileInfo: UploadcareFileInfo = {
+      uuid,
+      mimeType: "application/octet-stream",
+      size: 1_000,
+      originalFileUrl: `https://ucarecdn.com/${uuid}/small.mov`,
+      originalFilename: "small.mov",
+    };
+    const storedVideo: StoredVideo = {
+      publicId: "sources/abc",
+      secureUrl: "https://res.cloudinary.com/test-cloud/video/upload/v1/sources/abc.mov",
+      format: "mov",
+      bytes: 1_000,
+      duration: 5,
+      width: 640,
+      height: 360,
+    };
+    const insert = vi.fn(
+      async (userId: string, input: Record<string, unknown>): Promise<Source> =>
+        ({ id: "s1", userId, schemaVersion: 1, createdAt: new Date(), ...input }) as Source,
+    );
+
+    await expect(
+      uploadSource({ cdnUrl: `https://ucarecdn.com/${uuid}/` }, "user-1", {
+        config: testConfig,
+        uploadcare: { getFileInfo: vi.fn(async () => fileInfo) },
+        cloudinary: { copyVideoFromUrl: vi.fn(async () => storedVideo) },
+        sources: { insert, findById: vi.fn() },
+      }),
+    ).resolves.toMatchObject({ sourceId: "s1" });
+  });
+
+  it("still rejects a generic type whose filename is not a supported video", async () => {
+    const fileInfo: UploadcareFileInfo = {
+      uuid,
+      mimeType: "application/octet-stream",
+      size: 1_000,
+      originalFileUrl: `https://ucarecdn.com/${uuid}/notes.pdf`,
+      originalFilename: "notes.pdf",
+    };
+
+    await expect(
+      uploadSource({ cdnUrl: `https://ucarecdn.com/${uuid}/` }, "user-1", {
+        config: testConfig,
+        uploadcare: { getFileInfo: vi.fn(async () => fileInfo) },
+        cloudinary: { copyVideoFromUrl: vi.fn() },
+        sources: { insert: vi.fn(), findById: vi.fn() },
+      }),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_FORMAT" });
   });
 });

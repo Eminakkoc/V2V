@@ -23,6 +23,7 @@ const fileInfo: UploadcareFileInfo = {
   mimeType: "video/quicktime",
   size: 1_000_000,
   originalFileUrl: `https://ucarecdn.com/${uuid}/beach.mov`,
+  originalFilename: "beach.mov",
 };
 
 const stored = {

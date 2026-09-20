@@ -19,6 +19,7 @@ export function createFakeProviders(cloudName: string): Providers {
           mimeType: "video/mp4",
           size: FAKE_FILE_SIZE,
           originalFileUrl: `https://fake.ucarecd.net/${uuid}/`,
+          originalFilename: "clip.mp4",
         };
       },
     },

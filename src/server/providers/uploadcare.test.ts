@@ -12,6 +12,7 @@ function info(overrides: Partial<FileInfo> = {}): FileInfo {
     size: 5_000_000,
     isReady: true,
     originalFileUrl: `https://ucarecdn.com/${uuid}/beach.mov`,
+    originalFilename: "beach.mov",
     ...overrides,
   } as FileInfo;
 }
@@ -31,7 +32,33 @@ describe("Uploadcare adapter", () => {
       mimeType: "video/quicktime",
       size: 5_000_000,
       originalFileUrl: `https://ucarecdn.com/${uuid}/beach.mov`,
+      originalFilename: "beach.mov",
     });
+  });
+
+  it("prefers the type Uploadcare sniffed from the bytes over the one the client declared", async () => {
+    // An uploader that sends no Content-Type gets "application/octet-stream"
+    // echoed back in mimeType, while contentInfo carries the real type.
+    const adapter = createUploadcareAdapter(
+      keys,
+      vi.fn(async () =>
+        info({
+          mimeType: "application/octet-stream",
+          contentInfo: { mime: { mime: "video/quicktime", type: "video", subtype: "quicktime" } },
+        }),
+      ),
+    );
+    await expect(adapter.getFileInfo(uuid)).resolves.toMatchObject({
+      mimeType: "video/quicktime",
+    });
+  });
+
+  it("falls back to the declared type when nothing was sniffed", async () => {
+    const adapter = createUploadcareAdapter(
+      keys,
+      vi.fn(async () => info({ mimeType: "video/mp4", contentInfo: null })),
+    );
+    await expect(adapter.getFileInfo(uuid)).resolves.toMatchObject({ mimeType: "video/mp4" });
   });
 
   it("treats an unknown file as an invalid video URL", async () => {

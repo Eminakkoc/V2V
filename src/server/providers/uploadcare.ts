@@ -29,9 +29,15 @@ export function createUploadcareAdapter(
       }
       return {
         uuid: info.uuid,
-        mimeType: info.mimeType,
+        // Uploadcare reports the type twice: `mimeType` echoes the Content-Type
+        // the uploading client sent — "application/octet-stream" whenever it
+        // sent none — while contentInfo.mime.mime is sniffed from the bytes.
+        // Prefer the sniffed one; the filename is the last resort, applied by
+        // the shared video rules.
+        mimeType: info.contentInfo?.mime?.mime || info.mimeType,
         size: info.size,
         originalFileUrl: info.originalFileUrl,
+        originalFilename: info.originalFilename,
       };
     },
   };

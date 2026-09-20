@@ -5,6 +5,7 @@ export type UploadcareFileInfo = {
   mimeType: string;
   size: number;
   originalFileUrl: string;
+  originalFilename: string;
 };
 
 export type UploadcareAdapter = {
