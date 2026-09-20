@@ -61,9 +61,10 @@ upload reuses one file across several sources.
 
 ## Provider setup and deployment
 
-One-time steps for whoever deploys this project. Skip the webhook step and the app still
-works — the status check reconciles jobs on its own — but completions arrive faster with it
-registered.
+One-time steps for whoever deploys this project. The webhook step below is required this
+cycle — there is no status check or reconciliation yet, so a job that renders without a
+registered webhook never reaches `complete`; it sits `processing` until its deadline passes
+and then reads as timed out.
 
 1. **Set the environment variables in Vercel.** Open the project's Settings → Environment
    Variables page (https://vercel.com/dashboard → the project → Settings → Environment

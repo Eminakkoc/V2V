@@ -91,9 +91,11 @@ export function formatElapsed(ms: number): string {
 
 function describeError(body: unknown): string {
   const parsed = errorBodySchema.safeParse(body);
-  return parsed.success
-    ? `${parsed.data.error.code} — ${parsed.data.error.message}`
-    : JSON.stringify(body);
+  if (parsed.success) return `${parsed.data.error.code} — ${parsed.data.error.message}`;
+  // body is undefined when the response was empty or not valid JSON — JSON.stringify(body)
+  // would otherwise print the literal string "undefined", which reads like a real value.
+  if (body === undefined) return "(empty or non-JSON response body)";
+  return JSON.stringify(body);
 }
 
 async function requestJson(url: string, cookie: string, init: RequestInit = {}): Promise<unknown> {
