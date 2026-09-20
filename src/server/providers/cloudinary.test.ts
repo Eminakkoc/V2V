@@ -120,4 +120,18 @@ describe("Cloudinary adapter", () => {
       details: { reason: "missing-format" },
     });
   });
+
+  it("treats a sanity failure as retryable when the caller opts in", async () => {
+    const upload = vi.fn(async () => uploaded({ duration: 0 }));
+    await expect(
+      adapterWith(upload).copyVideoFromUrl(url, {
+        ...options,
+        treatSanityFailureAsRetryable: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUDINARY_UPLOAD_FAILED",
+      retryable: true,
+      details: { reason: "missing-duration" },
+    });
+  });
 });

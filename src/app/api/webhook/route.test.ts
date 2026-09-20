@@ -220,6 +220,17 @@ describe("POST /api/webhook", () => {
     expect(response.status).toBe(409);
   });
 
+  it("returns 200 for a job that already failed, instead of 409, so Magic Hour stops retrying", async () => {
+    await insertJob({
+      magicHourId: "mh-6b",
+      status: "failed",
+      errorCode: "MAGIC_HOUR_JOB_FAILED",
+      errorMessage: "already failed",
+    });
+    const response = await deliver({ type: "video.completed", payload: { id: "mh-6b" } });
+    expect(response.status).toBe(200);
+  });
+
   it("returns 500 when finalize reports a transient condition", async () => {
     const job = await insertJob({ magicHourId: "mh-7" });
     getJobDetails.mockResolvedValue(makeDetails({ magicHourId: "mh-7", status: "rendering" }));

@@ -16,6 +16,7 @@ export const FINALIZE_COPY_BUDGET_MS = 40_000;
 export type FinalizeOutcome =
   | { kind: "completed"; job: Job }
   | { kind: "already-complete" }
+  | { kind: "already-terminal" }
   | { kind: "claim-held" }
   | { kind: "failed"; errorCode: string }
   | { kind: "transient" };
@@ -79,6 +80,10 @@ async function storeResult(claimed: Job, deps: FinalizeDeps, at: Date): Promise<
   try {
     video = await deps.cloudinary.copyVideoFromUrl(url, {
       deadline: at.getTime() + FINALIZE_COPY_BUDGET_MS,
+      // Unlike a user upload, this is a render already paid for. A sanity
+      // failure here must not be terminal: release the claim and let a
+      // redelivery retry rather than marking a paid job failed.
+      treatSanityFailureAsRetryable: true,
     });
   } catch (error) {
     if (!(error instanceof AppError)) throw error;
@@ -113,8 +118,15 @@ export async function finalizeJob(
     new Date(at.getTime() - STALE_CLAIM_MS),
   );
   if (!claimed) {
+    // claimForFinalize refused: either the job is terminal (never claimable
+    // again — Magic Hour must stop redelivering) or someone else holds a
+    // fresh claim (genuinely worth a later retry). Only "failed" reaches here
+    // as terminal-but-not-complete: every other unclaimable status is either
+    // "complete" (handled separately) or still claimable by design.
     const current = await deps.jobs.findByIdUnscoped(jobId);
-    return current?.status === "complete" ? { kind: "already-complete" } : { kind: "claim-held" };
+    if (current?.status === "complete") return { kind: "already-complete" };
+    if (current?.status === "failed") return { kind: "already-terminal" };
+    return { kind: "claim-held" };
   }
 
   try {

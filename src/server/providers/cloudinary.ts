@@ -39,7 +39,7 @@ export function createCloudinaryAdapter(
   { upload = defaultUpload, sleep = defaultSleep, now = Date.now }: Runtime = {},
 ): CloudinaryAdapter {
   return {
-    async copyVideoFromUrl(url, { deadline }) {
+    async copyVideoFromUrl(url, { deadline, treatSanityFailureAsRetryable = false }) {
       const publicId = `sources/${randomUUID()}`;
       const attempt = () =>
         upload(url, {
@@ -68,7 +68,7 @@ export function createCloudinaryAdapter(
           throw toAppError(secondError);
         });
       }
-      return toStoredVideo(result);
+      return toStoredVideo(result, treatSanityFailureAsRetryable);
     },
   };
 }
@@ -97,14 +97,17 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-function toStoredVideo(result: CloudinaryUploadResult): StoredVideo {
+function toStoredVideo(
+  result: CloudinaryUploadResult,
+  sanityFailureRetryable: boolean,
+): StoredVideo {
   const duration = typeof result.duration === "number" ? result.duration : 0;
-  if (duration <= 0) throw sanityFailure({ reason: "missing-duration" });
+  if (duration <= 0) throw sanityFailure({ reason: "missing-duration" }, sanityFailureRetryable);
   if (!isPositiveInteger(result.width) || !isPositiveInteger(result.height)) {
-    throw sanityFailure({ reason: "missing-dimensions" });
+    throw sanityFailure({ reason: "missing-dimensions" }, sanityFailureRetryable);
   }
   if (typeof result.format !== "string" || result.format.length === 0) {
-    throw sanityFailure({ reason: "missing-format" });
+    throw sanityFailure({ reason: "missing-format" }, sanityFailureRetryable);
   }
   return {
     publicId: result.public_id,
@@ -117,10 +120,10 @@ function toStoredVideo(result: CloudinaryUploadResult): StoredVideo {
   };
 }
 
-function sanityFailure(details: Record<string, unknown>): AppError {
+function sanityFailure(details: Record<string, unknown>, retryable: boolean): AppError {
   return new AppError("CLOUDINARY_UPLOAD_FAILED", {
     message: "This file can't be processed. Try a different video.",
-    retryable: false,
+    retryable,
     details,
   });
 }

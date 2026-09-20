@@ -140,6 +140,7 @@ describe("finalizeJob", () => {
     }
     expect(copyVideoFromUrl).toHaveBeenCalledWith("https://fake.magichour.ai/mh-1/output.mp4", {
       deadline: now().getTime() + FINALIZE_COPY_BUDGET_MS,
+      treatSanityFailureAsRetryable: true,
     });
 
     const stored = await jobs.findByIdUnscoped(job.id);
@@ -174,6 +175,17 @@ describe("finalizeJob", () => {
     });
     const outcome = await finalizeJob(job.id, makeDeps(), now);
     expect(outcome).toEqual({ kind: "claim-held" });
+  });
+
+  it("returns already-terminal for a job that already failed, not claim-held", async () => {
+    const job = await insertJob({ status: "failed" });
+    const copyVideoFromUrl = vi.fn(async () => makeVideo());
+    const outcome = await finalizeJob(job.id, makeDeps({ copyVideoFromUrl }), now);
+    // Distinct from claim-held: a failed job will never become claimable
+    // again, so the webhook route must acknowledge (200) instead of asking
+    // Magic Hour to keep retrying (409).
+    expect(outcome).toEqual({ kind: "already-terminal" });
+    expect(copyVideoFromUrl).not.toHaveBeenCalled();
   });
 
   it("reclaims a finalizing job whose claim is older than STALE_CLAIM_MS", async () => {
@@ -214,6 +226,34 @@ describe("finalizeJob", () => {
       new Date(now().getTime() - STALE_CLAIM_MS),
     );
     expect(reclaimed).not.toBeNull();
+  });
+
+  it("requests sanity failures as retryable, since this is a paid render, not a user upload", async () => {
+    const job = await insertJob();
+    const copyVideoFromUrl = vi.fn(async () => makeVideo());
+    await finalizeJob(job.id, makeDeps({ copyVideoFromUrl }), now);
+    expect(copyVideoFromUrl).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ treatSanityFailureAsRetryable: true }),
+    );
+  });
+
+  it("releases the claim and returns transient on a Cloudinary sanity failure, never marking the job failed", async () => {
+    const job = await insertJob();
+    // What copyVideoFromUrl throws once treatSanityFailureAsRetryable is honoured
+    // (see cloudinary.test.ts): a sanity failure, but retryable.
+    const copyVideoFromUrl = vi.fn(async () => {
+      throw new AppError("CLOUDINARY_UPLOAD_FAILED", {
+        retryable: true,
+        details: { reason: "missing-duration" },
+      });
+    });
+    const outcome = await finalizeJob(job.id, makeDeps({ copyVideoFromUrl }), now);
+    expect(outcome).toEqual({ kind: "transient" });
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("processing");
+    expect(stored?.claimedAt).toBeUndefined();
   });
 
   it("marks the job failed on a permanent Cloudinary failure and does not leave it finalizing", async () => {

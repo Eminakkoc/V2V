@@ -24,7 +24,15 @@ export type StoredVideo = {
   height: number;
 };
 
-export type CopyVideoOptions = { deadline: number };
+export type CopyVideoOptions = {
+  deadline: number;
+  // A sanity failure (missing duration/dimensions/format) is a hard failure
+  // for a user upload — it really is a bad file. For a Magic Hour render
+  // result, the render is a paid asset that must not be permanently lost to
+  // a Cloudinary quirk; the caller opts into treating it as retryable so a
+  // redelivery gets another attempt instead of the job dying here.
+  treatSanityFailureAsRetryable?: boolean;
+};
 
 export type CloudinaryAdapter = {
   copyVideoFromUrl(url: string, options: CopyVideoOptions): Promise<StoredVideo>;
