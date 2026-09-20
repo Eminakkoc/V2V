@@ -73,12 +73,20 @@ and then reads as timed out.
    `MAGIC_HOUR_WEBHOOK_SECRET` and `SESSION_COOKIE_SECRET`. Confirm `PROVIDER_MODE` is
    `real` or unset — `parseConfig` refuses `fake` on Vercel.
 
-2. **Deploy, then create the indexes.**
+2. **Deploy, then create the indexes.** `pnpm db:indexes` always runs with
+   `--env-file=.env.local` — it never reads Vercel's environment — so before running it
+   here, point `.env.local`'s `MONGODB_URI`/`MONGODB_DB_NAME` at the **production**
+   database, not a local or preview one. Skipping this leaves the unique
+   `{userId, idempotencyKey}` index missing in production, silently, with no runtime
+   check to catch it: two truly concurrent submits then become two paid renders instead
+   of one.
 
    ```bash
    pnpm dlx vercel@latest deploy --prod
    pnpm db:indexes
    ```
+
+   Point `.env.local` back at your local database afterwards before resuming development.
 
 3. **Register the webhook.** At https://magichour.ai/developer, create a webhook pointing
    at `https://<production-domain>/api/webhook` and subscribe it to `video.started`,
