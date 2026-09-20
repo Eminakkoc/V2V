@@ -41,6 +41,9 @@ export async function startTransform(
 
   const { startSeconds, endSeconds } = body.params;
   const clipSeconds = endSeconds - startSeconds;
+  // The 0.05 is a deliberate epsilon, not slack: Cloudinary rounds the duration
+  // it reports, so an end exactly at the source's real end can arrive a hair
+  // past the stored value. On a 12.5s source, 12.55 is accepted and 12.56 is not.
   if (clipSeconds > deps.config.maxClipSeconds || endSeconds > source.duration + 0.05) {
     throw new AppError("CLIP_TOO_LONG");
   }

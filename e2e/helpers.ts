@@ -2,16 +2,40 @@ import { createHmac, randomUUID } from "node:crypto";
 import type { Locator, Page } from "@playwright/test";
 
 // Must match FAKE_UUID_PREFIXES in src/server/providers/fakes.ts.
-export const FAKE_UUID_PREFIXES = { failsOnce: "f0000000-", unreadable: "e0000000-" } as const;
+export const FAKE_UUID_PREFIXES = {
+  failsOnce: "f0000000-",
+  unreadable: "e0000000-",
+  longSource: "d0000000-",
+} as const;
+
+// Must match FAKE_JOB_NAME_TRIGGERS in src/server/providers/fakes.ts. Put one
+// of these in the job name to steer the fake provider down a branch it would
+// otherwise never reach: an uncertain create (no magicHourId, so the webhook's
+// v2v:<jobId> name fallback is the only way back to the job), or a Cloudinary
+// copy that fails once / permanently inside finalize.
+export const FAKE_JOB_NAME_TRIGGERS = {
+  createUncertain: "fake:create-uncertain",
+  copyFailsOnce: "fake:copy-fails-once",
+  copyUnreadable: "fake:copy-unreadable",
+} as const;
 
 export function fakeUuid(prefix = ""): string {
   const uuid = randomUUID();
   return `${prefix}${uuid.slice(prefix.length)}`;
 }
 
-// Must match createFakeProviders' magicHour.createJob in src/server/providers/fakes.ts.
-export function fakeMagicHourId(jobId: string): string {
-  return `fake-mh-${jobId}`;
+// Must match fakeMagicHourId in src/server/providers/fakes.ts. Pass the same
+// FAKE_UUID_PREFIXES value the job name asked for, because createJob encodes
+// the copy trigger into the id it hands back.
+export function fakeMagicHourId(jobId: string, copyPrefix = ""): string {
+  return `fake-mh-${copyPrefix}${jobId}`;
+}
+
+// The job name Magic Hour reports back, which the webhook's resolveJob parses
+// with parseJobName when findByMagicHourId misses. Must match buildJobName in
+// src/server/providers/magic-hour-mapping.ts.
+export function fakeJobName(jobId: string, userName: string): string {
+  return `v2v:${jobId} ${userName}`.slice(0, 120);
 }
 
 // Reimplements the HMAC scheme src/server/providers/magic-hour-signature.ts verifies,

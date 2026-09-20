@@ -1,11 +1,20 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { TransformParams } from "@/lib/transform-contract";
-import { createFakeProviders, FAKE_FILE_SIZE } from "./fakes";
+import {
+  createFakeProviders,
+  FAKE_FILE_SIZE,
+  FAKE_JOB_NAME_TRIGGERS,
+  FAKE_LONG_SOURCE_SECONDS,
+  FAKE_SOURCE_SECONDS,
+  FAKE_UUID_PREFIXES,
+} from "./fakes";
 
 const plain = "3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a";
 const failsOnce = "f0000000-0000-4000-8000-000000000001";
 const unreadable = "e0000000-0000-4000-8000-000000000001";
+const longSource = "d0000000-0000-4000-8000-000000000001";
+const jobId = "65f000000000000000000001";
 const options = { deadline: Date.now() + 50_000 };
 
 const fakeParams: TransformParams = {
@@ -61,6 +70,75 @@ describe("fake providers", () => {
     const details = await magicHour.getJobDetails(magicHourId);
     expect(details.status).toBe("complete");
     expect(details.downloads[0]?.url).toMatch(/^https:/);
+  });
+
+  it("reports the default source duration, and a longer one for the long-source prefix", async () => {
+    const { uploadcare, cloudinary } = createFakeProviders("demo");
+    const plainInfo = await uploadcare.getFileInfo(plain);
+    await expect(
+      cloudinary.copyVideoFromUrl(plainInfo.originalFileUrl, options),
+    ).resolves.toMatchObject({ duration: FAKE_SOURCE_SECONDS });
+
+    // Without a source longer than MAX_CLIP_SECONDS, the clip-length cap in
+    // startTransform is unreachable: the source-duration check always binds first.
+    const longInfo = await uploadcare.getFileInfo(longSource);
+    await expect(
+      cloudinary.copyVideoFromUrl(longInfo.originalFileUrl, options),
+    ).resolves.toMatchObject({ duration: FAKE_LONG_SOURCE_SECONDS });
+  });
+
+  it("reports an uncertain createJob failure when the job name asks for one", async () => {
+    const { magicHour } = createFakeProviders("test-cloud");
+    await expect(
+      magicHour.createJob({
+        jobId,
+        videoUrl: "https://example.test/in.mp4",
+        params: { ...fakeParams, name: `beach ${FAKE_JOB_NAME_TRIGGERS.createUncertain}` },
+      }),
+    ).rejects.toMatchObject({
+      code: "MAGIC_HOUR_REQUEST_FAILED",
+      // definite: false is what keeps startTransform from marking the job
+      // failed, leaving it recoverable by the webhook's name fallback.
+      details: { definite: false },
+    });
+  });
+
+  it.each([
+    [FAKE_JOB_NAME_TRIGGERS.copyFailsOnce, FAKE_UUID_PREFIXES.failsOnce, true],
+    [FAKE_JOB_NAME_TRIGGERS.copyUnreadable, FAKE_UUID_PREFIXES.unreadable, false],
+  ])(
+    "routes the finalize download URL through the %s Cloudinary trigger",
+    async (trigger, prefix, retryable) => {
+      const { magicHour, cloudinary } = createFakeProviders("test-cloud");
+      const { magicHourId } = await magicHour.createJob({
+        jobId,
+        videoUrl: "https://example.test/in.mp4",
+        params: { ...fakeParams, name: `beach ${trigger}` },
+      });
+      const details = await magicHour.getJobDetails(magicHourId);
+      const url = details.downloads[0]?.url ?? "";
+
+      // The fake Cloudinary reads its failure mode from the first path segment,
+      // so the trigger prefix has to lead it -- not sit behind "fake-mh-".
+      expect(new URL(url).pathname.split("/")[1]?.startsWith(prefix)).toBe(true);
+      await expect(cloudinary.copyVideoFromUrl(url, options)).rejects.toMatchObject({
+        code: "CLOUDINARY_UPLOAD_FAILED",
+        retryable,
+      });
+    },
+  );
+
+  it("hands an untriggered finalize download URL straight through to a successful copy", async () => {
+    const { magicHour, cloudinary } = createFakeProviders("test-cloud");
+    const { magicHourId } = await magicHour.createJob({
+      jobId,
+      videoUrl: "https://example.test/in.mp4",
+      params: fakeParams,
+    });
+    const details = await magicHour.getJobDetails(magicHourId);
+    await expect(
+      cloudinary.copyVideoFromUrl(details.downloads[0]?.url ?? "", options),
+    ).resolves.toBeDefined();
   });
 
   // This is the one guard standing between PROVIDER_MODE=fake and a webhook
