@@ -3,12 +3,13 @@ import { ERROR_CODES } from "./error-codes";
 import { JOB_ERROR_CODES } from "./job-status";
 
 describe("job outcome codes", () => {
-  it("names the four outcomes the status table uses", () => {
+  it("names the five outcomes the status table uses", () => {
     expect([...JOB_ERROR_CODES]).toEqual([
       "MAGIC_HOUR_JOB_FAILED",
       "MAGIC_HOUR_JOB_CANCELED",
       "JOB_ABANDONED",
       "SUBMISSION_UNCONFIRMED",
+      "WEBHOOK_TIMEOUT",
     ]);
   });
 

@@ -697,3 +697,131 @@ describe("selectForReconcile", () => {
     expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
   });
 });
+
+describe("reconciliation writes", () => {
+  describe("markTimedOut", () => {
+    it("moves a processing job to timed_out with the WEBHOOK_TIMEOUT code, keeping magicHourId", async () => {
+      const created = await jobs.insert("user-1", { ...input, magicHourId: "mh-1" });
+      const timedOut = await jobs.markTimedOut(created.id);
+      expect(timedOut?.status).toBe("timed_out");
+      expect(timedOut?.errorCode).toBe("WEBHOOK_TIMEOUT");
+      expect(timedOut?.magicHourId).toBe("mh-1");
+    });
+
+    it("returns null and changes nothing on an already-timed_out job -- the boundary fires once", async () => {
+      const created = await jobs.insert("user-1", {
+        ...input,
+        status: "timed_out",
+        errorCode: "WEBHOOK_TIMEOUT",
+        errorMessage: "first stamp",
+      });
+      expect(await jobs.markTimedOut(created.id)).toBeNull();
+      const after = await jobs.findByIdUnscoped(created.id);
+      expect(after?.status).toBe("timed_out");
+      expect(after?.errorMessage).toBe("first stamp");
+    });
+
+    it.each(["complete", "failed", "finalizing"] as const)(
+      "returns null on a %s job",
+      async (status) => {
+        const created = await jobs.insert("user-1", { ...input, status });
+        expect(await jobs.markTimedOut(created.id)).toBeNull();
+      },
+    );
+  });
+
+  describe("markAbandoned", () => {
+    it.each(["processing", "timed_out", "finalizing"] as const)(
+      "moves a %s job to abandoned, clearing claimedAt and preFinalizeStatus",
+      async (status) => {
+        const created = await jobs.insert("user-1", {
+          ...input,
+          status,
+          claimedAt: new Date("2026-09-20T11:00:00Z"),
+          preFinalizeStatus: "processing",
+        });
+        const abandoned = await jobs.markAbandoned(created.id, "JOB_ABANDONED", "stopped checking");
+        expect(abandoned?.status).toBe("abandoned");
+        expect(abandoned?.errorCode).toBe("JOB_ABANDONED");
+        expect(abandoned?.errorMessage).toBe("stopped checking");
+        expect(abandoned?.claimedAt).toBeUndefined();
+        expect(abandoned?.preFinalizeStatus).toBeUndefined();
+      },
+    );
+
+    it("returns null on an already-abandoned job -- still rendering stays abandoned", async () => {
+      const created = await jobs.insert("user-1", {
+        ...input,
+        status: "abandoned",
+        errorCode: "JOB_ABANDONED",
+        errorMessage: "first abandon",
+      });
+      expect(await jobs.markAbandoned(created.id, "JOB_ABANDONED", "second abandon")).toBeNull();
+      const after = await jobs.findByIdUnscoped(created.id);
+      expect(after?.status).toBe("abandoned");
+      expect(after?.errorMessage).toBe("first abandon");
+    });
+
+    it.each(["complete", "failed"] as const)("returns null on a %s job", async (status) => {
+      const created = await jobs.insert("user-1", { ...input, status });
+      expect(await jobs.markAbandoned(created.id, "JOB_ABANDONED", "stopped checking")).toBeNull();
+    });
+  });
+
+  describe("markFailedFromCheck", () => {
+    it("fails a processing job", async () => {
+      const created = await jobs.insert("user-1", { ...input, status: "processing" });
+      const failed = await jobs.markFailedFromCheck(created.id, {
+        errorCode: "MAGIC_HOUR_JOB_FAILED",
+        errorMessage: "provider reported a failure",
+      });
+      expect(failed?.status).toBe("failed");
+      expect(failed?.errorCode).toBe("MAGIC_HOUR_JOB_FAILED");
+      expect(failed?.errorMessage).toBe("provider reported a failure");
+    });
+
+    it("returns null on a complete job, leaving its output and any error fields untouched", async () => {
+      const created = await jobs.insert("user-1", { ...input, status: "processing" });
+      const completed = await jobs.markComplete(created.id, {
+        output: { cloudinaryPublicId: "sources/abc", cloudinaryUrl: "https://example.com/abc.mp4" },
+      });
+      expect(completed?.status).toBe("complete");
+
+      expect(
+        await jobs.markFailedFromCheck(created.id, {
+          errorCode: "MAGIC_HOUR_JOB_FAILED",
+          errorMessage: "stale check",
+        }),
+      ).toBeNull();
+      const after = await jobs.findByIdUnscoped(created.id);
+      expect(after?.status).toBe("complete");
+      expect(after?.output).toEqual(completed?.output);
+      expect(after?.errorCode).toBeUndefined();
+      expect(after?.errorMessage).toBeUndefined();
+    });
+
+    it("returns null on an already-failed job and does not overwrite its error fields -- the stale reader loses", async () => {
+      const created = await jobs.insert("user-1", {
+        ...input,
+        status: "failed",
+        errorCode: "MAGIC_HOUR_JOB_FAILED",
+        errorMessage: "fresher webhook failure",
+        magicHourError: { code: "provider_error", message: "provider detail" },
+      });
+
+      expect(
+        await jobs.markFailedFromCheck(created.id, {
+          errorCode: "WEBHOOK_TIMEOUT",
+          errorMessage: "stale check result",
+          magicHourError: { code: "stale_code", message: "stale detail" },
+        }),
+      ).toBeNull();
+
+      const after = await jobs.findByIdUnscoped(created.id);
+      expect(after?.status).toBe("failed");
+      expect(after?.errorCode).toBe("MAGIC_HOUR_JOB_FAILED");
+      expect(after?.errorMessage).toBe("fresher webhook failure");
+      expect(after?.magicHourError).toEqual({ code: "provider_error", message: "provider detail" });
+    });
+  });
+});

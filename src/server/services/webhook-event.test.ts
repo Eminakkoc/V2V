@@ -64,6 +64,9 @@ function makeJobsStub(overrides: Partial<JobsRepository> = {}): JobsRepository {
     findByIds: vi.fn(async () => []),
     countBySourceIds: vi.fn(async () => new Map()),
     selectForReconcile: vi.fn(async () => []),
+    markTimedOut: vi.fn(async () => null),
+    markAbandoned: vi.fn(async () => null),
+    markFailedFromCheck: vi.fn(async () => null),
     ...overrides,
   };
 }

@@ -29,6 +29,7 @@ export const JOB_ERROR_CODES = [
   "MAGIC_HOUR_JOB_CANCELED",
   "JOB_ABANDONED",
   "SUBMISSION_UNCONFIRMED",
+  "WEBHOOK_TIMEOUT",
 ] as const;
 
 export type JobErrorCode = (typeof JOB_ERROR_CODES)[number];

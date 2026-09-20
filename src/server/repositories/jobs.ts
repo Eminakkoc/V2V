@@ -86,6 +86,13 @@ export type JobsRepository = {
     windows: { recentMs: number; staleClaimMs: number; hourlyMs: number; redeliveryMs: number },
     limit: number,
   ): Promise<Job[]>;
+  markTimedOut(id: string): Promise<Job | null>;
+  markAbandoned(
+    id: string,
+    errorCode: "JOB_ABANDONED" | "SUBMISSION_UNCONFIRMED",
+    errorMessage: string,
+  ): Promise<Job | null>;
+  markFailedFromCheck(id: string, patch: FailurePatch): Promise<Job | null>;
 };
 
 // The rank of each phase in its declared order, so a write can be guarded to
@@ -529,6 +536,74 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           selected.push(parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
         }
         return selected;
+      }),
+
+    // Guarded to processing only, so the deadline boundary fires exactly once:
+    // a job already timed_out and still rendering simply keeps its status and
+    // the refreshed lastCheckedAt the selection already stamped.
+    markTimedOut: (id) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          { _id, status: "processing" },
+          {
+            $set: {
+              status: "timed_out",
+              errorCode: "WEBHOOK_TIMEOUT",
+              errorMessage: "This is taking longer than expected. We are still checking.",
+              updatedAt: new Date(),
+            },
+          },
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    // The grace boundary, also once. complete and failed are excluded: abandoned
+    // means "we stopped checking", which must never eclipse a delivered result
+    // or a confirmed provider failure.
+    markAbandoned: (id, errorCode, errorMessage) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          { _id, status: { $in: ["processing", "timed_out", "finalizing"] } },
+          {
+            $set: { status: "abandoned", errorCode, errorMessage, updatedAt: new Date() },
+            $unset: { claimedAt: "", preFinalizeStatus: "" },
+          },
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
+      }),
+
+    // Narrower than markFailed, which only excludes complete. A status check can
+    // be reporting a view of the job that is older than a webhook write that has
+    // already landed, so it must not overwrite an existing terminal record's
+    // error code, message or provider error -- the stale reader loses.
+    markFailedFromCheck: (id, patch) =>
+      withDb(getDb, async (db) => {
+        const _id = toObjectId(id);
+        if (!_id) return null;
+        const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
+          {
+            _id,
+            status: { $in: ["processing", "timed_out", "superseded", "abandoned", "finalizing"] },
+          },
+          {
+            $set: {
+              status: "failed",
+              errorCode: patch.errorCode,
+              errorMessage: patch.errorMessage,
+              updatedAt: new Date(),
+              ...(patch.magicHourError ? { magicHourError: patch.magicHourError } : {}),
+            },
+            $unset: { claimedAt: "", preFinalizeStatus: "" },
+          },
+          { returnDocument: "after" },
+        );
+        return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
   };
 }
