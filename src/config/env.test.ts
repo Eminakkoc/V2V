@@ -74,4 +74,24 @@ describe("parseConfig", () => {
       "PROVIDER_MODE must not be fake on Vercel",
     );
   });
+
+  it("parses the job deadline constants", () => {
+    const config = parseConfig({
+      ...testEnv,
+      JOB_DEADLINE_BASE_MINUTES: "5",
+      JOB_DEADLINE_SECONDS_PER_CLIP_SECOND: "30",
+      JOB_DEADLINE_MAX_MINUTES: "30",
+    });
+    expect(config.jobDeadline).toEqual({
+      baseMinutes: 5,
+      secondsPerClipSecond: 30,
+      maxMinutes: 30,
+    });
+  });
+
+  it("rejects a non-numeric deadline base", () => {
+    expect(() => parseConfig({ ...testEnv, JOB_DEADLINE_BASE_MINUTES: "soon" })).toThrow(
+      /JOB_DEADLINE_BASE_MINUTES/,
+    );
+  });
 });

@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { JOB_PHASES, JOB_STATUSES } from "@/lib/job-status";
+import { transformParamsSchema } from "@/lib/transform-contract";
 
 export const sourceRecordSchema = z.object({
   schemaVersion: z.literal(1),
@@ -23,7 +24,8 @@ export const jobRecordSchema = z.object({
   schemaVersion: z.literal(1),
   userId: z.string().min(1),
   sourceId: z.string().min(1),
-  params: z.record(z.string(), z.unknown()),
+  params: transformParamsSchema,
+  idempotencyKey: z.string().min(1),
   status: z.enum(JOB_STATUSES),
   phase: z.enum(JOB_PHASES),
   deadlineAt: z.date(),
@@ -32,16 +34,7 @@ export const jobRecordSchema = z.object({
   magicHourId: z.string().min(1).optional(),
   lastCheckedAt: z.date().optional(),
   claimedAt: z.date().optional(),
-  estimate: z
-    .object({
-      credits: z.number(),
-      width: z.number(),
-      height: z.number(),
-      fps: z.number(),
-      startSeconds: z.number(),
-      endSeconds: z.number(),
-    })
-    .optional(),
+  preFinalizeStatus: z.enum(JOB_STATUSES).optional(),
   creditsCharged: z.number().optional(),
   output: z.object({ cloudinaryPublicId: z.string(), cloudinaryUrl: z.url() }).optional(),
   errorCode: z.string().optional(),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { setupTestDb } from "@/test/mongo";
 import { COLLECTIONS } from "./collections";
-import { ensureIndexes, RATE_LIMIT_WINDOW_SECONDS } from "./indexes";
+import { ensureIndexes, INDEXES, RATE_LIMIT_WINDOW_SECONDS } from "./indexes";
 
 const { getDb } = setupTestDb();
 
@@ -45,5 +45,14 @@ describe("ensureIndexes", () => {
     await expect(jobs.insertOne({ userId: "u", magicHourId: "mh_1" })).rejects.toMatchObject({
       code: 11000,
     });
+  });
+
+  it("indexes jobs by user and idempotency key, uniquely and partially", () => {
+    const index = INDEXES.jobs.find((i) => i.name === "userId_idempotencyKey_unique");
+    expect(index).toBeDefined();
+    expect(index?.key).toEqual({ userId: 1, idempotencyKey: 1 });
+    expect(index?.unique).toBe(true);
+    // Partial, so jobs written before this field existed do not collide on null.
+    expect(index?.partialFilterExpression).toEqual({ idempotencyKey: { $type: "string" } });
   });
 });

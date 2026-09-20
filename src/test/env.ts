@@ -15,6 +15,9 @@ export const testEnv: Record<string, string> = {
   ALLOWED_VIDEO_FORMATS: "video/mp4,video/quicktime,video/webm",
   MAX_CLIP_SECONDS: "30",
   JOB_GRACE_MINUTES: "120",
+  JOB_DEADLINE_BASE_MINUTES: "5",
+  JOB_DEADLINE_SECONDS_PER_CLIP_SECOND: "30",
+  JOB_DEADLINE_MAX_MINUTES: "30",
 };
 
 export const testConfig = parseConfig(testEnv);

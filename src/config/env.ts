@@ -36,6 +36,9 @@ const envSchema = z.object({
   ALLOWED_VIDEO_FORMATS: videoFormats,
   MAX_CLIP_SECONDS: positiveWholeNumber,
   JOB_GRACE_MINUTES: positiveWholeNumber,
+  JOB_DEADLINE_BASE_MINUTES: positiveWholeNumber,
+  JOB_DEADLINE_SECONDS_PER_CLIP_SECOND: positiveWholeNumber,
+  JOB_DEADLINE_MAX_MINUTES: positiveWholeNumber,
   PROVIDER_MODE: z.enum(["real", "fake"], { error: "must be real or fake" }).default("real"),
 });
 
@@ -48,6 +51,7 @@ export type AppConfig = {
   upload: { maxBytes: number; allowedFormats: string[] };
   maxClipSeconds: number;
   jobGraceMinutes: number;
+  jobDeadline: { baseMinutes: number; secondsPerClipSecond: number; maxMinutes: number };
   providerMode: "real" | "fake";
 };
 
@@ -92,6 +96,11 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     upload: { maxBytes: values.MAX_UPLOAD_BYTES, allowedFormats: values.ALLOWED_VIDEO_FORMATS },
     maxClipSeconds: values.MAX_CLIP_SECONDS,
     jobGraceMinutes: values.JOB_GRACE_MINUTES,
+    jobDeadline: {
+      baseMinutes: values.JOB_DEADLINE_BASE_MINUTES,
+      secondsPerClipSecond: values.JOB_DEADLINE_SECONDS_PER_CLIP_SECOND,
+      maxMinutes: values.JOB_DEADLINE_MAX_MINUTES,
+    },
     providerMode: values.PROVIDER_MODE,
   };
 }

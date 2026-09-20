@@ -9,7 +9,17 @@ const jobs = createJobsRepository(getDb);
 
 const input: NewJob = {
   sourceId: "65f000000000000000000001",
-  params: { style: "watercolour" },
+  idempotencyKey: "3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a",
+  params: {
+    name: "beach clip",
+    startSeconds: 0,
+    endSeconds: 5.25,
+    fpsResolution: "HALF",
+    artStyle: "Watercolor",
+    promptType: "default",
+    model: "default",
+    version: "default",
+  },
   status: "processing",
   phase: "submitting",
   deadlineAt: new Date("2026-09-19T12:00:00Z"),

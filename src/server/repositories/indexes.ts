@@ -4,7 +4,10 @@ import { COLLECTIONS } from "./collections";
 
 export const RATE_LIMIT_WINDOW_SECONDS = 600;
 
-export const INDEXES: Record<string, IndexDescription[]> = {
+// Keyed on the known collection names (not `string`) so `INDEXES.jobs` etc. are
+// exhaustive properties, not an index signature — noUncheckedIndexedAccess would
+// otherwise widen every access to `| undefined`.
+export const INDEXES: Record<(typeof COLLECTIONS)[keyof typeof COLLECTIONS], IndexDescription[]> = {
   [COLLECTIONS.jobs]: [
     { key: { userId: 1, createdAt: -1 }, name: "userId_createdAt" },
     { key: { userId: 1, status: 1 }, name: "userId_status" },
@@ -13,6 +16,12 @@ export const INDEXES: Record<string, IndexDescription[]> = {
       name: "magicHourId_unique",
       unique: true,
       partialFilterExpression: { magicHourId: { $type: "string" } },
+    },
+    {
+      key: { userId: 1, idempotencyKey: 1 },
+      name: "userId_idempotencyKey_unique",
+      unique: true,
+      partialFilterExpression: { idempotencyKey: { $type: "string" } },
     },
   ],
   [COLLECTIONS.sources]: [{ key: { userId: 1, createdAt: -1 }, name: "userId_createdAt" }],
