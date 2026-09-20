@@ -21,7 +21,7 @@ function adapterWith(upload: CloudinaryUpload, now = () => 0) {
   return createCloudinaryAdapter(credentials, { upload, sleep: async () => {}, now });
 }
 
-const options = { expectedBytes: 1_000_000, deadline: 50_000 };
+const options = { deadline: 50_000 };
 
 describe("Cloudinary adapter", () => {
   it("copies by URL into sources with a random public id and maps the result", async () => {
@@ -83,9 +83,9 @@ describe("Cloudinary adapter", () => {
   it("skips the retry when too little time is left", async () => {
     const upload = vi.fn(async () => Promise.reject({ message: "timeout", http_code: 499 }));
     const deadline = MIN_RETRY_BUDGET_MS;
-    await expect(
-      adapterWith(upload).copyVideoFromUrl(url, { expectedBytes: 1_000_000, deadline }),
-    ).rejects.toMatchObject({ retryable: true });
+    await expect(adapterWith(upload).copyVideoFromUrl(url, { deadline })).rejects.toMatchObject({
+      retryable: true,
+    });
     expect(upload).toHaveBeenCalledTimes(1);
   });
 
@@ -118,18 +118,6 @@ describe("Cloudinary adapter", () => {
       code: "CLOUDINARY_UPLOAD_FAILED",
       retryable: false,
       details: { reason: "missing-format" },
-    });
-  });
-
-  it("accepts a size within 1% and rejects one outside it", async () => {
-    await expect(
-      adapterWith(vi.fn(async () => uploaded({ bytes: 1_005_000 }))).copyVideoFromUrl(url, options),
-    ).resolves.toMatchObject({ bytes: 1_005_000 });
-    await expect(
-      adapterWith(vi.fn(async () => uploaded({ bytes: 1_020_000 }))).copyVideoFromUrl(url, options),
-    ).rejects.toMatchObject({
-      retryable: false,
-      details: { reason: "size-mismatch", expectedBytes: 1_000_000, actualBytes: 1_020_000 },
     });
   });
 });

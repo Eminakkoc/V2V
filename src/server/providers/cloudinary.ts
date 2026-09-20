@@ -4,7 +4,6 @@ import { v2 as cloudinary, type UploadApiOptions } from "cloudinary";
 import { AppError, errorMessage } from "@/server/errors/app-error";
 import type { CloudinaryAdapter, StoredVideo } from "./types";
 
-export const SIZE_TOLERANCE = 0.01;
 export const RETRY_DELAY_MS = 2_000;
 export const MIN_RETRY_BUDGET_MS = 15_000;
 
@@ -40,7 +39,7 @@ export function createCloudinaryAdapter(
   { upload = defaultUpload, sleep = defaultSleep, now = Date.now }: Runtime = {},
 ): CloudinaryAdapter {
   return {
-    async copyVideoFromUrl(url, { expectedBytes, deadline }) {
+    async copyVideoFromUrl(url, { deadline }) {
       const publicId = `sources/${randomUUID()}`;
       const attempt = () =>
         upload(url, {
@@ -69,7 +68,7 @@ export function createCloudinaryAdapter(
           throw toAppError(secondError);
         });
       }
-      return toStoredVideo(result, expectedBytes);
+      return toStoredVideo(result);
     },
   };
 }
@@ -98,7 +97,7 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-function toStoredVideo(result: CloudinaryUploadResult, expectedBytes: number): StoredVideo {
+function toStoredVideo(result: CloudinaryUploadResult): StoredVideo {
   const duration = typeof result.duration === "number" ? result.duration : 0;
   if (duration <= 0) throw sanityFailure({ reason: "missing-duration" });
   if (!isPositiveInteger(result.width) || !isPositiveInteger(result.height)) {
@@ -106,9 +105,6 @@ function toStoredVideo(result: CloudinaryUploadResult, expectedBytes: number): S
   }
   if (typeof result.format !== "string" || result.format.length === 0) {
     throw sanityFailure({ reason: "missing-format" });
-  }
-  if (Math.abs(result.bytes - expectedBytes) > SIZE_TOLERANCE * expectedBytes) {
-    throw sanityFailure({ reason: "size-mismatch", expectedBytes, actualBytes: result.bytes });
   }
   return {
     publicId: result.public_id,

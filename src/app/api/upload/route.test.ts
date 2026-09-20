@@ -186,16 +186,6 @@ describe("POST /api/upload", () => {
     expect(cloudinaryUpload).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a copy whose size is outside the tolerance", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    cloudinaryUpload.mockResolvedValueOnce({ ...stored, bytes: 1_100_000 });
-    const response = await upload();
-    expect(await errorOf(response)).toMatchObject({
-      retryable: false,
-      details: { reason: "size-mismatch" },
-    });
-  });
-
   it("rate limits the 11th upload with Retry-After", async () => {
     for (let i = 0; i < 10; i += 1) expect((await upload()).status).toBe(200);
     const limited = await upload();

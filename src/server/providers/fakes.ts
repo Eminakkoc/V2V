@@ -24,7 +24,7 @@ export function createFakeProviders(cloudName: string): Providers {
       },
     },
     cloudinary: {
-      async copyVideoFromUrl(url, { expectedBytes }) {
+      async copyVideoFromUrl(url) {
         const uuid = uuidFrom(url);
         if (uuid.startsWith(FAKE_UUID_PREFIXES.unreadable)) {
           throw new AppError("CLOUDINARY_UPLOAD_FAILED", {
@@ -41,7 +41,7 @@ export function createFakeProviders(cloudName: string): Providers {
           publicId,
           secureUrl: `https://res.cloudinary.com/${cloudName}/video/upload/${publicId}.mp4`,
           format: "mp4",
-          bytes: expectedBytes,
+          bytes: FAKE_FILE_SIZE,
           duration: 12.5,
           width: 1280,
           height: 720,

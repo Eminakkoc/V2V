@@ -4,7 +4,7 @@ import { createFakeProviders, FAKE_FILE_SIZE } from "./fakes";
 const plain = "3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a";
 const failsOnce = "f0000000-0000-4000-8000-000000000001";
 const unreadable = "e0000000-0000-4000-8000-000000000001";
-const options = { expectedBytes: FAKE_FILE_SIZE, deadline: Date.now() + 50_000 };
+const options = { deadline: Date.now() + 50_000 };
 
 describe("fake providers", () => {
   it("returns ready file info and a stored video", async () => {

@@ -22,7 +22,7 @@ export type StoredVideo = {
   height: number;
 };
 
-export type CopyVideoOptions = { expectedBytes: number; deadline: number };
+export type CopyVideoOptions = { deadline: number };
 
 export type CloudinaryAdapter = {
   copyVideoFromUrl(url: string, options: CopyVideoOptions): Promise<StoredVideo>;

@@ -61,10 +61,7 @@ export async function uploadSource(
   });
   if (!check.ok) throw new AppError(check.code);
 
-  const video = await deps.cloudinary.copyVideoFromUrl(file.originalFileUrl, {
-    expectedBytes: file.size,
-    deadline,
-  });
+  const video = await deps.cloudinary.copyVideoFromUrl(file.originalFileUrl, { deadline });
   const source = await deps.sources.insert(userId, {
     uploadcareUuid: uuid,
     uploadcareCdnUrl: canonicalCdnUrl(file.originalFileUrl, uuid),
