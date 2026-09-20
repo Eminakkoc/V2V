@@ -1,0 +1,26 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "v2v:507f1f77bcf86cd799439011 real-transform smoke test",
+  "type": "VIDEO_TO_VIDEO",
+  "status": "complete",
+  "startSeconds": 0,
+  "endSeconds": 8,
+  "fps": 24,
+  "width": 1080,
+  "height": 1920,
+  "enabled": true,
+  "creditsCharged": 20,
+  "totalFrameCost": 20,
+  "download": {
+    "url": "https://videos.magichour.ai/placeholder/output.mp4",
+    "expiresAt": "2026-09-21T00:00:00.000Z"
+  },
+  "downloads": [
+    {
+      "url": "https://videos.magichour.ai/placeholder/output.mp4",
+      "expiresAt": "2026-09-21T00:00:00.000Z"
+    }
+  ],
+  "error": null,
+  "createdAt": "2026-09-20T00:00:00.000Z"
+}

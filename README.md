@@ -27,6 +27,7 @@ Open http://localhost:3000.
 | `pnpm check`          | Lint, typecheck, format check and tests                                    |
 | `pnpm db:indexes`     | Create the MongoDB indexes (run once per environment)                      |
 | `pnpm cleanup:manual` | Remove the sources a live manual-test run left behind (dry run by default) |
+| `pnpm transform:real` | Trigger and poll a real transform against a deployed instance (see below)  |
 
 ## Tests and CI
 
@@ -57,6 +58,46 @@ to run unless `PROVIDER_MODE` is `real`, removes each source from both providers
 dropping its database row, and stops at the first failure so nothing is left half-removed.
 An Uploadcare file shared by a source outside the window is kept — re-sending the same
 upload reuses one file across several sources.
+
+## Provider setup and deployment
+
+One-time steps for whoever deploys this project. Skip the webhook step and the app still
+works — the status check reconciles jobs on its own — but completions arrive faster with it
+registered.
+
+1. **Set the environment variables in Vercel.** Open the project's Settings → Environment
+   Variables page (https://vercel.com/dashboard → the project → Settings → Environment
+   Variables) and set every key from `.env.example` for **Production**. Mark these five as
+   **Sensitive**: `UPLOADCARE_SECRET_KEY`, `CLOUDINARY_API_SECRET`, `MAGIC_HOUR_API_KEY`,
+   `MAGIC_HOUR_WEBHOOK_SECRET` and `SESSION_COOKIE_SECRET`. Confirm `PROVIDER_MODE` is
+   `real` or unset — `parseConfig` refuses `fake` on Vercel.
+
+2. **Deploy, then create the indexes.**
+
+   ```bash
+   pnpm dlx vercel@latest deploy --prod
+   pnpm db:indexes
+   ```
+
+3. **Register the webhook.** At https://magichour.ai/developer, create a webhook pointing
+   at `https://<production-domain>/api/webhook` and subscribe it to `video.started`,
+   `video.completed` and `video.errored`. Copy the issued secret into Vercel as
+   `MAGIC_HOUR_WEBHOOK_SECRET` and redeploy so the new value is picked up.
+
+   There is one webhook URL per Magic Hour account. A job started from a preview
+   deployment is still completed by the production webhook — that is expected, not a bug.
+
+4. **Run a real transform and measure it.** Upload a short clip (5–10 s) through the
+   deployed Create page to get a real `sourceId`. Copy the `v2v_uid` cookie the app just
+   set for you, then run:
+
+   ```bash
+   V2V_COOKIE="v2v_uid=<value>" pnpm transform:real https://<production-domain> <sourceId>
+   ```
+
+   It prints each status change with a timestamp as the job moves through rendering, then
+   the total wall-clock time, the clip length and `creditsCharged`. Those are the numbers
+   that turn the guessed `JOB_DEADLINE_*` constants in `.env.example` into measured ones.
 
 ## Known limitations
 
