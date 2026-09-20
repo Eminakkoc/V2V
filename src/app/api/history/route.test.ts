@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { historySourcesResponseSchema } from "@/lib/history-contract";
 import { historyResponseSchema, transformParamsSchema } from "@/lib/transform-contract";
 import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
 import type { MagicHourAdapter, Providers } from "@/server/providers/types";
 import { createJobsRepository, type NewJob } from "@/server/repositories/jobs";
+import { createSourcesRepository, type NewSource } from "@/server/repositories/sources";
 import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
 import { apiGetRequest, identityCookie } from "@/test/requests";
@@ -54,6 +56,24 @@ async function insertJob(uid: string, overrides: Partial<NewJob> = {}) {
     deadlineAt: new Date(Date.now() + 3_600_000),
     ...overrides,
   });
+}
+
+const baseSource: NewSource = {
+  uploadcareUuid: randomUUID(),
+  uploadcareCdnUrl: "https://ucarecdn.com/placeholder/",
+  cloudinaryPublicId: "sources/abc",
+  cloudinaryUrl: "https://res.cloudinary.com/test-cloud/video/upload/v1/sources/abc.mov",
+  format: "mov",
+  bytes: 1000,
+  duration: 12.5,
+  width: 1080,
+  height: 1920,
+};
+
+async function insertSource(uid: string, overrides: Partial<NewSource> = {}) {
+  const db = await getDb();
+  const sources = createSourcesRepository(() => Promise.resolve(db));
+  return sources.insert(uid, { ...baseSource, uploadcareUuid: randomUUID(), ...overrides });
 }
 
 const history = (query = "", init: { cookie?: string } = {}) =>
@@ -183,20 +203,72 @@ describe("GET /api/history", () => {
     expect((await errorOf(response)).code).toBe("VALIDATION_FAILED");
   });
 
-  // historyQuerySchema now accepts sort and tab=sources (src/lib/history-contract.ts);
-  // the route still parses with that schema directly, so both values are valid
-  // input. The route does not yet branch on either -- listHistory hard-codes
-  // sort:"createdAt" and always returns the jobs shape -- so both requests
-  // succeed without (yet) changing what comes back. Wiring that behaviour is a
-  // later task.
-  it("accepts sort=duration now that the contract supports it", async () => {
-    const response = await history("?sort=duration");
-    expect(response.status).toBe(200);
+  it("sorts by clip duration under sort=duration", async () => {
+    await insertJob(userId, { params: { ...baseParams, endSeconds: 5 } });
+    await insertJob(userId, { params: { ...baseParams, endSeconds: 8 } });
+    await insertJob(userId, { params: { ...baseParams, endSeconds: 3 } });
+
+    const body = await bodyOf(await history("?sort=duration"));
+    // dir defaults to desc, and baseParams.startSeconds is 0, so each clip's
+    // duration equals its endSeconds.
+    expect(body.items.map((item) => item.params.endSeconds)).toEqual([8, 5, 3]);
   });
 
-  it("accepts tab=sources now that the contract supports it", async () => {
+  it("returns source rows with no active key under tab=sources", async () => {
+    const source = await insertSource(userId);
+    await insertJob(userId, { sourceId: source.id, status: "complete" });
+
     const response = await history("?tab=sources");
     expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json).not.toHaveProperty("active");
+
+    // Pins sourceViewSchema's shape: a future field change on the sources tab
+    // fails this parse loudly rather than sliding through as an extra key.
+    const body = historySourcesResponseSchema.parse(json);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      id: source.id,
+      cloudinaryPublicId: source.cloudinaryPublicId,
+      transformCount: 1,
+    });
+  });
+
+  it("returns nextCursor: null for changeable=true", async () => {
+    await insertJob(userId, { status: "processing" });
+    await insertJob(userId, { status: "complete" });
+
+    const body = await bodyOf(await history("?changeable=true"));
+    expect(body.nextCursor).toBeNull();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]?.status).toBe("processing");
+  });
+
+  it("omits another user's id from an ids lookup", async () => {
+    const mine = await insertJob(userId, { status: "complete" });
+    const theirs = await insertJob(otherUserId, { status: "complete" });
+
+    const body = await bodyOf(await history(`?ids=${mine.id},${theirs.id}`));
+    expect(body.items.map((item) => item.id)).toEqual([mine.id]);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("rejects tab=sources combined with status", async () => {
+    const response = await history("?tab=sources&status=complete");
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects changeable=true combined with sort", async () => {
+    const response = await history("?changeable=true&sort=duration");
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects ids combined with cursor", async () => {
+    const response = await history(`?ids=${"a".repeat(24)}&cursor=abc`);
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("VALIDATION_FAILED");
   });
 
   it("carries Cache-Control: private, no-store", async () => {
