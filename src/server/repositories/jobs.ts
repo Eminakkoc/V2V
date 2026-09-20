@@ -200,7 +200,9 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         const _id = toObjectId(id);
         if (!_id) return null;
         const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
-          { _id },
+          // Magic Hour redelivers for up to 24h: a late video.errored must not
+          // overwrite a job that already finalized and paid out a result.
+          { _id, status: { $ne: "complete" } },
           {
             $set: {
               status: "failed",

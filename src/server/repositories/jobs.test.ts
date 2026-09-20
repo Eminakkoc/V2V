@@ -157,6 +157,21 @@ describe("claimForFinalize", () => {
   });
 });
 
+describe("markFailed", () => {
+  it("refuses to fail a job that already completed", async () => {
+    const created = await jobs.insert("user-1", { ...input, status: "complete" });
+    // Magic Hour redelivers for up to 24h, so a late video.errored for an
+    // already-finalized job is expected — it must not destroy a stored result.
+    expect(
+      await jobs.markFailed(created.id, {
+        errorCode: "MAGIC_HOUR_JOB_FAILED",
+        errorMessage: "late failure",
+      }),
+    ).toBeNull();
+    expect((await jobs.findByIdUnscoped(created.id))?.status).toBe("complete");
+  });
+});
+
 describe("listForUser", () => {
   it("excludes superseded jobs unless asked for", async () => {
     await jobs.insert("user-1", input);
