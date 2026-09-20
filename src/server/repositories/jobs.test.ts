@@ -369,13 +369,17 @@ describe("listForUser sorting and filtering", () => {
     expect(rest.map((row) => row.id)).toEqual([medium.id, short.id]);
   });
 
-  // JS Math.round rounds halves away from zero; Mongo's $round rounds halves
-  // to even. The cursor value is computed in JS (clipSecondsOf, the same
-  // helper the history service uses to encode a duration cursor) but the sort
-  // and boundary comparison run in Mongo, so the two roundings must agree —
-  // otherwise a page boundary silently repeats or skips a row. Paging one row
-  // at a time is what makes a disagreement visible: any mismatch either
-  // re-returns the previous row or jumps past the next one.
+  // The cursor value is computed in JS (clipSecondsOf, the same helper the
+  // history service uses to encode a duration cursor) but the sort and
+  // boundary comparison run in Mongo's $round, so the two must agree on
+  // ordinary two-decimal lengths or a page boundary silently repeats or skips
+  // a row. This does not exercise a genuine JS-vs-Mongo half-rounding tie:
+  // $round(x, 2) only ties when the third decimal is exactly 5, and since
+  // both startSeconds and endSeconds are constrained to two decimals, their
+  // difference is always two decimals too, so a third-decimal tie cannot
+  // arise here by construction. Paging one row at a time is what would make
+  // any agreement gap visible regardless: a mismatch either re-returns the
+  // previous row or jumps past the next one.
   it("keeps a JS-computed duration cursor in step with Mongo's $round when paging one row at a time", async () => {
     const hi = await jobs.insert("user-1", {
       ...input,

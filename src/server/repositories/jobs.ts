@@ -24,19 +24,26 @@ export type CompletionPatch = {
 export type JobsDateCursor = { createdAt: Date; id: string };
 export type JobsDurationCursor = { clipSeconds: number; createdAt: Date; id: string };
 
+// `sort` is optional rather than required so the pre-existing date-sort
+// callers (and their tests, which predate this field) keep compiling with
+// undefined behaving exactly like "createdAt". But `sort` and `cursor` must
+// still agree: a duration cursor paired with `sort` omitted would silently
+// take the date branch below, drop `clipSeconds`, and page on createdAt/_id
+// against a caller who believes they are paging by length. The intersected
+// `{ clipSeconds?: never }` on the date arm is required, not decorative — a
+// plain discriminated union lets a duration cursor's `clipSeconds` through
+// under union excess-property checking because it is a known key on the
+// other arm.
 export type HistoryQuery = {
   statuses?: JobStatus[];
   artStyle?: string;
   includePrevious: boolean;
-  // Optional, not the "createdAt" | "duration" required shape a from-scratch
-  // design would use: the pre-existing date-sort callers (and their tests)
-  // predate this field, and undefined must keep behaving exactly like
-  // "createdAt" so that shipped behaviour does not shift under them.
-  sort?: "createdAt" | "duration";
   dir: "asc" | "desc";
   limit: number;
-  cursor?: JobsDateCursor | JobsDurationCursor;
-};
+} & (
+  | { sort?: "createdAt"; cursor?: JobsDateCursor & { clipSeconds?: never } }
+  | { sort: "duration"; cursor?: JobsDurationCursor }
+);
 
 export type ActiveCounts = {
   processing: number;
@@ -306,7 +313,10 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         const sortDir = query.dir === "asc" ? 1 : -1;
 
         if (query.sort === "duration") {
-          const cursor = query.cursor as JobsDurationCursor | undefined;
+          // No cast: the union on HistoryQuery narrows query.cursor to
+          // JobsDurationCursor | undefined once query.sort is known to be
+          // "duration".
+          const cursor = query.cursor;
           // $addFields has to run before the cursor comparison, because the
           // boundary is expressed against the computed length. The owner and
           // filter conditions stay ahead of it so they can still use an index.
@@ -350,7 +360,10 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
         }
 
-        const cursor = query.cursor as JobsDateCursor | undefined;
+        // No cast: query.sort narrowed to "createdAt" | undefined above, so
+        // query.cursor here is JobsDateCursor (with clipSeconds excluded) |
+        // undefined.
+        const cursor = query.cursor;
         if (cursor) {
           const cursorId = toObjectId(cursor.id);
           if (cursorId) {
