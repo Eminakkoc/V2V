@@ -1,11 +1,17 @@
 import { JobStatus } from "@/components/job/job-status";
+import { RetryDialog } from "@/components/job/retry-dialog";
 import { posterUrl } from "@/lib/cloudinary-urls";
 import { formatDuration } from "@/lib/format";
 import type { JobView } from "@/lib/transform-contract";
 
-type JobCardProps = { job: JobView; cloudName: string };
+type JobCardProps = {
+  job: JobView;
+  cloudName: string;
+  onRetry: (job: JobView) => void;
+  retryDisabled?: boolean;
+};
 
-export function JobCard({ job, cloudName }: JobCardProps) {
+export function JobCard({ job, cloudName, onRetry, retryDisabled = false }: JobCardProps) {
   const clipSeconds = job.params.endSeconds - job.params.startSeconds;
 
   return (
@@ -14,7 +20,10 @@ export function JobCard({ job, cloudName }: JobCardProps) {
         <h2 id="job-card-title" className="text-lg font-medium">
           {job.params.name}
         </h2>
-        <JobStatus job={job} />
+        <div className="flex items-center gap-2">
+          <JobStatus job={job} />
+          <RetryDialog job={job} onConfirm={onRetry} disabled={retryDisabled} />
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         {job.params.artStyle} · {formatDuration(clipSeconds)} clip

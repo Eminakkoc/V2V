@@ -9,7 +9,11 @@ import type { UploadState } from "@/hooks/use-source-upload";
 import { apiFetch, toErrorLike } from "@/lib/api-client";
 import { videoUrl } from "@/lib/cloudinary-urls";
 import { messageFor, type ErrorMessage } from "@/lib/error-messages";
-import { transformResponseSchema, type TransformParams } from "@/lib/transform-contract";
+import {
+  transformResponseSchema,
+  type JobView,
+  type TransformParams,
+} from "@/lib/transform-contract";
 import type { UploadResponse } from "@/lib/upload-contract";
 import { cn } from "@/lib/utils";
 import { JobCard } from "./job-card";
@@ -40,7 +44,10 @@ type Action =
   | { type: "range-changed"; range: { startSeconds: number; endSeconds: number } }
   | { type: "submit-started"; idempotencyKey: string }
   | { type: "submit-succeeded" }
-  | { type: "submit-failed"; error: ErrorMessage };
+  | { type: "submit-failed"; error: ErrorMessage }
+  | { type: "retry-started" }
+  | { type: "retry-succeeded" }
+  | { type: "retry-failed"; error: ErrorMessage };
 
 const initialState: FlowState = {
   fileName: null,
@@ -106,6 +113,16 @@ function reducer(state: FlowState, action: Action): FlowState {
       return { ...state, submitting: false, idempotencyKey: null, showJob: true };
     case "submit-failed":
       return { ...state, submitting: false, submitError: action.error };
+    // A retry submits a past job's stored source and params, not the current
+    // draft, so it leaves `idempotencyKey` (the draft's own retry-on-failure
+    // key) alone -- touching it would hand the draft's next real submission a
+    // stale key left over from an unrelated retry.
+    case "retry-started":
+      return { ...state, submitting: true, submitError: null };
+    case "retry-succeeded":
+      return { ...state, submitting: false, showJob: true };
+    case "retry-failed":
+      return { ...state, submitting: false, submitError: action.error };
   }
 }
 
@@ -158,6 +175,33 @@ export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
     }
   }
 
+  // A retry is a new submission of a past job's own stored source and params
+  // (never the draft currently on screen), and it must never reuse that past
+  // job's idempotency key -- reusing it would just hand back the original job
+  // and start nothing.
+  async function handleRetry(job: JobView) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    dispatch({ type: "retry-started" });
+    try {
+      const response = await apiFetch("/api/transform", {
+        body: {
+          sourceId: job.sourceId,
+          params: job.params,
+          retryOfJobId: job.id,
+          idempotencyKey: crypto.randomUUID(),
+        },
+        schema: transformResponseSchema,
+      });
+      insertOptimistic(response.job);
+      dispatch({ type: "retry-succeeded" });
+    } catch (error) {
+      dispatch({ type: "retry-failed", error: messageFor(toErrorLike(error), settings) });
+    } finally {
+      submittingRef.current = false;
+    }
+  }
+
   const source = state.source;
   const params = state.params;
   const ready = source !== null && params !== null;
@@ -203,7 +247,14 @@ export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
         </div>
       ) : null}
 
-      {currentJob ? <JobCard job={currentJob} cloudName={settings.cloudName} /> : null}
+      {currentJob ? (
+        <JobCard
+          job={currentJob}
+          cloudName={settings.cloudName}
+          onRetry={(job) => void handleRetry(job)}
+          retryDisabled={state.submitting}
+        />
+      ) : null}
 
       {stalled ? (
         <p role="alert" className="text-sm text-destructive">

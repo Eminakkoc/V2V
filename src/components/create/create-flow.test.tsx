@@ -264,4 +264,39 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/lost track of job updates/i);
   });
+
+  it("retrying a failed job posts its stored source and params with a fresh idempotency key", async () => {
+    const insertOptimistic = vi.fn();
+    const failedJob = job({ status: "failed" });
+    useJobPollingMock.mockReturnValue({
+      jobs: [failedJob],
+      refresh: vi.fn(),
+      insertOptimistic,
+      error: false,
+      stalled: false,
+    });
+    const retryJob = job({ id: "job-2", retryOfJobId: "job-1" });
+    fetchMock.mockResolvedValueOnce({ job: retryJob });
+
+    render(<CreateFlow settings={settings} />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry anyway" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/transform",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          sourceId: failedJob.sourceId,
+          params: failedJob.params,
+          retryOfJobId: failedJob.id,
+          idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        }),
+      }),
+    );
+    expect(insertOptimistic).toHaveBeenCalledWith(retryJob);
+  });
 });
