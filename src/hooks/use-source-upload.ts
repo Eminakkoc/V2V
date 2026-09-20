@@ -46,33 +46,55 @@ function clientError(code: string): ErrorLike {
   return { code, message: "", retryable: false };
 }
 
-type Options = { onServerError?: (error: ErrorLike) => void };
+type Options = {
+  onServerError?: (error: ErrorLike) => void;
+  // Called with each real transition, in order, as it happens -- never
+  // synthetically on mount. Driven from the same call sites that dispatch to
+  // the reducer (below), not from an Effect watching `state`: an Effect fires
+  // once on mount with the initial value too, which a consumer mapping "idle"
+  // to "clear everything" cannot tell apart from a genuine reset.
+  onStateChange?: (state: UploadState) => void;
+};
 
-export function useSourceUpload(rules: VideoRules, { onServerError }: Options = {}) {
+export function useSourceUpload(rules: VideoRules, { onServerError, onStateChange }: Options = {}) {
   const [state, dispatch] = useReducer(reducer, { status: "idle" });
   const cdnUrlRef = useRef<string | null>(null);
   const attemptRef = useRef(0);
   const signatureErrorRef = useRef<ErrorLike | null>(null);
+  // Mirrors `state` synchronously so `notify` can compute the exact next value
+  // (via the same pure `reducer`) before React has committed it, without
+  // duplicating each case's logic at the call site.
+  const stateRef = useRef<UploadState>({ status: "idle" });
+
+  const notify = useCallback(
+    (action: Action) => {
+      const next = reducer(stateRef.current, action);
+      stateRef.current = next;
+      dispatch(action);
+      onStateChange?.(next);
+    },
+    [onStateChange],
+  );
 
   const store = useCallback(
     async (cdnUrl: string) => {
       attemptRef.current += 1;
       const attempt = attemptRef.current;
-      dispatch({ type: "storing" });
+      notify({ type: "storing" });
       try {
         const result = await apiFetch("/api/upload", {
           body: { cdnUrl },
           schema: uploadResponseSchema,
         });
-        if (attempt === attemptRef.current) dispatch({ type: "ready", result });
+        if (attempt === attemptRef.current) notify({ type: "ready", result });
       } catch (error) {
         if (attempt !== attemptRef.current) return;
         const problem = toErrorLike(error);
-        dispatch({ type: "failed", error: problem });
+        notify({ type: "failed", error: problem });
         onServerError?.(problem);
       }
     },
-    [onServerError],
+    [notify, onServerError],
   );
 
   const select = useCallback(
@@ -82,18 +104,18 @@ export function useSourceUpload(rules: VideoRules, { onServerError }: Options = 
       signatureErrorRef.current = null;
       const check = rules.checkFile(file);
       if (!check.ok) {
-        dispatch({ type: "rejected", error: clientError(check.code) });
+        notify({ type: "rejected", error: clientError(check.code) });
         return false;
       }
-      dispatch({ type: "started" });
+      notify({ type: "started" });
       return true;
     },
-    [rules],
+    [rules, notify],
   );
 
   const progress = useCallback(
-    (percent: number) => dispatch({ type: "progress", progress: percent }),
-    [],
+    (percent: number) => notify({ type: "progress", progress: percent }),
+    [notify],
   );
 
   const uploaded = useCallback(
@@ -109,11 +131,11 @@ export function useSourceUpload(rules: VideoRules, { onServerError }: Options = 
   }, []);
 
   const uploadFailed = useCallback(() => {
-    dispatch({
+    notify({
       type: "rejected",
       error: signatureErrorRef.current ?? clientError("UPLOAD_INTERRUPTED"),
     });
-  }, []);
+  }, [notify]);
 
   const retry = useCallback(() => {
     if (cdnUrlRef.current) void store(cdnUrlRef.current);
@@ -123,8 +145,8 @@ export function useSourceUpload(rules: VideoRules, { onServerError }: Options = 
     attemptRef.current += 1;
     cdnUrlRef.current = null;
     signatureErrorRef.current = null;
-    dispatch({ type: "reset" });
-  }, []);
+    notify({ type: "reset" });
+  }, [notify]);
 
   return { state, select, progress, uploaded, uploadFailed, signatureFailed, retry, reset };
 }

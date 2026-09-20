@@ -234,6 +234,67 @@ describe("CreateFlow", () => {
     expect(secondKey).toBe(firstKey);
   });
 
+  it("issues a fresh idempotency key for a new submission after a completed one", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ job: job() })
+      .mockResolvedValueOnce({ job: job({ id: "job-2" }) });
+    render(<CreateFlow settings={settings} />);
+    selectAndReady();
+
+    const button = screen.getByRole("button", { name: "Transform" });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstKey = (fetchMock.mock.calls[0]?.[1] as { body: { idempotencyKey: string } }).body
+      .idempotencyKey;
+    const secondKey = (fetchMock.mock.calls[1]?.[1] as { body: { idempotencyKey: string } }).body
+      .idempotencyKey;
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  it("issues a fresh idempotency key after editing a param following a failed submission", async () => {
+    fetchMock
+      .mockRejectedValueOnce(
+        new ApiError({ status: 500, code: "INTERNAL", message: "x", retryable: true }),
+      )
+      .mockResolvedValueOnce({ job: job() });
+    render(<CreateFlow settings={settings} />);
+    selectAndReady();
+
+    const button = screen.getByRole("button", { name: "Transform" });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Job name" }), {
+      target: { value: "renamed.mp4" },
+    });
+
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstKey = (fetchMock.mock.calls[0]?.[1] as { body: { idempotencyKey: string } }).body
+      .idempotencyKey;
+    const secondKey = (fetchMock.mock.calls[1]?.[1] as { body: { idempotencyKey: string } }).body
+      .idempotencyKey;
+    expect(secondKey).not.toBe(firstKey);
+  });
+
   it("clears the job card and resets the form when the source is replaced", () => {
     useJobPollingMock.mockReturnValue({
       jobs: [job({ status: "complete" })],

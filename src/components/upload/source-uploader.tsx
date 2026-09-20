@@ -3,7 +3,7 @@
 import "@uploadcare/react-uploader/core.css";
 import { FileUploaderRegular } from "@uploadcare/react-uploader/next";
 import type { UploadCtxProvider } from "@uploadcare/react-uploader";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSourceUpload, type UploadState } from "@/hooks/use-source-upload";
 import { useUploadFocus } from "@/hooks/use-upload-focus";
@@ -51,7 +51,11 @@ export type SourceUploaderProps = {
   // The container (create-flow.tsx) needs the source id, duration and original
   // file name once upload settles, none of which it can otherwise observe from
   // this component's own reducer state. Both are optional and no-op by default,
-  // so every existing behavior here is unchanged.
+  // so every existing behavior here is unchanged. `onStateChange` is forwarded
+  // straight to `useSourceUpload`, which calls it from the same places it
+  // dispatches -- never from an Effect watching `state`, which would also fire
+  // once on mount with the initial `idle` value and be indistinguishable from
+  // a real reset.
   onStateChange?: (state: UploadState) => void;
   onFileSelected?: (name: string) => void;
 };
@@ -71,13 +75,9 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
     },
     [limits],
   );
-  const upload = useSourceUpload(rules, { onServerError });
+  const upload = useSourceUpload(rules, { onServerError, onStateChange });
   const { state, signatureFailed } = upload;
   const { progressLabelRef, dropZoneTitleRef, focusAfter } = useUploadFocus(state.status);
-
-  useEffect(() => {
-    onStateChange?.(state);
-  }, [state, onStateChange]);
 
   const resolveSignature = useCallback(async () => {
     try {
