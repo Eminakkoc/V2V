@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { TransformParams } from "@/lib/transform-contract";
 import { createFakeProviders, FAKE_FILE_SIZE } from "./fakes";
@@ -60,5 +61,33 @@ describe("fake providers", () => {
     const details = await magicHour.getJobDetails(magicHourId);
     expect(details.status).toBe("complete");
     expect(details.downloads[0]?.url).toMatch(/^https:/);
+  });
+
+  // This is the one guard standing between PROVIDER_MODE=fake and a webhook
+  // route that accepts anything: if the fake's verifyWebhook were ever
+  // simplified to `return true`, every webhook security test would still
+  // pass in the e2e suite while the real protection was gone.
+  it("verifyWebhook rejects a bad signature and accepts one signed with its own secret", () => {
+    const secret = "a-specific-fake-secret";
+    const { magicHour } = createFakeProviders("test-cloud", secret);
+    const rawBody = JSON.stringify({ type: "video.completed", payload: { id: "fake-mh-1" } });
+    const nowSeconds = 1_758_000_000;
+    const timestamp = String(nowSeconds);
+    const goodSignature = createHmac("sha256", secret)
+      .update(`${timestamp}.${rawBody}`, "utf8")
+      .digest("hex");
+
+    expect(
+      magicHour.verifyWebhook({
+        rawBody,
+        signature: "0".repeat(goodSignature.length),
+        timestamp,
+        nowSeconds,
+      }),
+    ).toEqual({ ok: false, code: "WEBHOOK_INVALID_SIGNATURE" });
+
+    expect(
+      magicHour.verifyWebhook({ rawBody, signature: goodSignature, timestamp, nowSeconds }),
+    ).toEqual({ ok: true });
   });
 });

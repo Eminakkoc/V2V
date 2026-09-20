@@ -8,6 +8,7 @@ type RequestInit = {
   cookie?: string;
   ip?: string;
   origin?: string;
+  headers?: Record<string, string>;
 };
 
 export function apiRequest(path: string, init: RequestInit = {}): NextRequest {
@@ -16,6 +17,9 @@ export function apiRequest(path: string, init: RequestInit = {}): NextRequest {
   if (init.ip) headers.set("x-real-ip", init.ip);
   const body = init.rawBody ?? (init.body === undefined ? undefined : JSON.stringify(init.body));
   if (body !== undefined) headers.set("content-type", "application/json");
+  // Set after the defaults above so a caller (e.g. a webhook signature header)
+  // can override them.
+  for (const [key, value] of Object.entries(init.headers ?? {})) headers.set(key, value);
   return new NextRequest(`${init.origin ?? "http://localhost"}${path}`, {
     method: "POST",
     headers,
