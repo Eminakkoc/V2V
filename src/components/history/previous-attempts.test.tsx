@@ -128,11 +128,19 @@ describe("PreviousAttempts", () => {
     const attempts = [buildAttempt({ params: { name: "Only attempt" } })];
     render(<PreviousAttempts attempts={attempts} cloudName="demo" />);
 
+    const trigger = screen.getByRole("button", { name: /Previous attempts/ });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("heading", { name: "Only attempt" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Previous attempts/ }));
+    fireEvent.click(trigger);
 
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("heading", { level: 3, name: "Only attempt" })).toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("heading", { name: "Only attempt" })).not.toBeInTheDocument();
   });
 
   it("lists attempts oldest-to-newest regardless of input order", () => {

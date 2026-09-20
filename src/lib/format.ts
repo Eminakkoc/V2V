@@ -29,10 +29,22 @@ export function formatDuration(seconds: number): string {
 // on where each happens to run, and a relative form ("8s ago") would need
 // the live-region-and-never-tick discipline docs/design-findings.md W5
 // requires. This sidesteps both by being the same string everywhere.
+//
+// `timeZoneName: "short"` is what makes pinning the zone to UTC acceptable
+// rather than misleading: without a visible "UTC" label the string reads as
+// the reader's own local time, and on a History page that can misstate
+// which calendar day a job belongs to. Do not strip it as noise -- it is
+// the fix for that, not decoration. (It also forces the explicit
+// year/month/day/hour/minute fields below: `Intl.DateTimeFormat` rejects
+// `timeZoneName` combined with `dateStyle`/`timeStyle`.)
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
   timeZone: "UTC",
+  timeZoneName: "short",
 });
 
 export function formatTimestamp(iso: string): string {

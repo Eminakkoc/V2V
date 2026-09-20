@@ -22,11 +22,18 @@ describe("formatDuration", () => {
 
 describe("formatTimestamp", () => {
   it("renders an absolute, UTC date and time regardless of the runtime's own locale/timezone", () => {
-    expect(formatTimestamp("2026-01-01T00:05:00.000Z")).toBe("Jan 1, 2026, 12:05 AM");
+    expect(formatTimestamp("2026-01-01T00:05:00.000Z")).toBe("Jan 1, 2026, 12:05 AM UTC");
   });
 
   it("does not shift across a UTC day boundary the way a local-timezone format could", () => {
-    expect(formatTimestamp("2026-03-15T23:45:00.000Z")).toBe("Mar 15, 2026, 11:45 PM");
+    expect(formatTimestamp("2026-03-15T23:45:00.000Z")).toBe("Mar 15, 2026, 11:45 PM UTC");
+  });
+
+  it("labels the timezone, so the string is never mistaken for the reader's own local time", () => {
+    // The regression this guards: a future "tidy up the format" edit that
+    // drops `timeZoneName` would still pass the two assertions above only
+    // by coincidence of matching prefix -- this pins the label itself.
+    expect(formatTimestamp("2026-01-01T00:05:00.000Z")).toMatch(/\bUTC$/);
   });
 });
 
