@@ -1,5 +1,5 @@
 import "server-only";
-import type { Document } from "mongodb";
+import type { Document, WithId } from "mongodb";
 import { JOB_PHASES, type JobPhase, type JobStatus } from "@/lib/job-status";
 import { jobRecordSchema, type JobRecord } from "@/server/validation/records";
 import { COLLECTIONS } from "./collections";
@@ -21,13 +21,21 @@ export type CompletionPatch = {
   creditsCharged?: number;
 };
 
+export type JobsDateCursor = { createdAt: Date; id: string };
+export type JobsDurationCursor = { clipSeconds: number; createdAt: Date; id: string };
+
 export type HistoryQuery = {
-  status?: JobStatus;
+  statuses?: JobStatus[];
   artStyle?: string;
   includePrevious: boolean;
+  // Optional, not the "createdAt" | "duration" required shape a from-scratch
+  // design would use: the pre-existing date-sort callers (and their tests)
+  // predate this field, and undefined must keep behaving exactly like
+  // "createdAt" so that shipped behaviour does not shift under them.
+  sort?: "createdAt" | "duration";
   dir: "asc" | "desc";
   limit: number;
-  cursor?: { createdAt: Date; id: string };
+  cursor?: JobsDateCursor | JobsDurationCursor;
 };
 
 export type ActiveCounts = {
@@ -291,21 +299,69 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
       withDb(getDb, async (db) => {
         const conditions: Document[] = [{ userId }];
         if (!query.includePrevious) conditions.push({ status: { $ne: "superseded" } });
-        if (query.status) conditions.push({ status: query.status });
+        if (query.statuses?.length) conditions.push({ status: { $in: query.statuses } });
         if (query.artStyle) conditions.push({ "params.artStyle": query.artStyle });
-        if (query.cursor) {
-          const cursorId = toObjectId(query.cursor.id);
-          const op = query.dir === "desc" ? "$lt" : "$gt";
+
+        const op = query.dir === "desc" ? "$lt" : "$gt";
+        const sortDir = query.dir === "asc" ? 1 : -1;
+
+        if (query.sort === "duration") {
+          const cursor = query.cursor as JobsDurationCursor | undefined;
+          // $addFields has to run before the cursor comparison, because the
+          // boundary is expressed against the computed length. The owner and
+          // filter conditions stay ahead of it so they can still use an index.
+          const pipeline: Document[] = [
+            { $match: conditions.length === 1 ? conditions[0]! : { $and: conditions } },
+            {
+              $addFields: {
+                clipSeconds: {
+                  $round: [{ $subtract: ["$params.endSeconds", "$params.startSeconds"] }, 2],
+                },
+              },
+            },
+          ];
+          if (cursor) {
+            const cursorId = toObjectId(cursor.id);
+            if (cursorId) {
+              pipeline.push({
+                $match: {
+                  $or: [
+                    { clipSeconds: { [op]: cursor.clipSeconds } },
+                    { clipSeconds: cursor.clipSeconds, createdAt: { [op]: cursor.createdAt } },
+                    {
+                      clipSeconds: cursor.clipSeconds,
+                      createdAt: cursor.createdAt,
+                      _id: { [op]: cursorId },
+                    },
+                  ],
+                },
+              });
+            }
+          }
+          pipeline.push(
+            { $sort: { clipSeconds: sortDir, createdAt: sortDir, _id: sortDir } },
+            { $limit: query.limit },
+            { $unset: "clipSeconds" },
+          );
+          const docs = await db
+            .collection(COLLECTIONS.jobs)
+            .aggregate<WithId<Document>>(pipeline)
+            .toArray();
+          return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
+        }
+
+        const cursor = query.cursor as JobsDateCursor | undefined;
+        if (cursor) {
+          const cursorId = toObjectId(cursor.id);
           if (cursorId) {
             conditions.push({
               $or: [
-                { createdAt: { [op]: query.cursor.createdAt } },
-                { createdAt: query.cursor.createdAt, _id: { [op]: cursorId } },
+                { createdAt: { [op]: cursor.createdAt } },
+                { createdAt: cursor.createdAt, _id: { [op]: cursorId } },
               ],
             });
           }
         }
-        const sortDir = query.dir === "asc" ? 1 : -1;
         const docs = await db
           .collection(COLLECTIONS.jobs)
           .find(conditions.length === 1 ? conditions[0]! : { $and: conditions })

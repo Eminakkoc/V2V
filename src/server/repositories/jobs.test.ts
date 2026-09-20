@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
+import { clipSecondsOf } from "@/server/services/history-cursor";
 import { setupTestDb } from "@/test/mongo";
 import { createJobsRepository, type NewJob } from "./jobs";
 
@@ -302,5 +304,177 @@ describe("countActive", () => {
       deadlineAt: new Date("2026-09-20T11:30:00Z"),
     });
     expect((await jobs.countActive("user-1", now, graceMs)).superseded).toBe(1);
+  });
+});
+
+describe("listForUser sorting and filtering", () => {
+  async function seed() {
+    const short = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      params: { ...input.params, startSeconds: 0, endSeconds: 2 },
+    });
+    const long = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      params: { ...input.params, startSeconds: 0, endSeconds: 20 },
+    });
+    const medium = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      params: { ...input.params, startSeconds: 0, endSeconds: 9 },
+    });
+    return { short, medium, long };
+  }
+
+  it("orders by clip duration, longest first", async () => {
+    const { short, medium, long } = await seed();
+    const rows = await jobs.listForUser("user-1", {
+      includePrevious: false,
+      sort: "duration",
+      dir: "desc",
+      limit: 10,
+    });
+    expect(rows.map((row) => row.id)).toEqual([long.id, medium.id, short.id]);
+  });
+
+  it("orders by clip duration, shortest first", async () => {
+    const { short, medium, long } = await seed();
+    const rows = await jobs.listForUser("user-1", {
+      includePrevious: false,
+      sort: "duration",
+      dir: "asc",
+      limit: 10,
+    });
+    expect(rows.map((row) => row.id)).toEqual([short.id, medium.id, long.id]);
+  });
+
+  it("paginates the duration sort through its own cursor tuple", async () => {
+    const { short, medium, long } = await seed();
+    const firstPage = await jobs.listForUser("user-1", {
+      includePrevious: false,
+      sort: "duration",
+      dir: "desc",
+      limit: 1,
+    });
+    expect(firstPage.map((row) => row.id)).toEqual([long.id]);
+
+    const rest = await jobs.listForUser("user-1", {
+      includePrevious: false,
+      sort: "duration",
+      dir: "desc",
+      limit: 10,
+      cursor: { clipSeconds: 20, createdAt: long.createdAt, id: long.id },
+    });
+    expect(rest.map((row) => row.id)).toEqual([medium.id, short.id]);
+  });
+
+  // JS Math.round rounds halves away from zero; Mongo's $round rounds halves
+  // to even. The cursor value is computed in JS (clipSecondsOf, the same
+  // helper the history service uses to encode a duration cursor) but the sort
+  // and boundary comparison run in Mongo, so the two roundings must agree —
+  // otherwise a page boundary silently repeats or skips a row. Paging one row
+  // at a time is what makes a disagreement visible: any mismatch either
+  // re-returns the previous row or jumps past the next one.
+  it("keeps a JS-computed duration cursor in step with Mongo's $round when paging one row at a time", async () => {
+    const hi = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      params: { ...input.params, startSeconds: 0, endSeconds: 5.3 },
+    });
+    const mid = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      params: { ...input.params, startSeconds: 0, endSeconds: 5.25 },
+    });
+    const lo = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      params: { ...input.params, startSeconds: 0, endSeconds: 5.05 },
+    });
+    const expectedOrder = [hi.id, mid.id, lo.id];
+
+    const seen: string[] = [];
+    let cursor: { clipSeconds: number; createdAt: Date; id: string } | undefined;
+    for (let i = 0; i < expectedOrder.length; i += 1) {
+      const page = await jobs.listForUser("user-1", {
+        includePrevious: false,
+        sort: "duration",
+        dir: "desc",
+        limit: 1,
+        cursor,
+      });
+      expect(page).toHaveLength(1);
+      const row = page[0]!;
+      seen.push(row.id);
+      cursor = { clipSeconds: clipSecondsOf(row.params), createdAt: row.createdAt, id: row.id };
+    }
+
+    expect(seen).toEqual(expectedOrder);
+    expect(new Set(seen).size).toBe(expectedOrder.length);
+
+    // Paging once more past the last row must come back empty, not repeat it.
+    const trailing = await jobs.listForUser("user-1", {
+      includePrevious: false,
+      sort: "duration",
+      dir: "desc",
+      limit: 10,
+      cursor,
+    });
+    expect(trailing).toEqual([]);
+  });
+
+  it("filters by a set of statuses", async () => {
+    const processing = await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
+    const done = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "complete",
+    });
+    const abandoned = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "abandoned",
+    });
+
+    const rows = await jobs.listForUser("user-1", {
+      statuses: ["failed", "abandoned"],
+      includePrevious: false,
+      sort: "createdAt",
+      dir: "desc",
+      limit: 10,
+    });
+    expect(rows.map((row) => row.id)).toEqual([abandoned.id]);
+    expect(rows.map((row) => row.id)).not.toContain(processing.id);
+    expect(rows.map((row) => row.id)).not.toContain(done.id);
+  });
+
+  it("still excludes superseded rows by default under the duration sort", async () => {
+    const kept = await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "superseded",
+    });
+    const rows = await jobs.listForUser("user-1", {
+      includePrevious: false,
+      sort: "duration",
+      dir: "desc",
+      limit: 10,
+    });
+    expect(rows.map((row) => row.id)).toEqual([kept.id]);
+  });
+
+  it("never returns another user's rows under either sort", async () => {
+    await jobs.insert("user-2", { ...input, idempotencyKey: randomUUID() });
+    for (const sort of ["createdAt", "duration"] as const) {
+      const rows = await jobs.listForUser("user-1", {
+        includePrevious: false,
+        sort,
+        dir: "desc",
+        limit: 10,
+      });
+      expect(rows).toEqual([]);
+    }
   });
 });

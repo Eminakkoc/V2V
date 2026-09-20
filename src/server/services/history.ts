@@ -65,9 +65,10 @@ export async function listHistory(
   const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
   // One extra row decides nextCursor without a second round trip.
   const rows = await deps.jobs.listForUser(userId, {
-    status: query.status,
+    ...(query.status ? { statuses: [query.status] } : {}),
     artStyle: query.style,
     includePrevious: query.includePrevious,
+    sort: "createdAt",
     dir: query.dir,
     limit: query.limit + 1,
     cursor,
