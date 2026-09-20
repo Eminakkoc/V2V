@@ -229,6 +229,8 @@ describe("POST /api/upload", () => {
           throw new Error("Invalid sources document on write: bytes: Too small");
         },
         findById: async () => null,
+        listForUser: async () => [],
+        findByIds: async () => [],
       },
       jobs: createJobsRepository(() => Promise.resolve(db)),
       rateLimiter: createRateLimiter(createRateLimitHitsRepository(() => Promise.resolve(db))),

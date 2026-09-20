@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import { setupTestDb } from "@/test/mongo";
@@ -62,5 +63,50 @@ describe("sources repository", () => {
       .collection("sources")
       .updateOne({ _id: new ObjectId(created.id) }, { $set: { schemaVersion: 2 } });
     await expect(sources.findById("user-1", created.id)).rejects.toThrow(/failed validation/);
+  });
+});
+describe("listForUser and findByIds", () => {
+  // listForUser (unlike findByIds) reads back every matching document for the
+  // owner, and this file has no beforeEach cleanup -- earlier tests above
+  // deliberately leave malformed "user-1" documents behind (schemaVersion 2,
+  // a raw insert missing required fields) to exercise parseStored's failure
+  // path. A literal "user-1" here would pick those up and throw. A fresh
+  // owner id per test sidesteps that without touching those tests.
+  it("lists a user's sources newest first", async () => {
+    const owner = `user-${randomUUID()}`;
+    const first = await sources.insert(owner, { ...input, uploadcareUuid: randomUUID() });
+    const second = await sources.insert(owner, { ...input, uploadcareUuid: randomUUID() });
+    const rows = await sources.listForUser(owner, { limit: 10 });
+    expect(rows.map((row) => row.id)).toEqual([second.id, first.id]);
+  });
+
+  it("paginates through the createdAt cursor", async () => {
+    const owner = `user-${randomUUID()}`;
+    const first = await sources.insert(owner, { ...input, uploadcareUuid: randomUUID() });
+    const second = await sources.insert(owner, { ...input, uploadcareUuid: randomUUID() });
+    const page = await sources.listForUser(owner, { limit: 1 });
+    expect(page.map((row) => row.id)).toEqual([second.id]);
+    const rest = await sources.listForUser(owner, {
+      limit: 10,
+      cursor: { createdAt: second.createdAt, id: second.id },
+    });
+    expect(rest.map((row) => row.id)).toEqual([first.id]);
+  });
+
+  it("never lists another user's sources", async () => {
+    const owner = `user-${randomUUID()}`;
+    await sources.insert(`user-${randomUUID()}`, { ...input, uploadcareUuid: randomUUID() });
+    expect(await sources.listForUser(owner, { limit: 10 })).toEqual([]);
+  });
+
+  it("looks sources up by id, omitting unknown and other users' ids", async () => {
+    const mine = await sources.insert("user-1", { ...input, uploadcareUuid: randomUUID() });
+    const theirs = await sources.insert("user-2", { ...input, uploadcareUuid: randomUUID() });
+    const rows = await sources.findByIds("user-1", [mine.id, theirs.id, "not-an-object-id"]);
+    expect(rows.map((row) => row.id)).toEqual([mine.id]);
+  });
+
+  it("returns an empty array for an empty id list", async () => {
+    expect(await sources.findByIds("user-1", [])).toEqual([]);
   });
 });

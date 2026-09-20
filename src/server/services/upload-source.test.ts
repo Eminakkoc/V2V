@@ -84,7 +84,7 @@ describe("uploadSource", () => {
         config: testConfig,
         uploadcare: { getFileInfo },
         cloudinary: { copyVideoFromUrl },
-        sources: { insert, findById: vi.fn() },
+        sources: { insert, findById: vi.fn(), listForUser: vi.fn(), findByIds: vi.fn() },
       },
       clock,
     );
@@ -130,7 +130,7 @@ describe("uploadSource", () => {
       config: testConfig,
       uploadcare: { getFileInfo: vi.fn(async () => fileInfo) },
       cloudinary: { copyVideoFromUrl: vi.fn(async () => storedVideo) },
-      sources: { insert, findById: vi.fn() },
+      sources: { insert, findById: vi.fn(), listForUser: vi.fn(), findByIds: vi.fn() },
     });
 
     expect(savedCdnUrl).toBe(`https://cdn123.ucarecd.net/${uuid}/`);
@@ -167,7 +167,7 @@ describe("uploadSource", () => {
         config: testConfig,
         uploadcare: { getFileInfo: vi.fn(async () => fileInfo) },
         cloudinary: { copyVideoFromUrl: vi.fn(async () => storedVideo) },
-        sources: { insert, findById: vi.fn() },
+        sources: { insert, findById: vi.fn(), listForUser: vi.fn(), findByIds: vi.fn() },
       }),
     ).resolves.toMatchObject({ sourceId: "s1" });
   });
@@ -186,7 +186,7 @@ describe("uploadSource", () => {
         config: testConfig,
         uploadcare: { getFileInfo: vi.fn(async () => fileInfo) },
         cloudinary: { copyVideoFromUrl: vi.fn() },
-        sources: { insert: vi.fn(), findById: vi.fn() },
+        sources: { insert: vi.fn(), findById: vi.fn(), listForUser: vi.fn(), findByIds: vi.fn() },
       }),
     ).rejects.toMatchObject({ code: "UNSUPPORTED_FORMAT" });
   });
