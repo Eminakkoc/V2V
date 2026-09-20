@@ -1,0 +1,102 @@
+export const ART_STYLES = [
+  "3D Render",
+  "Airbender",
+  "Android",
+  "Anime Warrior",
+  "Armored Knight",
+  "Assassin's Creed",
+  "Avatar",
+  "Black Spiderman",
+  "Boba Fett",
+  "Bold Anime",
+  "Celestial Skin",
+  "Chinese Swordsmen",
+  "Clay",
+  "Comic",
+  "Cyberpunk",
+  "Cypher",
+  "Dark Fantasy",
+  "Dragonball Z",
+  "Future Bot",
+  "Futuristic Fantasy",
+  "GTA",
+  "Ghibli Anime",
+  "Ghost",
+  "Gundam",
+  "Hologram",
+  "Illustration",
+  "Impressionism",
+  "Ink",
+  "Ink Poster",
+  "Jinx",
+  "Knight",
+  "Lego",
+  "Link",
+  "Marble",
+  "Mario",
+  "Master Chief",
+  "Mech",
+  "Minecraft",
+  "Mystique",
+  "Naruto",
+  "Neon Dream",
+  "No Art Style",
+  "Oil Painting",
+  "On Fire",
+  "Origami",
+  "Painterly Anime",
+  "Pixar",
+  "Pixel",
+  "Power Armor",
+  "Power Ranger",
+  "Radiant Anime",
+  "Realistic Anime",
+  "Realistic Pixar",
+  "Retro Anime",
+  "Retro Sci-Fi",
+  "Samurai",
+  "Samurai Bot",
+  "Sharp Anime",
+  "Soft Anime",
+  "Solid Snake",
+  "Spartan",
+  "Starfield",
+  "Street Fighter",
+  "Studio Ghibli",
+  "Sub-Zero",
+  "The Void",
+  "Tomb Raider",
+  "Underwater",
+  "Van Gogh",
+  "Viking",
+  "Watercolor",
+  "Western Anime",
+  "Wu Kong",
+  "Wuxia Anime",
+  "Zelda",
+] as const;
+
+export type ArtStyle = (typeof ART_STYLES)[number];
+
+export const MODELS = [
+  "default",
+  "3D Anime",
+  "Absolute Reality",
+  "Dreamshaper",
+  "Flat 2D Anime",
+  "Kaywaii",
+  "Soft Anime",
+  "Western Anime",
+] as const;
+
+export type Model = (typeof MODELS)[number];
+
+export const VERSIONS = ["default", "v1", "v2"] as const;
+
+export type Version = (typeof VERSIONS)[number];
+
+export const FPS_RESOLUTIONS = ["FULL", "HALF"] as const;
+
+export const PROMPT_TYPES = ["default", "custom", "append_default"] as const;
+
+export type PromptType = (typeof PROMPT_TYPES)[number];
