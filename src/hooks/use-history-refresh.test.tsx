@@ -394,4 +394,71 @@ describe("useHistoryRefresh", () => {
     // row must never also stand on its own as a top-level card.
     expect(result.current.jobs.map((j) => j.id)).toEqual(["job-latest"]);
   });
+
+  it("folds a superseded attempt without spuriously looking up its still-changeable owner in the same tick", async () => {
+    const nestedBeforeRefresh = attempt({ id: "job-old", status: "processing" });
+    // Changeable (processing), unlike the dedicated fold test above -- so it
+    // IS seeded into the baseline, and also comes back in this tick's own
+    // changeable response (still processing). A reader retried a
+    // transform: the retry (owner) is still running while the superseded
+    // original (job-old) is also still being re-checked. Both are
+    // changeable and both arrive in the same poll.
+    const owner = job({
+      id: "job-latest",
+      status: "processing",
+      phase: "queued",
+      attempts: [nestedBeforeRefresh],
+    });
+    const ownerRefreshed = job({
+      id: "job-latest",
+      status: "processing",
+      phase: "rendering",
+      // The server's own snapshot of owner still carries its attempts
+      // chain -- unrefreshed here on purpose, so a passing "superseded"
+      // nested status below can only have come from this hook's own fold
+      // step (using the co-arriving supersededRefresh row), not from a
+      // value that merely passed through unchanged.
+      attempts: [nestedBeforeRefresh],
+    });
+    const supersededRefresh = job({
+      id: "job-old",
+      status: "superseded",
+      supersededByJobId: "job-latest",
+      errorMessage: "final reason",
+    });
+
+    fetchMock.mockResolvedValueOnce(changeableResponse([ownerRefreshed, supersededRefresh]));
+
+    const { result } = renderHook(() => useHistoryRefresh(defaultOptions({ initial: [owner] })));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const nested = result.current.jobs
+        .find((j) => j.id === "job-latest")
+        ?.attempts.find((a) => a.id === "job-old");
+      expect(nested?.status).toBe("superseded");
+    });
+
+    const nested = result.current.jobs
+      .find((j) => j.id === "job-latest")
+      ?.attempts.find((a) => a.id === "job-old");
+    expect(nested?.errorMessage).toBe("final reason");
+
+    // owner stays the only top-level card, refreshed with its new phase --
+    // job-old never surfaces top-level (includePrevious is false).
+    expect(result.current.jobs.map((j) => j.id)).toEqual(["job-latest"]);
+    expect(result.current.jobs[0]?.phase).toBe("rendering");
+
+    // The load-bearing assertion: owner never left the changeable set this
+    // tick (it's still processing, in the same response), so no ids
+    // follow-up should ever fire. Asserted directly on the call log, not
+    // inferred from the merged output above -- a mutant that fired a
+    // spurious lookup for owner here (and happened to get a response that
+    // still merged correctly) would still be caught.
+    const idsCalls = fetchMock.mock.calls.filter(
+      ([path]) => typeof path === "string" && path.includes("ids="),
+    );
+    expect(idsCalls).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
