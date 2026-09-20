@@ -111,7 +111,16 @@ test.describe("finalize storage failures", () => {
     expect(afterFailure.output).toBeUndefined();
     expect(afterFailure.errorCode).toBeUndefined();
 
-    // Redelivery: the render was never lost, and the second copy succeeds.
+    // Redelivery: the render was never lost, and the job does reach complete
+    // with a stored result. But readJob's own GET /api/history above also
+    // schedules reconciliation (see reconcile.ts), and copyFailsOnce's
+    // one-time failure was already consumed by the first delivery -- so a
+    // background reconciliation pass, seeing this untriggered job's default
+    // "complete" status, would attempt its own copy and succeed too, and
+    // could finalize the job before this redelivery ever runs. Both are
+    // legitimate recovery paths and the single-claim guarantee means only
+    // one of them actually performs the copy, so this test cannot pin which
+    // one did -- only that the job recovers and completes either way.
     const second = await deliver(request, { id: magicHourId });
     expect(second.status()).toBe(200);
 
