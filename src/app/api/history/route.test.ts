@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { historySourcesResponseSchema } from "@/lib/history-contract";
 import { historyResponseSchema, transformParamsSchema } from "@/lib/transform-contract";
 import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
@@ -9,7 +9,24 @@ import { createSourcesRepository, type NewSource } from "@/server/repositories/s
 import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
 import { apiGetRequest, identityCookie } from "@/test/requests";
+import type * as NextServerModule from "next/server";
 import { GET } from "./route";
+
+// GET calls the real after() (only satisfied inside Next's own request
+// pipeline, which these direct-invocation tests never enter), so it is
+// replaced with a capture: pushing the callback proves the route scheduled
+// reconciliation without ever running it, which is what lets a test assert
+// the response returned without waiting on it.
+const scheduled = vi.hoisted(() => [] as Array<() => unknown>);
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof NextServerModule>();
+  return {
+    ...actual,
+    after: (fn: () => unknown) => {
+      scheduled.push(fn);
+    },
+  };
+});
 
 const { getDb } = setupTestDb();
 const userId = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -91,6 +108,7 @@ beforeEach(async () => {
   const db = await getDb();
   await db.collection("jobs").deleteMany({});
   useDeps();
+  scheduled.length = 0;
 });
 afterEach(() => setServerDepsForTests(undefined));
 
@@ -280,5 +298,54 @@ describe("GET /api/history", () => {
     await insertJob(userId, { status: "complete" });
     const result = historyResponseSchema.safeParse(await (await history()).json());
     expect(result.success).toBe(true);
+  });
+});
+
+describe("GET /api/history -- reconciliation via after()", () => {
+  it("schedules exactly one reconciliation pass without changing the response body or headers", async () => {
+    await insertJob(userId, { status: "processing" });
+    await insertJob(userId, { status: "finalizing" });
+
+    const response = await history();
+
+    expect(scheduled).toHaveLength(1);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    const body = await bodyOf(response);
+    expect(body.items).toHaveLength(2);
+    expect(body.active).toMatchObject({
+      processing: 1,
+      finalizing: 1,
+      timedOut: 0,
+      superseded: 0,
+    });
+  });
+
+  it("does not wait on the provider: GET still returns when getJobDetails never settles", async () => {
+    const neverResolvingMagicHour: MagicHourAdapter = {
+      createJob: () => Promise.reject(new Error("unused")),
+      getJobDetails: () => new Promise(() => {}),
+      verifyWebhook: () => {
+        throw new Error("unused");
+      },
+    };
+    setServerDepsForTests(
+      buildServerDeps(testConfig, {
+        getDb,
+        providers: {
+          uploadcare: unusedUploadcare,
+          cloudinary: unusedCloudinary,
+          magicHour: neverResolvingMagicHour,
+        },
+      }),
+    );
+    await insertJob(userId, { status: "processing", magicHourId: "mh-1" });
+
+    const response = await history();
+
+    expect(response.status).toBe(200);
+    // The scheduled callback is left unrun on purpose: reconcileUserJobs
+    // would hang forever calling this provider, and GET already returned
+    // without it -- proving the response never waited on the provider.
+    expect(scheduled).toHaveLength(1);
   });
 });

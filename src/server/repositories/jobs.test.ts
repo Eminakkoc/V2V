@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import { JOB_STATUSES } from "@/lib/job-status";
+import { nextDelayMs } from "@/lib/polling-schedule";
 import { clipSecondsOf } from "@/server/services/history-cursor";
 import { setupTestDb } from "@/test/mongo";
 import { createJobsRepository, type NewJob } from "./jobs";
@@ -305,6 +306,26 @@ describe("countActive", () => {
       deadlineAt: new Date("2026-09-20T11:30:00Z"),
     });
     expect((await jobs.countActive("user-1", now, graceMs)).superseded).toBe(1);
+  });
+
+  // REC-004's re-check: reconciliation is the first thing that ever writes
+  // "abandoned", and countActive's facets have no branch for it at all --
+  // pinning here that a job leaving "processing" for "abandoned" drops out
+  // of the active counts entirely, which is what lets nextDelayMs stop the
+  // Create page's polling instead of retrying a job nothing is checking
+  // anymore.
+  it("drops an abandoned job out of the active counts, and nextDelayMs then stops polling", async () => {
+    const created = await jobs.insert("user-1", { ...input, idempotencyKey: "k8" });
+
+    const before = await jobs.countActive("user-1", now, graceMs);
+    expect(before.processing).toBe(1);
+    expect(nextDelayMs(before, 0)).toBe(3_000);
+
+    await jobs.markAbandoned(created.id, "JOB_ABANDONED", "We stopped checking this job.");
+
+    const after = await jobs.countActive("user-1", now, graceMs);
+    expect(after.processing).toBe(0);
+    expect(nextDelayMs(after, 0)).toBeNull();
   });
 });
 
