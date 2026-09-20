@@ -14,6 +14,15 @@ export function deadlineFor(clipSeconds: number, config: AppConfig, now: Date): 
 
 type TransformDeps = Pick<ServerDeps, "config" | "sources" | "jobs" | "magicHour">;
 
+// The Mongo driver surfaces a unique-index violation as a MongoServerError
+// with this numeric code; matching on it specifically (not "any insert
+// error") keeps a genuine DATABASE_UNAVAILABLE or bad-write error from being
+// mistaken for a duplicate submission.
+function isDuplicateKeyError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  return (error as { code: unknown }).code === 11000;
+}
+
 export async function startTransform(
   body: TransformRequest,
   userId: string,
@@ -46,27 +55,38 @@ export async function startTransform(
 
   // The job row must exist before the provider call: if Magic Hour's answer
   // is lost, a record already exists to reconcile against.
-  const job = await deps.jobs.insert(userId, {
-    sourceId: source.id,
-    params: body.params,
-    idempotencyKey: body.idempotencyKey,
-    status: "processing",
-    phase: "submitting",
-    deadlineAt: deadlineFor(clipSeconds, deps.config, now()),
-    ...(body.retryOfJobId ? { retryOfJobId: body.retryOfJobId } : {}),
-  });
+  let job: Job;
+  try {
+    job = await deps.jobs.insert(userId, {
+      sourceId: source.id,
+      params: body.params,
+      idempotencyKey: body.idempotencyKey,
+      status: "processing",
+      phase: "submitting",
+      deadlineAt: deadlineFor(clipSeconds, deps.config, now()),
+      ...(body.retryOfJobId ? { retryOfJobId: body.retryOfJobId } : {}),
+    });
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    // Two requests raced past the idempotency check above and both reached
+    // insert; the unique {userId, idempotencyKey} index rejected the loser.
+    // Re-read and return the winner's job so the same idempotencyKey still
+    // yields one job under genuine concurrency, not only when requests
+    // happen to be sequential.
+    const winner = await deps.jobs.findByIdempotencyKey(userId, body.idempotencyKey);
+    if (!winner) throw error;
+    return { job: toJobView(winner) };
+  }
 
   if (retryOf) await deps.jobs.markSuperseded(retryOf.id, job.id);
 
+  let magicHourId: string;
   try {
-    const { magicHourId } = await deps.magicHour.createJob({
+    ({ magicHourId } = await deps.magicHour.createJob({
       jobId: job.id,
       videoUrl: source.cloudinaryUrl,
       params: body.params,
-    });
-    const attached = await deps.jobs.attachMagicHourId(job.id, magicHourId);
-    const queued = await deps.jobs.setPhase(job.id, "queued");
-    return { job: toJobView(queued ?? attached ?? job) };
+    }));
   } catch (error) {
     if (error instanceof AppError && error.details?.definite === true) {
       // The provider did not take the job: mark it failed so it shows in
@@ -79,10 +99,26 @@ export async function startTransform(
       });
       throw error;
     }
-    // Uncertain outcome (timeout, dropped connection, 5xx): the job may
-    // still be running at Magic Hour, so it stays processing/submitting and
-    // is reconciled later. The caller still gets a 202.
+    // Uncertain outcome (timeout, dropped connection, 5xx) — and, deliberately,
+    // any error that is not an AppError at all: when we cannot tell whether
+    // the provider took the job, the safe default is to assume it might have,
+    // so the job stays processing/submitting for later reconciliation rather
+    // than being marked failed on a guess. The caller still gets a 202.
     await deps.jobs.setLastError(job.id, errorMessage(error));
+    return { job: toJobView(job) };
+  }
+
+  // The provider accepted the job — it is live (and billing) now. Recording
+  // its id and phase here is best-effort: a lost magicHourId is recoverable
+  // by design (the provider job name embeds v2v:<jobId>, and the webhook's
+  // name-fallback attach recovers exactly this case), so a failure in this
+  // step must not be treated as a failed submission. The job really was
+  // accepted, and that is the only honest thing to report.
+  try {
+    const attached = await deps.jobs.attachMagicHourId(job.id, magicHourId);
+    const queued = await deps.jobs.setPhase(job.id, "queued");
+    return { job: toJobView(queued ?? attached ?? job) };
+  } catch {
     return { job: toJobView(job) };
   }
 }

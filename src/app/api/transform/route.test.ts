@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { ObjectId } from "mongodb";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { transformRequestSchema } from "@/lib/transform-contract";
 import { transformResponseSchema } from "@/lib/transform-contract";
 import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
 import { AppError } from "@/server/errors/app-error";
 import type { MagicHourAdapter, Providers } from "@/server/providers/types";
+import { ensureIndexes } from "@/server/repositories/indexes";
+import { createJobsRepository } from "@/server/repositories/jobs";
+import { createRateLimitHitsRepository } from "@/server/repositories/rate-limit-hits";
 import { createSourcesRepository } from "@/server/repositories/sources";
+import { createRateLimiter } from "@/server/services/rate-limit";
 import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
 import { apiRequest, identityCookie } from "@/test/requests";
@@ -92,6 +96,12 @@ async function jobDoc(id: string) {
   return db.collection("jobs").findOne({ _id: new ObjectId(id) });
 }
 
+// The unique {userId, idempotencyKey} index is what the concurrent-request
+// test below relies on to reproduce the duplicate-key race; it is only
+// created out-of-band in production (scripts/create-indexes.ts), so the test
+// database needs it set up explicitly.
+beforeAll(async () => ensureIndexes(await getDb()));
+
 beforeEach(async () => {
   const db = await getDb();
   await Promise.all(
@@ -115,6 +125,42 @@ describe("POST /api/transform", () => {
     const saved = await jobDoc(body.job.id);
     expect(saved).toMatchObject({ status: "processing", phase: "queued" });
     expect(typeof saved?.magicHourId).toBe("string");
+  });
+
+  it("returns 202 with the job as inserted when the provider accepts the job but persisting its id fails", async () => {
+    const source = await insertSource(userId);
+    const db = await getDb();
+    setServerDepsForTests({
+      config: testConfig,
+      sources: createSourcesRepository(() => Promise.resolve(db)),
+      jobs: {
+        ...createJobsRepository(() => Promise.resolve(db)),
+        // Simulates a database blip landing right after a successful create:
+        // the job is already live at Magic Hour, so this must not be treated
+        // as a failed submission.
+        attachMagicHourId: () => Promise.reject(new AppError("DATABASE_UNAVAILABLE")),
+      },
+      rateLimiter: createRateLimiter(createRateLimitHitsRepository(() => Promise.resolve(db))),
+      uploadcare: unusedUploadcare,
+      cloudinary: unusedCloudinary,
+      magicHour: {
+        createJob,
+        getJobDetails: () => Promise.reject(new Error("unused")),
+        verifyWebhook: () => {
+          throw new Error("unused");
+        },
+      },
+    });
+
+    const response = await transform(makeBody(source.id));
+    expect(response.status).toBe(202);
+    const body = transformResponseSchema.parse(await response.json());
+    expect(body.job.status).toBe("processing");
+    expect(body.job.phase).toBe("submitting");
+
+    const saved = await jobDoc(body.job.id);
+    expect(saved).toMatchObject({ status: "processing", phase: "submitting" });
+    expect(saved?.magicHourId).toBeUndefined();
   });
 
   it("keeps the job row before calling the provider: a definite rejection still leaves a failed record", async () => {
@@ -146,6 +192,27 @@ describe("POST /api/transform", () => {
     expect(secondJob.id).toBe(firstJob.id);
     expect(createJob).toHaveBeenCalledTimes(1);
     expect(await (await getDb()).collection("jobs").countDocuments()).toBe(1);
+  });
+
+  it("returns 202 for both requests when two genuinely concurrent submissions share an idempotencyKey", async () => {
+    const source = await insertSource(userId);
+    const body = makeBody(source.id);
+    // Both requests race past the idempotency read above before either has
+    // inserted; the unique {userId, idempotencyKey} index then rejects the
+    // loser's insert, which must be turned back into the winner's 202, not
+    // a 500.
+    const [first, second] = await Promise.all([transform(body), transform(body)]);
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    const firstJob = transformResponseSchema.parse(await first.json()).job;
+    const secondJob = transformResponseSchema.parse(await second.json()).job;
+    expect(firstJob.id).toBe(secondJob.id);
+    expect(createJob).toHaveBeenCalledTimes(1);
+
+    const db = await getDb();
+    expect(
+      await db.collection("jobs").countDocuments({ idempotencyKey: body.idempotencyKey }),
+    ).toBe(1);
   });
 
   it("returns 404 SOURCE_NOT_FOUND when the source belongs to another user", async () => {
