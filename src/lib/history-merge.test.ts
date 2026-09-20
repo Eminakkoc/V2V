@@ -1,0 +1,342 @@
+import { describe, expect, it } from "vitest";
+import type { AttemptView, HistoryJobView } from "./history-contract";
+import { mergeRefreshed, sortKeyOf } from "./history-merge";
+import type { MergeRefreshedOptions } from "./history-merge";
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const key of Object.keys(value as object)) {
+      deepFreeze((value as Record<string, unknown>)[key]);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+let autoId = 0;
+
+type JobOverrides = Partial<Omit<HistoryJobView, "params">> & {
+  params?: Partial<HistoryJobView["params"]>;
+};
+
+// Every fixture is deep-frozen: if mergeRefreshed ever wrote to a row it was
+// handed, the write would throw immediately (modules run as strict-mode ESM),
+// rather than silently succeeding and only showing up if a test happened to
+// re-inspect the input afterwards.
+function job(overrides: JobOverrides = {}): HistoryJobView {
+  autoId += 1;
+  const base: HistoryJobView = {
+    id: `job-${autoId}`,
+    sourceId: "source-1",
+    status: "complete",
+    phase: "rendering",
+    params: {
+      name: "Clip",
+      startSeconds: 0,
+      endSeconds: 5,
+      fpsResolution: "HALF",
+      artStyle: "Anime Warrior",
+      promptType: "default",
+      model: "default",
+      version: "default",
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    deadlineAt: "2026-01-01T00:10:00.000Z",
+    source: null,
+    attempts: [],
+  };
+  return deepFreeze({
+    ...base,
+    ...overrides,
+    params: { ...base.params, ...overrides.params },
+  } as HistoryJobView);
+}
+
+type AttemptOverrides = Partial<Omit<AttemptView, "params">> & {
+  params?: Partial<AttemptView["params"]>;
+};
+
+function attempt(overrides: AttemptOverrides = {}): AttemptView {
+  const built = job(overrides);
+  return {
+    id: built.id,
+    sourceId: built.sourceId,
+    status: built.status,
+    phase: built.phase,
+    params: built.params,
+    createdAt: built.createdAt,
+    deadlineAt: built.deadlineAt,
+    ...(built.completedAt !== undefined ? { completedAt: built.completedAt } : {}),
+    ...(built.output !== undefined ? { output: built.output } : {}),
+    ...(built.creditsCharged !== undefined ? { creditsCharged: built.creditsCharged } : {}),
+    ...(built.errorCode !== undefined ? { errorCode: built.errorCode } : {}),
+    ...(built.errorMessage !== undefined ? { errorMessage: built.errorMessage } : {}),
+    ...(built.retryOfJobId !== undefined ? { retryOfJobId: built.retryOfJobId } : {}),
+    ...(built.supersededByJobId !== undefined
+      ? { supersededByJobId: built.supersededByJobId }
+      : {}),
+  };
+}
+
+const T1 = "2026-01-01T00:00:00.000Z";
+const T2 = "2026-01-01T02:00:00.000Z";
+const T3 = "2026-01-01T03:00:00.000Z";
+
+function options(overrides: Partial<MergeRefreshedOptions> = {}): MergeRefreshedOptions {
+  return {
+    sort: "createdAt",
+    dir: "desc",
+    filter: {},
+    includePrevious: false,
+    hasMore: false,
+    ...overrides,
+  };
+}
+
+describe("sortKeyOf", () => {
+  it("keys the createdAt sort on the creation timestamp twice, then the id", () => {
+    const row = job({ id: "x", createdAt: T2 });
+    expect(sortKeyOf(row, "createdAt")).toEqual([Date.parse(T2), Date.parse(T2), "x"]);
+  });
+
+  it("keys the duration sort on the clip length, rounded past float drift", () => {
+    // 4.3 - 1.1 is 3.1999999999999997 in binary floating point.
+    const row = job({ id: "x", createdAt: T1, params: { startSeconds: 1.1, endSeconds: 4.3 } });
+    expect(sortKeyOf(row, "duration")).toEqual([3.2, Date.parse(T1), "x"]);
+  });
+});
+
+describe("mergeRefreshed: replace loaded rows by id", () => {
+  it("replaces an already-loaded row's content without appending a duplicate", () => {
+    const a = job({ id: "a", createdAt: T3, status: "processing" });
+    const b = job({ id: "b", createdAt: T1, status: "processing" });
+    const aRefreshed = job({ id: "a", createdAt: T3, status: "complete" });
+
+    const merged = mergeRefreshed([a, b], [aRefreshed], options());
+
+    expect(merged.map((r) => r.id)).toEqual(["a", "b"]);
+    expect(merged.find((r) => r.id === "a")?.status).toBe("complete");
+  });
+});
+
+describe("mergeRefreshed: superseded rows fold into their latest job's attempts", () => {
+  it("updates the matching attempt inside the latest job instead of surfacing as a top-level card", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      status: "processing",
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "latest",
+      errorMessage: "final reason",
+    });
+
+    // filter: {} matches every status, including superseded -- so if the
+    // superseded special case were dropped, old-1 would fall through to the
+    // generic "not loaded, matches filter" path and be inserted top-level.
+    const merged = mergeRefreshed([latest], [refreshedOld], options({ filter: {} }));
+
+    expect(merged.map((r) => r.id)).toEqual(["latest"]);
+    const attempts = merged[0]!.attempts;
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.status).toBe("superseded");
+    expect(attempts[0]?.errorMessage).toBe("final reason");
+  });
+
+  it("removes a row from the top level once it refreshes as superseded, even though it was loaded there before", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    // old-1 was itself loaded as a top-level card (e.g. from a prior fetch,
+    // before the retry that superseded it landed).
+    const oldTopLevel = job({ id: "old-1", createdAt: T1, status: "processing" });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "latest",
+    });
+
+    const merged = mergeRefreshed([oldTopLevel, latest], [refreshedOld], options({ filter: {} }));
+
+    expect(merged.map((r) => r.id)).toEqual(["latest"]);
+  });
+
+  it("drops a superseded row rather than showing it top-level when its latest job is not loaded", () => {
+    const refreshedOld = job({
+      id: "old-1",
+      status: "superseded",
+      supersededByJobId: "not-loaded",
+    });
+
+    const merged = mergeRefreshed([], [refreshedOld], options({ filter: {} }));
+
+    expect(merged).toEqual([]);
+  });
+});
+
+describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
+  it("inserts a fresh row at its sort position when it falls inside the loaded window", () => {
+    const newest = job({ id: "newest", createdAt: T3 });
+    const oldest = job({ id: "oldest", createdAt: T1 });
+    const middle = job({ id: "middle", createdAt: T2 });
+
+    // hasMore: true on purpose -- middle sorts before the last loaded row
+    // (oldest), so it belongs inside the window regardless of more pages.
+    const merged = mergeRefreshed([newest, oldest], [middle], options({ hasMore: true }));
+
+    expect(merged.map((r) => r.id)).toEqual(["newest", "middle", "oldest"]);
+  });
+
+  it("leaves a fresh row for load-more when it sorts after the last loaded row and more pages remain", () => {
+    const a = job({ id: "a", createdAt: T3 });
+    const b = job({ id: "b", createdAt: T2 });
+    const c = job({ id: "c", createdAt: T1 });
+
+    const merged = mergeRefreshed([a, b], [c], options({ hasMore: true }));
+
+    expect(merged.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("inserts that same trailing row once hasMore is false, since nothing remains missing", () => {
+    const a = job({ id: "a", createdAt: T3 });
+    const b = job({ id: "b", createdAt: T2 });
+    const c = job({ id: "c", createdAt: T1 });
+
+    const merged = mergeRefreshed([a, b], [c], options({ hasMore: false }));
+
+    expect(merged.map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("does not insert a fresh row that fails the active status filter", () => {
+    const a = job({ id: "a", createdAt: T3, status: "processing" });
+    const b = job({ id: "b", createdAt: T1, status: "complete" });
+
+    const merged = mergeRefreshed([a], [b], options({ filter: { statusBucket: "in-progress" } }));
+
+    expect(merged.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("does not insert a fresh row whose art style fails the active style filter", () => {
+    const a = job({ id: "a", createdAt: T3 });
+    const b = job({ id: "b", createdAt: T1, params: { artStyle: "Naruto" } });
+
+    const merged = mergeRefreshed([a], [b], options({ style: "Anime Warrior" }));
+
+    expect(merged.map((r) => r.id)).toEqual(["a"]);
+  });
+});
+
+describe("mergeRefreshed: loaded rows are never evicted by the filter", () => {
+  it("keeps a loaded row in place once its refreshed status stops matching the active filter", () => {
+    const a = job({ id: "a", status: "processing" });
+    const aRefreshed = job({ id: "a", status: "complete" });
+
+    const merged = mergeRefreshed(
+      [a],
+      [aRefreshed],
+      options({ filter: { statusBucket: "in-progress" } }),
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(["a"]);
+    expect(merged[0]?.status).toBe("complete");
+  });
+});
+
+describe("mergeRefreshed: idempotency", () => {
+  it("produces no duplicates, top-level or nested, when the same refresh batch is applied twice", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    const refreshedOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "superseded",
+      supersededByJobId: "latest",
+    });
+    const fresh = job({ id: "fresh", createdAt: T2, status: "processing" });
+    const refreshed = [refreshedOld, fresh];
+    const opts = options({ filter: {}, hasMore: false });
+
+    const once = mergeRefreshed([latest], refreshed, opts);
+    const twice = mergeRefreshed(once, refreshed, opts);
+
+    expect(twice).toEqual(once);
+    const ids = once.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const nestedIds = once.find((r) => r.id === "latest")!.attempts.map((a) => a.id);
+    expect(new Set(nestedIds).size).toBe(nestedIds.length);
+  });
+});
+
+describe("mergeRefreshed: ordering", () => {
+  it("orders by clip length rather than creation time under the duration sort", () => {
+    // Clip lengths run opposite to creation order, so a bug that used
+    // createdAt for the duration sort would produce the reverse of this.
+    const short = job({ id: "short", createdAt: T3, params: { startSeconds: 0, endSeconds: 2 } });
+    const medium = job({ id: "medium", createdAt: T2, params: { startSeconds: 0, endSeconds: 5 } });
+    const long = job({ id: "long", createdAt: T1, params: { startSeconds: 0, endSeconds: 9 } });
+
+    const merged = mergeRefreshed(
+      [],
+      [long, short, medium],
+      options({ sort: "duration", dir: "asc" }),
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(["short", "medium", "long"]);
+  });
+
+  it("reverses the duration order under the descending direction", () => {
+    const short = job({ id: "short", createdAt: T3, params: { startSeconds: 0, endSeconds: 2 } });
+    const medium = job({ id: "medium", createdAt: T2, params: { startSeconds: 0, endSeconds: 5 } });
+    const long = job({ id: "long", createdAt: T1, params: { startSeconds: 0, endSeconds: 9 } });
+
+    const merged = mergeRefreshed(
+      [],
+      [long, short, medium],
+      options({ sort: "duration", dir: "desc" }),
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(["long", "medium", "short"]);
+  });
+
+  it("orders ascending by creation time under the createdAt sort", () => {
+    const a = job({ id: "a", createdAt: T3 });
+    const b = job({ id: "b", createdAt: T1 });
+    const c = job({ id: "c", createdAt: T2 });
+
+    const merged = mergeRefreshed([], [a, b, c], options({ sort: "createdAt", dir: "asc" }));
+
+    expect(merged.map((r) => r.id)).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("mergeRefreshed: purity", () => {
+  it("never mutates the loaded or refreshed arrays, or the rows inside them", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
+    });
+    const loaded = [latest];
+    const refreshed = [
+      job({ id: "old-1", createdAt: T1, status: "superseded", supersededByJobId: "latest" }),
+      job({ id: "fresh", createdAt: T2 }),
+    ];
+    const loadedSnapshot = structuredClone(loaded);
+    const refreshedSnapshot = structuredClone(refreshed);
+
+    mergeRefreshed(loaded, refreshed, options({ filter: {} }));
+
+    expect(loaded).toEqual(loadedSnapshot);
+    expect(refreshed).toEqual(refreshedSnapshot);
+  });
+});
