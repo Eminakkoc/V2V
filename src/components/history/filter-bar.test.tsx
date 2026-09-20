@@ -131,12 +131,159 @@ describe("FilterBar", () => {
       expect(router.push).toHaveBeenCalledWith("/history?statusBucket=taking-longer");
     });
 
-    it("traps focus inside the sheet while it is open", () => {
+    describe("the radiogroup chips' keyboard model", () => {
+      function openDialog(props: Partial<FilterBarProps> = {}) {
+        render(<FilterBar {...defaultProps(props)} />);
+        fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+        return screen.getByRole("dialog");
+      }
+
+      it("puts only the checked chip in the tab order; every other chip is tabIndex -1", () => {
+        const dialog = openDialog({ statusBucket: "complete" });
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        const radios = within(statusGroup).getAllByRole("radio");
+
+        const tabbable = radios.filter((radio) => radio.getAttribute("tabindex") === "0");
+        expect(tabbable).toHaveLength(1);
+        expect(tabbable[0]).toHaveTextContent("Complete");
+        for (const radio of radios) {
+          if (radio !== tabbable[0]) expect(radio).toHaveAttribute("tabindex", "-1");
+        }
+      });
+
+      it("makes the first chip (All) the tab stop when nothing is checked yet", () => {
+        const dialog = openDialog();
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        expect(within(statusGroup).getByRole("radio", { name: "All" })).toHaveAttribute(
+          "tabindex",
+          "0",
+        );
+        for (const radio of within(statusGroup)
+          .getAllByRole("radio")
+          .filter((radio) => radio.textContent !== "All")) {
+          expect(radio).toHaveAttribute("tabindex", "-1");
+        }
+      });
+
+      it("ArrowRight moves focus to the next chip and selects it -- the same navigation a click triggers", () => {
+        const dialog = openDialog();
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        const all = within(statusGroup).getByRole("radio", { name: "All" });
+        const inProgress = within(statusGroup).getByRole("radio", { name: "In progress" });
+
+        all.focus();
+        fireEvent.keyDown(all, { key: "ArrowRight" });
+
+        expect(document.activeElement).toBe(inProgress);
+        expect(router.push).toHaveBeenCalledWith("/history?statusBucket=in-progress");
+      });
+
+      it("ArrowLeft moves focus to the previous chip and selects it", () => {
+        const dialog = openDialog({ statusBucket: "in-progress" });
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        const inProgress = within(statusGroup).getByRole("radio", { name: "In progress" });
+        const all = within(statusGroup).getByRole("radio", { name: "All" });
+
+        inProgress.focus();
+        fireEvent.keyDown(inProgress, { key: "ArrowLeft" });
+
+        expect(document.activeElement).toBe(all);
+        expect(router.push).toHaveBeenCalledWith("/history");
+      });
+
+      it("wraps ArrowRight from the last chip to the first, and ArrowLeft from the first to the last", () => {
+        const dialog = openDialog();
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        const all = within(statusGroup).getByRole("radio", { name: "All" });
+        const failed = within(statusGroup).getByRole("radio", { name: "Failed" });
+
+        failed.focus();
+        fireEvent.keyDown(failed, { key: "ArrowRight" });
+        expect(document.activeElement).toBe(all);
+        expect(router.push).toHaveBeenLastCalledWith("/history");
+
+        all.focus();
+        fireEvent.keyDown(all, { key: "ArrowLeft" });
+        expect(document.activeElement).toBe(failed);
+        expect(router.push).toHaveBeenLastCalledWith("/history?statusBucket=failed");
+      });
+
+      it("Home and End jump to the first and last chip and select it", () => {
+        const dialog = openDialog();
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        const all = within(statusGroup).getByRole("radio", { name: "All" });
+        const failed = within(statusGroup).getByRole("radio", { name: "Failed" });
+
+        all.focus();
+        fireEvent.keyDown(all, { key: "End" });
+        expect(document.activeElement).toBe(failed);
+        expect(router.push).toHaveBeenLastCalledWith("/history?statusBucket=failed");
+
+        fireEvent.keyDown(failed, { key: "Home" });
+        expect(document.activeElement).toBe(all);
+        expect(router.push).toHaveBeenLastCalledWith("/history");
+      });
+
+      it("Space and Enter (re)select the focused chip", () => {
+        const dialog = openDialog();
+        const statusGroup = within(dialog).getByRole("radiogroup", { name: "Status" });
+        const complete = within(statusGroup).getByRole("radio", { name: "Complete" });
+
+        complete.focus();
+        fireEvent.keyDown(complete, { key: " " });
+        expect(router.push).toHaveBeenLastCalledWith("/history?statusBucket=complete");
+
+        fireEvent.keyDown(complete, { key: "Enter" });
+        expect(router.push).toHaveBeenLastCalledWith("/history?statusBucket=complete");
+      });
+
+      it("applies the same keyboard model to the Style radiogroup", () => {
+        const dialog = openDialog();
+        const styleGroup = within(dialog).getByRole("radiogroup", { name: "Style" });
+        const allStyles = within(styleGroup).getByRole("radio", { name: "All styles" });
+        const firstStyle = within(styleGroup).getByRole("radio", { name: "3D Render" });
+
+        allStyles.focus();
+        fireEvent.keyDown(allStyles, { key: "ArrowRight" });
+
+        expect(document.activeElement).toBe(firstStyle);
+        expect(router.push).toHaveBeenCalledWith("/history?style=3D+Render");
+      });
+    });
+
+    it("starts with focus inside the sheet once it opens", () => {
       render(<FilterBar {...defaultProps()} />);
       fireEvent.click(screen.getByRole("button", { name: "Filter" }));
 
       const dialog = screen.getByRole("dialog");
       expect(dialog.contains(document.activeElement)).toBe(true);
+    });
+
+    it("traps focus inside the sheet -- moving focus outside it is pulled straight back in", () => {
+      // jsdom has no native Tab-key focus traversal to hijack, so this
+      // exercises Radix FocusScope's real trap mechanism directly: it
+      // watches `focusin` on the document and, whenever the new target
+      // isn't inside the trapped container, refocuses back inside. A
+      // literal Tab keydown would not move focus anywhere under jsdom in
+      // the first place, so it could never show escape being prevented --
+      // this does the one thing that actually would move focus out.
+      const outside = document.createElement("button");
+      outside.textContent = "Outside the sheet";
+      document.body.appendChild(outside);
+
+      try {
+        render(<FilterBar {...defaultProps()} />);
+        fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+        const dialog = screen.getByRole("dialog");
+        expect(dialog.contains(document.activeElement)).toBe(true);
+
+        outside.focus();
+
+        expect(document.activeElement).not.toBe(outside);
+        expect(dialog.contains(document.activeElement)).toBe(true);
+      } finally {
+        outside.remove();
+      }
     });
 
     it("returns focus to the Filter button once the sheet is closed with its close button", async () => {

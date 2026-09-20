@@ -84,7 +84,7 @@ describe("UploadsPanel", () => {
     expect(withoutMore.querySelector("button")).toBeNull();
   });
 
-  it("never shows more than one Load more button while sources are still loading in", () => {
+  it("clicking Load more calls the callback exactly once", () => {
     const onLoadMore = vi.fn();
     render(
       <UploadsPanel
@@ -97,6 +97,26 @@ describe("UploadsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows exactly one Load more button, even as more sources load in", () => {
+    const { rerender } = render(
+      <UploadsPanel sources={[buildSource()]} cloudName="demo" hasMore={true} />,
+    );
+    expect(screen.getAllByRole("button", { name: /load more/i })).toHaveLength(1);
+
+    // Simulates a completed load-more cycle appending rows -- the button
+    // must stay singular rather than one appearing per row (which is what
+    // it would render as if it lived inside the sources.map() instead of
+    // after it).
+    rerender(
+      <UploadsPanel
+        sources={[buildSource(), buildSource(), buildSource()]}
+        cloudName="demo"
+        hasMore={true}
+      />,
+    );
+    expect(screen.getAllByRole("button", { name: /load more/i })).toHaveLength(1);
   });
 
   it("disables Load more while a page is already loading", () => {

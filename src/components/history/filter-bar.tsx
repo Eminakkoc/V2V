@@ -8,14 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { BUCKET_LABELS, STATUS_BUCKETS, type StatusBucket } from "@/lib/history-filters";
 import { ART_STYLES, type ArtStyle } from "@/lib/magic-hour-styles";
-import { buildFilterHref, FilterSheet, SORT_OPTIONS } from "./filter-sheet";
+import { buildFilterHref, FilterSheet, SORT_OPTIONS, sortValueOf } from "./filter-sheet";
 
 const ALL_STATUS_VALUE = "all";
 const ALL_STYLE_VALUE = "all";
-
-function sortValueOf(sort: "createdAt" | "duration", dir: "asc" | "desc"): string {
-  return `${sort}:${dir}`;
-}
 
 export type FilterBarProps = {
   statusBucket?: StatusBucket;

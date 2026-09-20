@@ -1,7 +1,7 @@
 "use client";
 
 import { XIcon } from "lucide-react";
-import { useId } from "react";
+import { useId, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -34,7 +34,11 @@ export const SORT_OPTIONS: readonly SortOption[] = [
   { sort: "duration", dir: "asc", label: "Shortest clip first" },
 ];
 
-function sortValueOf(sort: "createdAt" | "duration", dir: "asc" | "desc"): string {
+// Exported (not local to filter-bar.tsx too) so both the inline desktop
+// Select and this file's own Select share one mapping from a (sort, dir)
+// pair to a single string value -- two copies is how they would drift into
+// disagreeing about what a sort value means.
+export function sortValueOf(sort: "createdAt" | "duration", dir: "asc" | "desc"): string {
   return `${sort}:${dir}`;
 }
 
@@ -57,30 +61,116 @@ export function buildFilterHref(
   return query ? `/history?${query}` : "/history";
 }
 
-function RadioChip({
-  checked,
-  onSelect,
-  children,
+type RadioChipOption<T> = {
+  value: T;
+  label: string;
+};
+
+// A role="radiogroup" of role="radio" chips (F18) with the APG radio-group
+// keyboard model, which a bare aria-checked toggle does not get for free:
+//
+//   - Roving tabindex: exactly one chip is a Tab stop -- the checked one,
+//     or the first when none is checked -- so Tab enters and leaves the
+//     group in one stop each way instead of once per chip.
+//   - ArrowRight/ArrowDown and ArrowLeft/ArrowUp move focus to the next or
+//     previous chip, wrapping at the ends; Home/End jump to the first or
+//     last chip.
+//   - Selection follows focus: landing on a chip by arrow key selects it
+//     immediately (the same navigation a click triggers), matching the
+//     native <input type="radio"> group model the role announces.
+//   - Space/Enter (re)select the focused chip.
+//
+// A screen reader announces role="radio" as "this is a radio group, arrow
+// keys move between options" -- without this, the arrow keys silently do
+// nothing, which is worse than not claiming the role at all.
+function RadioChipGroup<T extends string>({
+  labelId,
+  options,
+  value,
+  onChange,
 }: {
-  checked: boolean;
-  onSelect: () => void;
-  children: React.ReactNode;
+  labelId: string;
+  options: readonly RadioChipOption<T | undefined>[];
+  value: T | undefined;
+  onChange: (value: T | undefined) => void;
 }) {
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const checkedIndex = options.findIndex((option) => option.value === value);
+  const tabbableIndex = checkedIndex === -1 ? 0 : checkedIndex;
+
+  function selectAndFocus(index: number) {
+    const option = options[index];
+    if (!option) return;
+    onChange(option.value);
+    buttonRefs.current[index]?.focus();
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    // The moved-to/activated chip is found from the event target itself,
+    // not from `checkedIndex` -- `value` is a prop the URL controls, and in
+    // a chain of key presses it may not have caught up with where focus
+    // already moved to on an earlier press in the same chain.
+    const currentIndex = buttonRefs.current.indexOf(event.currentTarget);
+    if (currentIndex === -1) return;
+    const lastIndex = options.length - 1;
+
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        event.preventDefault();
+        selectAndFocus(currentIndex === lastIndex ? 0 : currentIndex + 1);
+        return;
+      case "ArrowLeft":
+      case "ArrowUp":
+        event.preventDefault();
+        selectAndFocus(currentIndex === 0 ? lastIndex : currentIndex - 1);
+        return;
+      case "Home":
+        event.preventDefault();
+        selectAndFocus(0);
+        return;
+      case "End":
+        event.preventDefault();
+        selectAndFocus(lastIndex);
+        return;
+      case " ":
+      case "Enter":
+        event.preventDefault();
+        selectAndFocus(currentIndex);
+        return;
+      default:
+        return;
+    }
+  }
+
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={checked}
-      onClick={onSelect}
-      className={cn(
-        "min-h-11 min-w-11 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-hidden",
-        checked
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-input bg-background text-foreground hover:bg-muted",
-      )}
-    >
-      {children}
-    </button>
+    <div role="radiogroup" aria-labelledby={labelId} className="flex flex-wrap gap-2">
+      {options.map((option, index) => {
+        const checked = option.value === value;
+        return (
+          <button
+            key={option.label}
+            ref={(element) => {
+              buttonRefs.current[index] = element;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            tabIndex={index === tabbableIndex ? 0 : -1}
+            onClick={() => onChange(option.value)}
+            onKeyDown={handleKeyDown}
+            className={cn(
+              "min-h-11 min-w-11 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-hidden",
+              checked
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-input bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -155,49 +245,34 @@ export function FilterSheet({
             <span id={statusLabelId} className="text-sm font-medium">
               Status
             </span>
-            <div role="radiogroup" aria-labelledby={statusLabelId} className="flex flex-wrap gap-2">
-              <RadioChip
-                checked={statusBucket === undefined}
-                onSelect={() => navigate({ statusBucket: undefined })}
-              >
-                All
-              </RadioChip>
-              {STATUS_BUCKETS.map((bucket) => (
-                <RadioChip
-                  key={bucket}
-                  checked={statusBucket === bucket}
-                  onSelect={() => navigate({ statusBucket: bucket })}
-                >
-                  {BUCKET_LABELS[bucket]}
-                </RadioChip>
-              ))}
-            </div>
+            <RadioChipGroup
+              labelId={statusLabelId}
+              options={[
+                { value: undefined, label: "All" },
+                ...STATUS_BUCKETS.map((bucket) => ({
+                  value: bucket,
+                  label: BUCKET_LABELS[bucket],
+                })),
+              ]}
+              value={statusBucket}
+              onChange={(nextValue) => navigate({ statusBucket: nextValue })}
+            />
           </div>
 
           <div className="flex flex-col gap-2">
             <span id={styleLabelId} className="text-sm font-medium">
               Style
             </span>
-            <div
-              role="radiogroup"
-              aria-labelledby={styleLabelId}
-              className="flex max-h-48 flex-wrap gap-2 overflow-y-auto"
-            >
-              <RadioChip
-                checked={style === undefined}
-                onSelect={() => navigate({ style: undefined })}
-              >
-                All styles
-              </RadioChip>
-              {ART_STYLES.map((artStyle) => (
-                <RadioChip
-                  key={artStyle}
-                  checked={style === artStyle}
-                  onSelect={() => navigate({ style: artStyle })}
-                >
-                  {artStyle}
-                </RadioChip>
-              ))}
+            <div className="max-h-48 overflow-y-auto">
+              <RadioChipGroup
+                labelId={styleLabelId}
+                options={[
+                  { value: undefined, label: "All styles" },
+                  ...ART_STYLES.map((artStyle) => ({ value: artStyle, label: artStyle })),
+                ]}
+                value={style}
+                onChange={(nextValue) => navigate({ style: nextValue })}
+              />
             </div>
           </div>
 
