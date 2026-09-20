@@ -3,7 +3,12 @@ import { uploadResponseSchema } from "@/lib/upload-contract";
 import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
 import { AppError } from "@/server/errors/app-error";
 import { createCloudinaryAdapter, type CloudinaryUpload } from "@/server/providers/cloudinary";
-import type { Providers, UploadcareAdapter, UploadcareFileInfo } from "@/server/providers/types";
+import type {
+  MagicHourAdapter,
+  Providers,
+  UploadcareAdapter,
+  UploadcareFileInfo,
+} from "@/server/providers/types";
 import { createJobsRepository } from "@/server/repositories/jobs";
 import { createDbGetter } from "@/server/repositories/mongo-client";
 import { createRateLimitHitsRepository } from "@/server/repositories/rate-limit-hits";
@@ -39,6 +44,15 @@ const stored = {
 let getFileInfo: ReturnType<typeof vi.fn<UploadcareAdapter["getFileInfo"]>>;
 let cloudinaryUpload: ReturnType<typeof vi.fn<CloudinaryUpload>>;
 
+// The upload route never touches Magic Hour; this stub only satisfies the type.
+const unusedMagicHour: MagicHourAdapter = {
+  createJob: () => Promise.reject(new Error("unused")),
+  getJobDetails: () => Promise.reject(new Error("unused")),
+  verifyWebhook: () => {
+    throw new Error("unused");
+  },
+};
+
 function useDeps() {
   const providers: Providers = {
     uploadcare: { getFileInfo },
@@ -46,6 +60,7 @@ function useDeps() {
       upload: cloudinaryUpload,
       sleep: async () => {},
     }),
+    magicHour: unusedMagicHour,
   };
   setServerDepsForTests(buildServerDeps(testConfig, { getDb, providers }));
 }
@@ -222,6 +237,7 @@ describe("POST /api/upload", () => {
         upload: cloudinaryUpload,
         sleep: async () => {},
       }),
+      magicHour: unusedMagicHour,
     });
     const response = await upload();
     expect(response.status).toBe(500);
@@ -237,7 +253,11 @@ describe("POST /api/upload", () => {
     setServerDepsForTests(
       buildServerDeps(testConfig, {
         getDb: unreachable,
-        providers: { uploadcare: { getFileInfo }, cloudinary: { copyVideoFromUrl: vi.fn() } },
+        providers: {
+          uploadcare: { getFileInfo },
+          cloudinary: { copyVideoFromUrl: vi.fn() },
+          magicHour: unusedMagicHour,
+        },
       }),
     );
     const response = await upload();

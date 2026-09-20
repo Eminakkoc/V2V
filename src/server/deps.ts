@@ -2,7 +2,13 @@ import "server-only";
 import { getConfig, type AppConfig } from "@/config/env";
 import { createCloudinaryAdapter } from "@/server/providers/cloudinary";
 import { createFakeProviders } from "@/server/providers/fakes";
-import type { CloudinaryAdapter, Providers, UploadcareAdapter } from "@/server/providers/types";
+import { createMagicHourAdapter } from "@/server/providers/magic-hour";
+import type {
+  CloudinaryAdapter,
+  MagicHourAdapter,
+  Providers,
+  UploadcareAdapter,
+} from "@/server/providers/types";
 import { createUploadcareAdapter } from "@/server/providers/uploadcare";
 import { createJobsRepository, type JobsRepository } from "@/server/repositories/jobs";
 import { createDbGetter, type DbGetter } from "@/server/repositories/mongo-client";
@@ -17,6 +23,7 @@ export type ServerDeps = {
   rateLimiter: RateLimiter;
   uploadcare: UploadcareAdapter;
   cloudinary: CloudinaryAdapter;
+  magicHour: MagicHourAdapter;
 };
 
 type BuildOptions = { getDb?: DbGetter; providers?: Providers };
@@ -24,10 +31,15 @@ type BuildOptions = { getDb?: DbGetter; providers?: Providers };
 let deps: ServerDeps | undefined;
 
 function createProviders(config: AppConfig): Providers {
-  if (config.providerMode === "fake") return createFakeProviders(config.cloudinary.cloudName);
+  if (config.providerMode === "fake") {
+    // Passing the real configured secret keeps fake-mode webhook verification
+    // meaningful: e2e signs deliveries with this same secret.
+    return createFakeProviders(config.cloudinary.cloudName, config.magicHour.webhookSecret);
+  }
   return {
     uploadcare: createUploadcareAdapter(config.uploadcare),
     cloudinary: createCloudinaryAdapter(config.cloudinary),
+    magicHour: createMagicHourAdapter(config.magicHour),
   };
 }
 
@@ -41,6 +53,7 @@ export function buildServerDeps(config: AppConfig, options: BuildOptions = {}): 
     rateLimiter: createRateLimiter(createRateLimitHitsRepository(getDb)),
     uploadcare: providers.uploadcare,
     cloudinary: providers.cloudinary,
+    magicHour: providers.magicHour,
   };
 }
 

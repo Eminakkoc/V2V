@@ -18,9 +18,17 @@ describe("buildServerDeps", () => {
     const providers = {
       uploadcare: { getFileInfo: async () => Promise.reject(new Error("unused")) },
       cloudinary: { copyVideoFromUrl: async () => Promise.reject(new Error("unused")) },
+      magicHour: {
+        createJob: async () => Promise.reject(new Error("unused")),
+        getJobDetails: async () => Promise.reject(new Error("unused")),
+        verifyWebhook: () => {
+          throw new Error("unused");
+        },
+      },
     };
     const deps = buildServerDeps(parseConfig(testEnv), { providers });
     expect(deps.uploadcare).toBe(providers.uploadcare);
     expect(deps.cloudinary).toBe(providers.cloudinary);
+    expect(deps.magicHour).toBe(providers.magicHour);
   });
 });
