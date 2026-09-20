@@ -358,14 +358,17 @@ describe("reconcileUserJobs", () => {
     expect(stored?.errorCode).toBe("JOB_ABANDONED");
   });
 
-  it("re-reads now() at the finalizing grace check instead of using a value memoized at entry", async () => {
-    // deadlineAt sits exactly at NOW -- the selection-time clock value -- so
-    // this can only come out abandoned if the grace check re-reads the clock
-    // afterwards and sees it has moved past deadlineAt + graceMs. A `const t
-    // = now()` memoized once at reconcileOne's entry (or reused from
-    // reconcileUserJobs' own startedAt) would still hold NOW, which is not
-    // past deadlineAt(NOW) + graceMs, so the job would be wrongly finalized
-    // instead of abandoned.
+  it("the finalizing grace check reads the clock itself, not the batch's start time", async () => {
+    // The clock's first value is consumed by reconcileUserJobs' own
+    // startedAt, so this can only come out abandoned if the grace check
+    // reads the clock again afterwards -- by then it has moved past
+    // deadlineAt + graceMs. Reusing the batch's start time instead (e.g. the
+    // grace check comparing against `deadline - BATCH_BUDGET_MS` rather than
+    // calling now() itself) would still see NOW, which is not past
+    // deadlineAt(NOW) + graceMs, and would wrongly finalize a job that
+    // should be abandoned -- a real hazard, since that stale value can be up
+    // to BATCH_BUDGET_MS (45s) old by the time a later job in the batch is
+    // checked, long enough to straddle a grace boundary.
     const job = await insertJob({
       status: "finalizing",
       claimedAt: new Date(NOW.getTime() - 10 * 60_000),
