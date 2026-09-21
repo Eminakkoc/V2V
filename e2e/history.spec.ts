@@ -9,9 +9,13 @@ import {
   signWebhook,
 } from "./helpers";
 
-// Rate-limit tally (lesson L-007): RATE_LIMITS.perIp is 30 per scope per 10 minutes and is shared
-// by every spec and project against localhost, and the suite currently spends 29 upload and 22
-// transform hits -- which is why the three jobs here share one uploaded source.
+// Rate-limit tally (lesson L-007): RATE_LIMITS.perIp allows 30 hits per scope per 10 minutes, and
+// a single bucket covers every spec and both projects, which all reach localhost as one client.
+// Measured across a full two-project run: 29 upload, 22 transform, 20 signature. The upload scope
+// therefore has exactly one hit to spare -- which is why the three jobs here share one uploaded
+// source, and why a new spec that uploads needs this re-measured first. CI retries draw on the
+// same budget: one retry of an uploading test still fits, a second pushes the scope over and
+// whatever runs next gets a 429, which reads as a failure with nothing to do with rate limits.
 
 const rendering = FAKE_JOB_NAME_TRIGGERS.statusRendering;
 
