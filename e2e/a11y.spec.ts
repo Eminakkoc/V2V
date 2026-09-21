@@ -93,7 +93,7 @@ test("/history (with a transformation) has no WCAG 2.1 A/AA violations", async (
   expect(webhookResponse.status()).toBe(200);
 
   await page.goto("/history");
-  await expect(page.getByRole("region", { name: "a11y clip" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "a11y clip" })).toBeVisible();
   await settleForAxe(page);
 
   const results = await new AxeBuilder({ page })

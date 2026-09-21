@@ -101,9 +101,9 @@ test("the History list server-renders its first page, filters and sorts through 
 
     // Every client fetch to /api/history is being aborted, so these cards can only have come from
     // the server-rendered HTML.
-    await expect(page.getByRole("region", { name: "Clip A" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
-    await expect(page.getByRole("region", { name: nameC })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip A" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip B" })).toBeVisible();
+    await expect(page.getByRole("article", { name: nameC })).toBeVisible();
 
     // Confirms the block actually fired at least once, rather than silently missing every request
     // via a mismatched glob.
@@ -117,6 +117,7 @@ test("the History list server-renders its first page, filters and sorts through 
       const triggers = [...document.querySelectorAll("[data-slot=select-trigger]")].filter(
         (el) => (el as HTMLElement).offsetParent !== null,
       );
+      const list = document.querySelector("[data-slot=history-scroll]");
       return {
         boxes: triggers.map((t) => {
           const r = t.getBoundingClientRect();
@@ -124,7 +125,8 @@ test("the History list server-renders its first page, filters and sorts through 
         }),
         labels: triggers.map((t) => (t.textContent ?? "").trim().split(":")[0]),
         scrollbarGutter: getComputedStyle(document.documentElement).scrollbarGutter,
-        overflows: document.documentElement.scrollHeight > window.innerHeight,
+        pageOverflows: document.documentElement.scrollHeight > window.innerHeight,
+        listScrolls: list ? list.scrollHeight > list.clientHeight : false,
       };
     });
   }
@@ -136,9 +138,9 @@ test("the History list server-renders its first page, filters and sorts through 
     await page.getByRole("option", { name: "Complete" }).click();
 
     await expect(page).toHaveURL(/statusBucket=complete/);
-    await expect(page.getByRole("region", { name: "Clip A" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
-    await expect(page.getByRole("region", { name: nameC })).toHaveCount(0);
+    await expect(page.getByRole("article", { name: "Clip A" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip B" })).toBeVisible();
+    await expect(page.getByRole("article", { name: nameC })).toHaveCount(0);
 
     // The selected value must not resize the control it sits in: SelectTrigger is `w-fit`, so each
     // control used to be exactly as wide as its own label and every selection shoved the ones
@@ -151,9 +153,9 @@ test("the History list server-renders its first page, filters and sorts through 
   await test.step("a refresh preserves the filter", async () => {
     await page.reload();
     await expect(page).toHaveURL(/statusBucket=complete/);
-    await expect(page.getByRole("region", { name: "Clip A" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
-    await expect(page.getByRole("region", { name: nameC })).toHaveCount(0);
+    await expect(page.getByRole("article", { name: "Clip A" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip B" })).toBeVisible();
+    await expect(page.getByRole("article", { name: nameC })).toHaveCount(0);
   });
 
   await test.step("the duration sort reorders the list", async () => {
@@ -169,16 +171,20 @@ test("the History list server-renders its first page, filters and sorts through 
     await expect(page).toHaveURL(/dir=desc/);
 
     // Duration-desc of [5, 8, 3] is [8, 5, 3], which matches neither insertion order nor its
-    // reverse.
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText(["Clip B", "Clip A", nameC]);
+    // reverse. Each card titles itself "<name> · <art style>".
+    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
+      "Clip B · Anime Warrior",
+      "Clip A · Cyberpunk",
+      `${nameC} · Ghibli Anime`,
+    ]);
   });
 
   await test.step("load more appends without re-fetching earlier pages", async () => {
     await page.goto("/history?limit=2");
 
-    await expect(page.getByRole("region", { name: nameC })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip A" })).toHaveCount(0);
+    await expect(page.getByRole("article", { name: nameC })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip B" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip A" })).toHaveCount(0);
 
     const loadMore = page.getByRole("button", { name: "Load more" });
     await expect(loadMore).toBeVisible();
@@ -194,22 +200,27 @@ test("the History list server-renders its first page, filters and sorts through 
     // fetched page two.
     expect(new URL(response.url()).searchParams.get("cursor")).toBeTruthy();
 
-    await expect(page.getByRole("region", { name: nameC })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clip A" })).toBeVisible();
+    await expect(page.getByRole("article", { name: nameC })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip B" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip A" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
   });
 
   await test.step("filtering down to no matches leaves the row's geometry alone", async () => {
     const before = await filterRowGeometry();
-    expect(before.overflows).toBe(true);
+    // The list owns the scroll, not the document: that is what keeps the header and this filter row
+    // on screen however long the list gets.
+    expect(before.listScrolls).toBe(true);
+    expect(before.pageOverflows).toBe(false);
 
-    // "Taking longer" matches none of the three seeded jobs.
+    // "Taking longer" matches none of the three seeded jobs. The empty state is what says the
+    // panel resolved: a bare toHaveCount(0) is also true of the skeleton this page streams behind.
     await page.goto("/history?statusBucket=taking-longer");
-    await expect(page.getByRole("region", { name: "Clip A" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "No matches" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Clip A" })).toHaveCount(0);
 
     const empty = await filterRowGeometry();
-    expect(empty.overflows).toBe(false);
+    expect(empty.pageOverflows).toBe(false);
 
     // The Sort control used to be unmounted outright when nothing matched -- the largest of the
     // jumps, and a dead end.
@@ -217,8 +228,8 @@ test("the History list server-renders its first page, filters and sorts through 
     expect(empty.labels).toContain("Sort");
     expect(empty.boxes).toEqual(before.boxes);
 
-    // The page went from overflowing to not, which used to take the scrollbar away and shift every
-    // centred container by its width.
+    // Reserved whether or not the document overflows, so /history and the scrolling Create page
+    // centre their content columns identically.
     expect(empty.scrollbarGutter).toBe("stable");
   });
 });
