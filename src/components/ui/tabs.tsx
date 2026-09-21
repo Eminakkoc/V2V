@@ -43,7 +43,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex flex-1 items-center justify-center gap-1.5 border-l border-divider px-(--seg-px) py-(--seg-py) type-body-sm whitespace-nowrap text-foreground transition-colors first:border-l-0 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-strong disabled:pointer-events-none disabled:opacity-45 data-active:bg-accent-strong data-active:text-bg data-active:hover:bg-accent-strong data-active:focus-visible:outline-bg sm:flex-none",
+        "inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 border-l border-divider px-(--seg-px) py-(--seg-py) type-body-sm whitespace-nowrap text-foreground transition-colors first:border-l-0 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-strong disabled:pointer-events-none disabled:opacity-45 data-active:bg-accent-strong data-active:text-bg data-active:hover:bg-accent-strong data-active:focus-visible:outline-bg sm:flex-none",
         className
       )}
       {...props}

@@ -6,7 +6,7 @@ import { Slot } from "radix-ui"
 // The vertical padding comes from --btn-py, which globals.css swaps at the tablet breakpoint so
 // phone buttons clear 44px without making desktop ones tall.
 const buttonVariants = cva(
-  "focus-ring group/button inline-flex shrink-0 items-center justify-center gap-1.5 rounded-pill border bg-clip-padding font-display whitespace-nowrap transition-colors select-none active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-45 aria-disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[15px]",
+  "focus-ring group/button inline-flex shrink-0 items-center justify-center gap-1.5 cursor-pointer rounded-pill border bg-clip-padding font-display whitespace-nowrap transition-colors select-none active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-45 aria-disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[15px]",
   {
     variants: {
       variant: {

@@ -66,8 +66,7 @@ export function DropZone({
       </div>
       <div className="flex w-full flex-col gap-3 pt-1.5 sm:w-auto sm:flex-row">
         <Button type="button" size="lg" disabled={disabled} onClick={onChoose}>
-          <span className="sm:hidden">Camera roll</span>
-          <span className="hidden sm:inline">Choose a video</span>
+          Choose a video
         </Button>
       </div>
       <p className="type-caption text-muted-foreground">
