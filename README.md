@@ -135,6 +135,102 @@ was issued, and an HMAC-SHA256 signature over both, keyed with `SESSION_COOKIE_S
   thing: a new anonymous visitor with an empty history. That is also this design's cost —
   clearing cookies, or switching browser or device, starts over.
 
+## Architecture notes
+
+### Why polling, not WebSockets or SSE
+
+A render takes minutes and the result arrives from a third party, so the browser has to learn
+about it somehow. Vercel can hold a long-lived connection — SSE within the function's duration
+limit, WebSockets in public beta — and both were rejected in favour of the browser polling
+`GET /api/history`.
+
+- **The connection would have to be rebuilt constantly anyway.** A function's maximum duration
+  is 300 s on the Hobby plan, so an SSE stream has to reconnect every few minutes, and a single
+  render can outlast several of those windows.
+- **A polling fallback would still be needed.** Reconnect logic covers a flaky network, not a
+  closed laptop or a tab restored an hour later, so the catch-up path has to exist regardless —
+  and once it exists, the streaming transport is a second mechanism delivering the same string.
+- **A held connection costs a function instance per open tab,** for as long as the tab is open
+  and whether or not anything is happening; a poll costs one short request every few seconds and
+  nothing at all once the work finishes.
+- **There is no stream of events to carry.** A job changes state perhaps four times over several
+  minutes — `queued`, `rendering`, `finalizing`, `complete` — which is not a workload that
+  justifies a streaming transport.
+- **Polling does double duty.** The same request that refreshes the list is what triggers the
+  status check that recovers a lost webhook, so one mechanism covers both the normal path and
+  the failure path; a WebSocket would have needed that check wired up separately.
+- **WebSockets on Vercel are in public beta,** which is not what the one time-critical path of
+  the app should depend on.
+
+What this costs: a finished render can sit up to 30 seconds before the browser notices it, which
+is invisible next to a render measured in minutes. The real cost is that the status check only
+runs while a browser is open — this app has no cron, and a cron would not have helped much
+anyway, since the Hobby plan allows one run per day with per-hour precision. The webhook is what
+covers the closed-browser case, which is why registering it is required in production.
+
+### Edge cases the flow has to survive
+
+**Upload and submission**
+
+- The browser's claimed size and type are ignored; the file is re-checked against Uploadcare's
+  own file info, because anything the client asserts can be forged.
+- A trim range longer than the cap, or ending past the source's real duration, is refused before
+  any paid call — with a 0.05 s epsilon, since Cloudinary rounds the duration it reports.
+- A file Cloudinary cannot make sense of (no duration, dimensions or format) fails the upload
+  rather than becoming a paid render that was doomed from the start.
+- A double-submitted form cannot become two paid renders: a unique `{userId, idempotencyKey}`
+  index means the second request returns the first job.
+- If Magic Hour's answer to the create call is lost, the job row already exists and is kept in
+  phase `submitting` so nothing is silently dropped.
+- Such a job has no Magic Hour ID, so nothing can be asked about it — only a webhook matched by
+  name can rescue it, and past the grace period it is marked `SUBMISSION_UNCONFIRMED`.
+- A definite rejection (402, 422, 401) is stored as a failed job carrying Magic Hour's own
+  reason, rather than a generic error.
+
+**The webhook**
+
+- A missing, malformed or mismatched signature is rejected with 401, and a missing secret fails
+  closed rather than open.
+- A delivery whose timestamp sits more than five minutes from now, in either direction, is
+  rejected, so a captured delivery cannot be replayed.
+- The raw body is verified before it is parsed, because re-serialising a parsed body changes the
+  bytes and breaks the HMAC.
+- A delivery that matches no job, or a body that does not parse, is answered 200 — redelivery
+  would never succeed either, and 24 hours of retries help nobody.
+- A transient failure inside finalize answers 500 so Magic Hour redelivers; a permanent one
+  answers 200 with the job marked failed.
+- A late `video.errored` for a job that already completed leaves the stored result alone.
+- A redelivered `video.completed` is harmless, because finalize claims the job before doing
+  anything and a claimed job is not claimed twice.
+
+**Polling and the status check**
+
+- The webhook and the status check can arrive at the same moment; the exclusive claim means
+  exactly one of them stores the result.
+- A function killed mid-finalize leaves the job claimed, and the claim is treated as crashed and
+  re-taken after five minutes.
+- Overlapping polls stamp `lastCheckedAt` when a job is selected rather than when its check
+  ends, so the same job is never checked twice at once.
+- A provider call that outruns its 10-second budget leaves the job exactly as it was, so a check
+  can never half-write a state.
+- Polling pauses while the tab is hidden or the browser is offline, and re-syncs on return; a
+  result that lands in the meantime is collected, not missed.
+- After five consecutive failed requests the page stops and says so, rather than hammering an
+  endpoint that is plainly down.
+- Past its deadline a job becomes `timed_out` ("still checking"), and past deadline plus the
+  roughly two-hour grace it becomes `abandoned` and is only re-checked hourly, for 24 hours.
+- With nobody on the app, no status check runs at all, and the webhook is the only thing that
+  can finish the job.
+
+**Retry and late results**
+
+- Retry never cancels the original, because Magic Hour has no cancel API — so the first render
+  can still complete, and can still be charged.
+- The original becomes `superseded` and moves under "Previous attempts", but keeps being
+  checked, since a late result is still worth storing.
+- A result that arrives after the app gave up is still saved; "Stopped checking" describes this
+  app's behaviour, not Magic Hour's.
+
 ## Local development
 
 Magic Hour cannot call `localhost`, and it registers **one** webhook URL for the whole
