@@ -54,6 +54,22 @@ function emptySourcesResponse(): HistorySourcesResponse {
   return { items: [], nextCursor: null };
 }
 
+// parseHistoryQuery throws a ZodError on a malformed query (an unknown
+// status, an out-of-range limit, a forbidden combination, ...). That is
+// correct for the API route, which turns it into a clean 400, but this is a
+// Server Component render: an uncaught throw here lands on src/app/error.tsx
+// ("The service is unavailable or had a problem"), which is the wrong
+// message for a hand-edited or stale shared link -- the service is fine, the
+// link is just out of date. Falling back to the same defaults an empty query
+// string would produce renders the page normally instead.
+function parseHistoryQueryOrDefault(raw: Record<string, string>): HistoryQueryInput {
+  try {
+    return parseHistoryQuery(raw);
+  } catch {
+    return parseHistoryQuery({});
+  }
+}
+
 async function hasAnyUploads(
   userId: string | undefined,
   query: HistoryQueryInput,
@@ -67,7 +83,7 @@ async function hasAnyUploads(
 export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const deps = getServerDeps();
   const raw = flatten(await searchParams);
-  const query = parseHistoryQuery(raw);
+  const query = parseHistoryQueryOrDefault(raw);
   const userId = verifyIdentity(
     (await cookies()).get(IDENTITY_COOKIE)?.value,
     deps.config.sessionCookieSecret,

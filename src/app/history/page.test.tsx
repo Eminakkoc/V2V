@@ -233,6 +233,32 @@ describe("HistoryPage", () => {
     expect(screen.getByRole("link", { name: "Transform an upload" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Upload your first video" })).not.toBeInTheDocument();
   });
+
+  // A hand-edited or stale shared link can carry a query string
+  // parseHistoryQuery rejects (an out-of-range limit, an unknown status, a
+  // forbidden combination, ...). The API route turns that into a clean 400,
+  // but this is a Server Component render -- an uncaught throw here would
+  // instead be caught by src/app/error.tsx's boundary and show "The service
+  // is unavailable or had a problem", which is the wrong message for a link
+  // that is simply out of date. The page must fall back to the default
+  // query and render normally instead of throwing.
+  it.each([
+    ["a limit below the allowed minimum", { limit: "0" }],
+    [
+      "a forbidden combination (cursor alongside changeable)",
+      { changeable: "true", cursor: "abc" },
+    ],
+    ["an unknown status value", { status: "not-a-status" }],
+  ] as const)("falls back to the default query and renders normally for %s", async (_name, raw) => {
+    await insertJob(userId, { params: { ...baseParams, name: "Mine" } });
+    setCookie(userId);
+
+    const element = await HistoryPage({ searchParams: searchParams(raw) });
+    render(element);
+
+    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
+    expect(screen.getByText("Mine")).toBeInTheDocument();
+  });
 });
 
 describe("HistoryPage -- keys the client shell on the serialized search params", () => {

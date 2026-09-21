@@ -85,8 +85,8 @@ export function parseHistoryQuery(raw: Record<string, string>): HistoryQueryInpu
     }
   };
   if (raw.tab === "sources") forbid([...JOB_ONLY, "changeable", "ids"], "tab=sources");
-  if (raw.changeable === "true") forbid([...JOB_ONLY, "cursor"], "changeable");
-  if (raw.ids !== undefined) forbid([...JOB_ONLY, "cursor"], "ids");
+  if (raw.changeable === "true") forbid([...JOB_ONLY, "cursor", "limit"], "changeable");
+  if (raw.ids !== undefined) forbid([...JOB_ONLY, "cursor", "limit"], "ids");
   if (issues.length > 0) throw new z.ZodError(issues);
   return historyQuerySchema.parse(raw);
 }

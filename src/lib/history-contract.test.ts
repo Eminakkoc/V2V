@@ -62,6 +62,7 @@ describe("history query contract", () => {
       { sort: "duration" },
       { dir: "asc" },
       { cursor: "abc" },
+      { limit: "5" },
       { includePrevious: "true" },
     ];
     for (const extra of extras) {
@@ -73,6 +74,37 @@ describe("history query contract", () => {
     const ids = "65f000000000000000000001";
     expect(() => parseHistoryQuery({ ids, status: "complete" })).toThrow(ZodError);
     expect(() => parseHistoryQuery({ ids, cursor: "abc" })).toThrow(ZodError);
+    expect(() => parseHistoryQuery({ ids, limit: "5" })).toThrow(ZodError);
+  });
+
+  // `limit` is a parameter changeable/ids both ignore (neither mode is
+  // paginated -- changeable returns every changeable row, ids returns
+  // exactly the named rows), so per the module's own rule (see the JOB_ONLY
+  // comment above) it must be refused rather than silently accepted and
+  // disregarded, exactly like `cursor` already is.
+  it("names limit, not just cursor, when rejecting it alongside changeable or ids", () => {
+    const ids = "65f000000000000000000001";
+    let caught: unknown;
+    try {
+      parseHistoryQuery({ changeable: "true", limit: "5" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ZodError);
+    expect((caught as ZodError).issues).toEqual([
+      { code: "custom", path: ["limit"], message: "cannot be combined with changeable" },
+    ]);
+
+    let caughtIds: unknown;
+    try {
+      parseHistoryQuery({ ids, limit: "5" });
+    } catch (error) {
+      caughtIds = error;
+    }
+    expect(caughtIds).toBeInstanceOf(ZodError);
+    expect((caughtIds as ZodError).issues).toEqual([
+      { code: "custom", path: ["limit"], message: "cannot be combined with ids" },
+    ]);
   });
 
   it("rejects changeable together with ids", () => {

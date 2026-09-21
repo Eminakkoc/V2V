@@ -7,7 +7,6 @@ import { getServerDeps, type ServerDeps } from "@/server/deps";
 import type { Source } from "@/server/repositories/sources";
 import { IDENTITY_COOKIE, verifyIdentity } from "@/server/services/identity";
 
-export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Create" };
 
 type CreatePageProps = {

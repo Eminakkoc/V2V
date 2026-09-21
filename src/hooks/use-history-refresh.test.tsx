@@ -462,6 +462,39 @@ describe("useHistoryRefresh", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("still folds the nested copy and keeps the row off the top level once a superseded attempt reconciles to complete", async () => {
+    const nestedBeforeRefresh = attempt({ id: "job-old", status: "superseded" });
+    const owner = job({
+      id: "job-latest",
+      status: "complete",
+      attempts: [nestedBeforeRefresh],
+    });
+    // Reconciliation moved job-old on to "complete" -- its status no
+    // longer reads "superseded", but supersededByJobId is never cleared,
+    // so the fold must still key on that link rather than the status.
+    const reconciledRefresh = job({
+      id: "job-old",
+      status: "complete",
+      supersededByJobId: "job-latest",
+    });
+
+    fetchMock.mockResolvedValueOnce(changeableResponse([reconciledRefresh]));
+
+    const { result } = renderHook(() => useHistoryRefresh(defaultOptions({ initial: [owner] })));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const nested = result.current.jobs
+        .find((j) => j.id === "job-latest")
+        ?.attempts.find((a) => a.id === "job-old");
+      expect(nested?.status).toBe("complete");
+    });
+
+    // Reconciling off "superseded" must not promote the row to a top-level
+    // card of its own -- includePrevious is false here, same as before.
+    expect(result.current.jobs.map((j) => j.id)).toEqual(["job-latest"]);
+  });
+
   describe("rows loaded via `additional` (load more)", () => {
     it("folds a load-more row into its own tracked list, so a later poll updates it in place instead of excluding it under the insertion-window rule", async () => {
       vi.useFakeTimers();

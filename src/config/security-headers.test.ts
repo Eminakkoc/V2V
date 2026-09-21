@@ -49,4 +49,15 @@ describe("security headers", () => {
     expect(contentSecurityPolicy(false)).not.toContain("unsafe-eval");
     expect(contentSecurityPolicy(true)).toContain("'unsafe-eval'");
   });
+
+  // src/app/layout.tsx's <SpeedInsights /> loads its script from this host
+  // and reports vitals back to it -- without both directives the script
+  // itself is blocked outright (e2e/upload.spec.ts's "an upload logs no
+  // blocked-request errors" catches this on every page load, not just one
+  // that uses Speed Insights directly).
+  it("allows the Speed Insights script host to load and report", () => {
+    const csp = contentSecurityPolicy(false);
+    expect(csp).toMatch(/script-src [^;]*https:\/\/va\.vercel-scripts\.com/);
+    expect(csp).toMatch(/connect-src [^;]*https:\/\/va\.vercel-scripts\.com/);
+  });
 });

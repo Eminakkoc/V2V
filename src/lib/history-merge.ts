@@ -79,8 +79,10 @@ function matchesActiveFilter(row: HistoryJobView, options: MergeRefreshedOptions
 //
 //   - Merge is by id. A row already loaded is replaced, never appended --
 //     appending would duplicate a row a later `load more` returns again.
-//   - A refreshed `superseded` row always updates its entry inside its
-//     latest job's `attempts` chain, if that job is loaded -- HIS-005's
+//   - A refreshed row that carries a `supersededByJobId` link -- whether its
+//     status still reads `superseded` or reconciliation has since moved it
+//     on to `complete`/`failed` -- always updates its entry inside its
+//     latest job's `attempts` chain, if that job is loaded. HIS-005's
 //     "Previous attempts" finished-count is read from those nested entries
 //     and carries no `includePrevious` qualifier, so it must stay current
 //     either way. With `includePrevious: false` that is *all* it does: the
@@ -109,7 +111,16 @@ export function mergeRefreshed(
   const supersededRows: HistoryJobView[] = [];
 
   for (const row of refreshed) {
-    if (row.status === "superseded") {
+    // Keyed on supersededByJobId, not status: that link is written once,
+    // alongside status "superseded" (src/server/repositories/jobs.ts's
+    // supersede write sets both together), and is never cleared afterwards
+    // -- not even by claimForFinalize, which accepts "superseded" (it's in
+    // CHANGEABLE_STATUSES) and can move the row on to "complete" or
+    // "failed". A row that still carries the link belongs in its owner's
+    // chain for as long as the link exists, whatever status it reads now,
+    // so a reconciled-out-of-superseded row must still fold into its
+    // owner's nested attempts and must still stay off the top level here.
+    if (row.supersededByJobId !== undefined) {
       // Recorded for the fold below regardless of includePrevious -- the
       // nested copy is kept current unconditionally.
       supersededRows.push(row);

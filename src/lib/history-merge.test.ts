@@ -332,6 +332,58 @@ describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's t
   });
 });
 
+describe("mergeRefreshed: a superseded attempt reconciled off that status", () => {
+  it("still folds the nested copy and stays off the top level once superseded reconciles to complete (includePrevious: false)", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      status: "failed",
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "superseded" })],
+    });
+    // Reconciliation moved old-1 on to "complete" -- the row no longer
+    // reads "superseded", but supersededByJobId is never cleared, so it
+    // still names its owner.
+    const reconciledOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "complete",
+      supersededByJobId: "latest",
+    });
+
+    const merged = mergeRefreshed([latest], [reconciledOld], options({ filter: {} }));
+
+    expect(merged.map((r) => r.id)).toEqual(["latest"]);
+    const nested = merged[0]!.attempts.find((a) => a.id === "old-1");
+    expect(nested?.status).toBe("complete");
+  });
+
+  it("folds the nested copy AND promotes the row top-level once superseded reconciles to complete (includePrevious: true)", () => {
+    const latest = job({
+      id: "latest",
+      createdAt: T3,
+      status: "failed",
+      attempts: [attempt({ id: "old-1", createdAt: T1, status: "superseded" })],
+    });
+    const reconciledOld = job({
+      id: "old-1",
+      createdAt: T1,
+      status: "complete",
+      supersededByJobId: "latest",
+    });
+
+    const merged = mergeRefreshed(
+      [latest],
+      [reconciledOld],
+      options({ filter: {}, includePrevious: true }),
+    );
+
+    expect(merged.map((r) => r.id).sort()).toEqual(["latest", "old-1"]);
+    expect(merged.find((r) => r.id === "old-1")?.status).toBe("complete");
+    const nested = merged.find((r) => r.id === "latest")!.attempts.find((a) => a.id === "old-1");
+    expect(nested?.status).toBe("complete");
+  });
+});
+
 describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
   it("inserts a fresh row at its sort position when it falls inside the loaded window", () => {
     const newest = job({ id: "newest", createdAt: T3 });
