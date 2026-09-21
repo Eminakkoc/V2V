@@ -25,6 +25,7 @@
     "@uploadcare/react-uploader": "^1.17.0",
     "@uploadcare/rest-client": "^6.21.0",
     "@uploadcare/signed-uploads": "^6.21.0",
+    "@vercel/speed-insights": "^2.0.0",
     "class-variance-authority": "^0.7.1",
     "cloudinary": "^2.11.0",
     "cn": "^0.3.0",

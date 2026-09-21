@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { TopBar } from "@/components/app-shell/top-bar";
 import { SessionBootstrap } from "@/components/session-bootstrap";
 import { Toaster } from "@/components/ui/sonner";
@@ -47,6 +48,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         </TooltipProvider>
         <Toaster />
         {needsSession ? <SessionBootstrap /> : null}
+        <SpeedInsights />
       </body>
     </html>
   );
