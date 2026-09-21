@@ -19,8 +19,10 @@ export type FilterBarProps = {
   sort: "createdAt" | "duration";
   dir: "asc" | "desc";
   includePrevious: boolean;
-  // F15: the sort control is hidden while the list on screen is empty --
-  // there is nothing to reorder yet.
+  // F15: there is nothing to reorder while the list on screen is empty, so
+  // the sort control is disabled. It used to be unmounted, which took a whole
+  // control out of the filter row the moment a filter matched nothing --
+  // the largest of this page's layout jumps (IR-008).
   isListEmpty: boolean;
 };
 
@@ -60,52 +62,73 @@ export function FilterBar({
           "<Prefix>: <value>", so its accessible name already reads that way
           with no separate aria-labelledby needed (W4). */}
       <div className="hidden flex-wrap items-center gap-3 md:flex">
-        <Select
-          value={statusBucket ?? ALL_STATUS_VALUE}
-          onValueChange={(value) =>
-            navigate({ statusBucket: value === ALL_STATUS_VALUE ? undefined : value })
-          }
-        >
-          {/* role="combobox" is not name-from-content, so the visible prefix
+        {/* A grid, not three w-fit controls in a row. SelectTrigger is
+            `w-fit`, so each control used to be exactly as wide as its own
+            label -- "Status: All" 108px, "Status: Failed" 130px, "Status:
+            Complete" 153px -- and every selection shoved the controls to its
+            right sideways by up to 45px. Three equal columns of a fixed-width
+            row give the whole group geometry that does not depend on what is
+            selected, without pinning any single control to a pixel count that
+            a font change would invalidate. Each trigger takes the full column
+            and truncates; its full value is still in the aria-label. */}
+        <div className="grid w-full max-w-2xl grid-cols-3 gap-3">
+          <Select
+            value={statusBucket ?? ALL_STATUS_VALUE}
+            onValueChange={(value) =>
+              navigate({ statusBucket: value === ALL_STATUS_VALUE ? undefined : value })
+            }
+          >
+            {/* role="combobox" is not name-from-content, so the visible prefix
               needs an explicit aria-label even though it is also the trigger's
               own text (W4). */}
-          <SelectTrigger
-            aria-label={`Status: ${statusBucket ? BUCKET_LABELS[statusBucket] : "All"}`}
+            <SelectTrigger
+              className="w-full min-w-0 [&>span]:truncate"
+              aria-label={`Status: ${statusBucket ? BUCKET_LABELS[statusBucket] : "All"}`}
+            >
+              Status: {statusBucket ? BUCKET_LABELS[statusBucket] : "All"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUS_VALUE}>All</SelectItem>
+              {STATUS_BUCKETS.map((bucket) => (
+                <SelectItem key={bucket} value={bucket}>
+                  {BUCKET_LABELS[bucket]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={style ?? ALL_STYLE_VALUE}
+            onValueChange={(value) =>
+              navigate({ style: value === ALL_STYLE_VALUE ? undefined : value })
+            }
           >
-            Status: {statusBucket ? BUCKET_LABELS[statusBucket] : "All"}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_STATUS_VALUE}>All</SelectItem>
-            {STATUS_BUCKETS.map((bucket) => (
-              <SelectItem key={bucket} value={bucket}>
-                {BUCKET_LABELS[bucket]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <SelectTrigger
+              className="w-full min-w-0 [&>span]:truncate"
+              aria-label={`Style: ${style ?? "All styles"}`}
+            >
+              Style: {style ?? "All styles"}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STYLE_VALUE}>All styles</SelectItem>
+              {ART_STYLES.map((artStyle) => (
+                <SelectItem key={artStyle} value={artStyle}>
+                  {artStyle}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select
-          value={style ?? ALL_STYLE_VALUE}
-          onValueChange={(value) =>
-            navigate({ style: value === ALL_STYLE_VALUE ? undefined : value })
-          }
-        >
-          <SelectTrigger aria-label={`Style: ${style ?? "All styles"}`}>
-            Style: {style ?? "All styles"}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_STYLE_VALUE}>All styles</SelectItem>
-            {ART_STYLES.map((artStyle) => (
-              <SelectItem key={artStyle} value={artStyle}>
-                {artStyle}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {isListEmpty ? null : (
+          {/* Kept mounted and disabled rather than unmounted (F15 hides it
+            "while the list on screen is empty -- there is nothing to reorder
+            yet"). Unmounting it removed a whole control from the row the
+            moment a filter matched nothing, which is the largest of the
+            layout jumps on this page. Disabled preserves F15's intent -- an
+            empty list still cannot be reordered -- without the row changing
+            shape. */}
           <Select
             value={sortValue}
+            disabled={isListEmpty}
             onValueChange={(value) => {
               const option = SORT_OPTIONS.find(
                 (candidate) => sortValueOf(candidate.sort, candidate.dir) === value,
@@ -114,7 +137,10 @@ export function FilterBar({
               navigate({ sort: option.sort, dir: option.dir });
             }}
           >
-            <SelectTrigger aria-label={`Sort: ${currentSortLabel}`}>
+            <SelectTrigger
+              className="w-full min-w-0 [&>span]:truncate"
+              aria-label={`Sort: ${currentSortLabel}`}
+            >
               Sort: {currentSortLabel}
             </SelectTrigger>
             <SelectContent>
@@ -128,7 +154,7 @@ export function FilterBar({
               ))}
             </SelectContent>
           </Select>
-        )}
+        </div>
 
         <div className="flex items-center gap-2">
           <input

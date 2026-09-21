@@ -84,18 +84,22 @@ describe("FilterBar", () => {
     expect(router.push).toHaveBeenCalledWith("/history?statusBucket=complete");
   });
 
-  it("hides the sort control while the list is empty, on both layouts", () => {
+  // IR-008: disabled rather than unmounted. Unmounting it removed a control
+  // from the filter row the moment a filter matched nothing, which shifted
+  // everything beside it, and left no way to re-sort from an empty result
+  // without first clearing the filter.
+  it("disables the sort control while the list is empty, on both layouts, without removing it", () => {
     render(<FilterBar {...defaultProps({ isListEmpty: true })} />);
-    expect(screen.queryByRole("combobox", { name: /^Sort:/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /^Sort:/ })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).queryByRole("combobox", { name: /^Sort:/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: /^Sort:/ })).toBeDisabled();
   });
 
-  it("shows the sort control once the list is non-empty", () => {
+  it("enables the sort control once the list is non-empty", () => {
     render(<FilterBar {...defaultProps({ isListEmpty: false })} />);
-    expect(screen.getByRole("combobox", { name: "Sort: Newest first" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Sort: Newest first" })).toBeEnabled();
   });
 
   describe("the phone filter sheet", () => {

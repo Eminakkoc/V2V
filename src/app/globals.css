@@ -126,5 +126,12 @@
   }
   html {
     @apply font-sans;
+    /* Reserve the scrollbar's space whether or not the page currently
+       overflows. Without it, filtering /history down to no matches takes the
+       document from 1838px to 720px, the scrollbar goes away, and on any
+       browser using classic (space-taking) scrollbars the viewport widens by
+       ~15px -- which shifts every centred container, the header included.
+       That is the flicker; the header is not sizing to its content. */
+    scrollbar-gutter: stable;
   }
 }

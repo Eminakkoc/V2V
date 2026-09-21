@@ -166,7 +166,30 @@ test("the History list server-renders its first page, filters and sorts through 
     await page.unroute("**/api/history**");
   });
 
+  // IR-008. Rides along on the rows this test already seeded -- it adds no
+  // /api/upload or /api/transform hit of its own, and the states it needs
+  // (populated, then filtered to nothing) are ones the steps below reach
+  // anyway.
+  async function filterRowGeometry() {
+    return page.evaluate(() => {
+      const triggers = [...document.querySelectorAll("[data-slot=select-trigger]")].filter(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      );
+      return {
+        boxes: triggers.map((t) => {
+          const r = t.getBoundingClientRect();
+          return { x: Math.round(r.x), width: Math.round(r.width) };
+        }),
+        labels: triggers.map((t) => (t.textContent ?? "").trim().split(":")[0]),
+        scrollbarGutter: getComputedStyle(document.documentElement).scrollbarGutter,
+        overflows: document.documentElement.scrollHeight > window.innerHeight,
+      };
+    });
+  }
+
   await test.step("a status filter narrows the list and lands in the URL", async () => {
+    const populated = await filterRowGeometry();
+
     await page.getByRole("combobox", { name: /^Status:/ }).click();
     await page.getByRole("option", { name: "Complete" }).click();
 
@@ -174,6 +197,14 @@ test("the History list server-renders its first page, filters and sorts through 
     await expect(page.getByRole("region", { name: "Clip A" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
     await expect(page.getByRole("region", { name: nameC })).toHaveCount(0);
+
+    // The selected value must not resize the control it sits in. SelectTrigger
+    // is `w-fit`, so each control used to be exactly as wide as its own label
+    // ("Status: All" 108px, "Status: Failed" 130px, "Status: Complete" 153px)
+    // and every selection shoved the controls to its right sideways.
+    const filtered = await filterRowGeometry();
+    expect(filtered.boxes).toEqual(populated.boxes);
+    expect(filtered.labels).toEqual(populated.labels);
   });
 
   await test.step("a refresh preserves the filter", async () => {
@@ -233,6 +264,30 @@ test("the History list server-renders its first page, filters and sorts through 
     await expect(page.getByRole("region", { name: "Clip B" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Clip A" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
+  });
+
+  await test.step("filtering down to no matches leaves the row's geometry alone", async () => {
+    const before = await filterRowGeometry();
+    expect(before.overflows).toBe(true);
+
+    // "Taking longer" matches none of the three seeded jobs.
+    await page.goto("/history?statusBucket=taking-longer");
+    await expect(page.getByRole("region", { name: "Clip A" })).toHaveCount(0);
+
+    const empty = await filterRowGeometry();
+    expect(empty.overflows).toBe(false);
+
+    // The Sort control used to be unmounted outright when nothing matched --
+    // the largest of the jumps, and a dead end, since the control you would
+    // use to re-slice the list was the one that disappeared.
+    expect(empty.labels).toEqual(before.labels);
+    expect(empty.labels).toContain("Sort");
+    expect(empty.boxes).toEqual(before.boxes);
+
+    // The page went from overflowing to not, which is what used to take the
+    // scrollbar away and shift every centred container -- the header
+    // included -- by the scrollbar's width.
+    expect(empty.scrollbarGutter).toBe("stable");
   });
 });
 

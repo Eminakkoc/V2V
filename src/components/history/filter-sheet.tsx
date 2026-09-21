@@ -184,7 +184,8 @@ export type FilterSheetProps = {
   sort: "createdAt" | "duration";
   dir: "asc" | "desc";
   includePrevious: boolean;
-  // F15: nothing to sort while the list is empty.
+  // F15: nothing to sort while the list is empty. Disables the control
+  // rather than removing it (IR-008).
   isListEmpty: boolean;
 };
 
@@ -276,32 +277,35 @@ export function FilterSheet({
             </div>
           </div>
 
-          {isListEmpty ? null : (
-            <Select
-              value={sortValue}
-              onValueChange={(value) => {
-                const option = SORT_OPTIONS.find(
-                  (candidate) => sortValueOf(candidate.sort, candidate.dir) === value,
-                );
-                if (!option) return;
-                navigate({ sort: option.sort, dir: option.dir });
-              }}
-            >
-              <SelectTrigger className="w-full" aria-label={`Sort: ${currentSortLabel}`}>
-                Sort: {currentSortLabel}
-              </SelectTrigger>
-              <SelectContent>
-                {SORT_OPTIONS.map((option) => (
-                  <SelectItem
-                    key={sortValueOf(option.sort, option.dir)}
-                    value={sortValueOf(option.sort, option.dir)}
-                  >
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          {/* Disabled, not unmounted -- matching the inline row (IR-008), so
+              the two layouts agree about what an empty list does to the sort
+              control. F15's intent is kept: an empty list still cannot be
+              reordered. */}
+          <Select
+            value={sortValue}
+            disabled={isListEmpty}
+            onValueChange={(value) => {
+              const option = SORT_OPTIONS.find(
+                (candidate) => sortValueOf(candidate.sort, candidate.dir) === value,
+              );
+              if (!option) return;
+              navigate({ sort: option.sort, dir: option.dir });
+            }}
+          >
+            <SelectTrigger className="w-full" aria-label={`Sort: ${currentSortLabel}`}>
+              Sort: {currentSortLabel}
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((option) => (
+                <SelectItem
+                  key={sortValueOf(option.sort, option.dir)}
+                  value={sortValueOf(option.sort, option.dir)}
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <div className="flex items-center gap-2">
             <input
