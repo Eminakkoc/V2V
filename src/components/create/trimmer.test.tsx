@@ -234,6 +234,20 @@ describe("Trimmer", () => {
       expect(video.currentTime).toBe(10.2);
     });
 
+    // The fill is drawn from this attribute, so it is the whole of what a viewer is told: the
+    // toggle reported nothing at all until it was styled from here.
+    it("reports the live state on the toggle, starting on", () => {
+      renderWithPreview({ startSeconds: 5, endSeconds: 10 });
+      const toggle = screen.getByRole("button", { name: "Loop selection" });
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+    });
+
     // Seeking fires timeupdate too, so a loop that ignored `paused` would read the parked end frame
     // as "reached the end" and rewind it.
     it("holds a paused preview on the end frame instead of rewinding it", () => {

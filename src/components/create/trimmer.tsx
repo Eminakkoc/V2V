@@ -257,6 +257,13 @@ export function Trimmer({
             className="w-[90px] text-right"
           />
         </div>
+        {/* Styled from aria-pressed rather than a parallel class, so the fill can never disagree
+            with what a reader is told. It starts on, and without the fill a click moved nothing a
+            viewer could see -- the only other evidence is the playhead not rewinding, minutes of
+            clip away. The `on` treatment is the segmented control's, this being the same question:
+            which of two states is live. The hover repeat is deliberate: the variant's own
+            hover:bg-neutral-100 otherwise wins on the pressed button, depending only on the order
+            Tailwind emits the two variants. */}
         <Button
           type="button"
           variant="outline"
@@ -264,6 +271,7 @@ export function Trimmer({
           aria-pressed={looping}
           disabled={disabled}
           onClick={() => setLooping((on) => !on)}
+          className="aria-pressed:border-accent-strong aria-pressed:bg-accent-strong aria-pressed:text-bg aria-pressed:hover:bg-accent-strong"
         >
           <RotateCcw aria-hidden />
           Loop selection
