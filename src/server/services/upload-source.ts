@@ -4,6 +4,7 @@ import type { UploadResponse } from "@/lib/upload-contract";
 import { createVideoRules } from "@/lib/video-rules";
 import type { ServerDeps } from "@/server/deps";
 import { AppError } from "@/server/errors/app-error";
+import { CLOUDINARY_FOLDERS } from "@/server/providers/types";
 
 export const COPY_BUDGET_MS = 50_000;
 
@@ -61,7 +62,10 @@ export async function uploadSource(
   });
   if (!check.ok) throw new AppError(check.code);
 
-  const video = await deps.cloudinary.copyVideoFromUrl(file.originalFileUrl, { deadline });
+  const video = await deps.cloudinary.copyVideoFromUrl(file.originalFileUrl, {
+    deadline,
+    folder: CLOUDINARY_FOLDERS.sources,
+  });
   const source = await deps.sources.insert(userId, {
     uploadcareUuid: uuid,
     uploadcareCdnUrl: canonicalCdnUrl(file.originalFileUrl, uuid),

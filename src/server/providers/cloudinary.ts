@@ -39,13 +39,13 @@ export function createCloudinaryAdapter(
   { upload = defaultUpload, sleep = defaultSleep, now = Date.now }: Runtime = {},
 ): CloudinaryAdapter {
   return {
-    async copyVideoFromUrl(url, { deadline, treatSanityFailureAsRetryable = false }) {
-      const publicId = `sources/${randomUUID()}`;
+    async copyVideoFromUrl(url, { deadline, folder, treatSanityFailureAsRetryable = false }) {
+      const publicId = `${folder}/${randomUUID()}`;
       const attempt = () =>
         upload(url, {
           resource_type: "video",
           public_id: publicId,
-          asset_folder: "sources",
+          asset_folder: folder,
           overwrite: true,
           timeout: Math.max(1, deadline - now()),
           cloud_name: cloudName,

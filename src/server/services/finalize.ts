@@ -3,7 +3,7 @@ import type { JobErrorCode } from "@/lib/job-status";
 import type { ServerDeps } from "@/server/deps";
 import { AppError } from "@/server/errors/app-error";
 import { mapProviderStatus } from "@/server/providers/magic-hour-mapping";
-import type { StoredVideo } from "@/server/providers/types";
+import { CLOUDINARY_FOLDERS, type StoredVideo } from "@/server/providers/types";
 import type { Job } from "@/server/repositories/jobs";
 
 // A finalizing job whose claim is older than this is presumed crashed and is
@@ -80,6 +80,8 @@ async function storeResult(claimed: Job, deps: FinalizeDeps, at: Date): Promise<
   try {
     video = await deps.cloudinary.copyVideoFromUrl(url, {
       deadline: at.getTime() + FINALIZE_COPY_BUDGET_MS,
+      // WHK-005: a render is a result, not a source.
+      folder: CLOUDINARY_FOLDERS.results,
       // Unlike a user upload, this is a render already paid for. A sanity
       // failure here must not be terminal: release the claim and let a
       // redelivery retry rather than marking a paid job failed.

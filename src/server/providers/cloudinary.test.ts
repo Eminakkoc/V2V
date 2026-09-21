@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCloudinaryAdapter, MIN_RETRY_BUDGET_MS, type CloudinaryUpload } from "./cloudinary";
+import { CLOUDINARY_FOLDERS } from "./types";
 
 const credentials = { cloudName: "demo", apiKey: "key", apiSecret: "secret" };
 const url = "https://ucarecdn.com/3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a/beach.mov";
@@ -21,7 +22,7 @@ function adapterWith(upload: CloudinaryUpload, now = () => 0) {
   return createCloudinaryAdapter(credentials, { upload, sleep: async () => {}, now });
 }
 
-const options = { deadline: 50_000 };
+const options = { deadline: 50_000, folder: CLOUDINARY_FOLDERS.sources } as const;
 
 describe("Cloudinary adapter", () => {
   it("copies by URL into sources with a random public id and maps the result", async () => {
@@ -83,7 +84,9 @@ describe("Cloudinary adapter", () => {
   it("skips the retry when too little time is left", async () => {
     const upload = vi.fn(async () => Promise.reject({ message: "timeout", http_code: 499 }));
     const deadline = MIN_RETRY_BUDGET_MS;
-    await expect(adapterWith(upload).copyVideoFromUrl(url, { deadline })).rejects.toMatchObject({
+    await expect(
+      adapterWith(upload).copyVideoFromUrl(url, { deadline, folder: CLOUDINARY_FOLDERS.sources }),
+    ).rejects.toMatchObject({
       retryable: true,
     });
     expect(upload).toHaveBeenCalledTimes(1);
@@ -133,5 +136,23 @@ describe("Cloudinary adapter", () => {
       retryable: true,
       details: { reason: "missing-duration" },
     });
+  });
+
+  it("files a render under results, not alongside the user's uploads", async () => {
+    // WHK-005. The folder used to be hardcoded to "sources" for every caller,
+    // so paid renders landed in the uploads folder and the two were
+    // indistinguishable in asset management.
+    const upload = vi.fn(async () => uploaded({ public_id: "results/abc" }));
+    await adapterWith(upload).copyVideoFromUrl(url, {
+      deadline: 50_000,
+      folder: CLOUDINARY_FOLDERS.results,
+    });
+    expect(upload).toHaveBeenCalledWith(
+      url,
+      expect.objectContaining({
+        asset_folder: "results",
+        public_id: expect.stringMatching(/^results\/[0-9a-f-]{36}$/),
+      }),
+    );
   });
 });

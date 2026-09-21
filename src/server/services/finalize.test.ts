@@ -140,6 +140,8 @@ describe("finalizeJob", () => {
     }
     expect(copyVideoFromUrl).toHaveBeenCalledWith("https://fake.magichour.ai/mh-1/output.mp4", {
       deadline: now().getTime() + FINALIZE_COPY_BUDGET_MS,
+      // WHK-005: a render is a result, never filed with the user's uploads.
+      folder: "results",
       treatSanityFailureAsRetryable: true,
     });
 

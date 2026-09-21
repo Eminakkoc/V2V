@@ -13,13 +13,14 @@ import {
   FAKE_SOURCE_SECONDS,
   FAKE_UUID_PREFIXES,
 } from "./fakes";
+import { CLOUDINARY_FOLDERS } from "./types";
 
 const plain = "3f1b8c9e-4d2a-4b6e-9a1c-2e5f7d8b9c0a";
 const failsOnce = "f0000000-0000-4000-8000-000000000001";
 const unreadable = "e0000000-0000-4000-8000-000000000001";
 const longSource = "d0000000-0000-4000-8000-000000000001";
 const jobId = "65f000000000000000000001";
-const options = { deadline: Date.now() + 50_000 };
+const options = { deadline: Date.now() + 50_000, folder: CLOUDINARY_FOLDERS.sources } as const;
 
 const fakeParams: TransformParams = {
   name: "beach clip",
@@ -255,5 +256,16 @@ describe("fake providers", () => {
     expect(
       magicHour.verifyWebhook({ rawBody, signature: goodSignature, timestamp, nowSeconds }),
     ).toEqual({ ok: true });
+  });
+
+  it("honours the requested folder, so a fake run can tell a result from a source", async () => {
+    const { uploadcare, cloudinary } = createFakeProviders("demo");
+    const { originalFileUrl } = await uploadcare.getFileInfo(plain);
+    await expect(
+      cloudinary.copyVideoFromUrl(originalFileUrl, {
+        deadline: Date.now() + 50_000,
+        folder: CLOUDINARY_FOLDERS.results,
+      }),
+    ).resolves.toMatchObject({ publicId: `results/fake-${plain}` });
   });
 });

@@ -24,8 +24,20 @@ export type StoredVideo = {
   height: number;
 };
 
+// Cloudinary folders the two kinds of asset this app stores. Sources are what
+// the user uploaded; results are what Magic Hour rendered. Keeping them apart
+// is WHK-005, and it is also what makes the assets distinguishable in asset
+// management and scriptable for cleanup.
+export const CLOUDINARY_FOLDERS = { sources: "sources", results: "results" } as const;
+
+export type CloudinaryFolder = (typeof CLOUDINARY_FOLDERS)[keyof typeof CLOUDINARY_FOLDERS];
+
 export type CopyVideoOptions = {
   deadline: number;
+  // Which folder the copy lands in. Required rather than defaulted: the
+  // default WAS "sources" for every caller, which is how finalize came to
+  // file paid renders alongside user uploads.
+  folder: CloudinaryFolder;
   // A sanity failure (missing duration/dimensions/format) is a hard failure
   // for a user upload — it really is a bad file. For a Magic Hour render
   // result, the render is a paid asset that must not be permanently lost to

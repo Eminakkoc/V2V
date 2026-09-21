@@ -146,7 +146,7 @@ export function createFakeProviders(
       },
     },
     cloudinary: {
-      async copyVideoFromUrl(url) {
+      async copyVideoFromUrl(url, { folder }) {
         const uuid = uuidFrom(url);
         if (uuid.startsWith(FAKE_UUID_PREFIXES.unreadable)) {
           throw new AppError("CLOUDINARY_UPLOAD_FAILED", {
@@ -158,7 +158,9 @@ export function createFakeProviders(
           failedOnce.add(uuid);
           throw new AppError("CLOUDINARY_UPLOAD_FAILED", { retryable: true });
         }
-        const publicId = `sources/fake-${uuid}`;
+        // Mirrors the real adapter's `<folder>/<id>`: a fake that always said
+        // "sources" is what let the misfiled results through D.1's green path.
+        const publicId = `${folder}/fake-${uuid}`;
         return {
           publicId,
           secureUrl: `https://res.cloudinary.com/${cloudName}/video/upload/${publicId}.mp4`,
