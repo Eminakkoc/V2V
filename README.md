@@ -20,7 +20,8 @@ Open http://localhost:3000.
 In plain language: you upload a clip in the browser -> the server copies it to Cloudinary and
 asks Magic Hour to render it -> Magic Hour calls the server back when the render finishes ->
 the server copies the result into Cloudinary and saves it -> if that callback never arrives,
-the server asks Magic Hour directly instead, the next time History is loaded.
+the server asks Magic Hour directly instead, the next time the browser asks for the job list —
+which it does by itself, every few seconds, while a job is running.
 
 In more detail:
 
@@ -35,9 +36,10 @@ In more detail:
    under a minute to several minutes depending on clip length and load.
 4. **Webhook _or_ status check.** Magic Hour finishes and calls the one webhook registered on
    the account (`POST /api/webhook`) with the result. If that call is ever lost — a dropped
-   connection, or (in local development) no webhook reachable at all — the server instead asks
-   Magic Hour directly the next time someone loads or refreshes the History page. This "status
-   check" needs no manual action; see "Local development" below for why it exists.
+   connection, or (in local development) no webhook reachable at all — the server asks Magic
+   Hour directly instead: every `GET /api/history` response is followed by a "status check" of
+   that user's unfinished jobs, and the browser polls that endpoint by itself while a job is
+   live, from whichever page is open. It needs no manual action; the next section draws it.
 5. **Result.** Either path runs the same "finalize" step: the rendered video is copied into
    Cloudinary, the job is marked `complete`, and its card in History updates.
 
@@ -53,6 +55,86 @@ Magic Hour credits, locally exactly as in production. Set `PROVIDER_MODE=fake` o
 unless you specifically want to avoid spending credits and are prepared for the app to use
 in-memory Uploadcare/Cloudinary fakes instead of your real accounts.
 
+## How a finished render reaches the browser
+
+![Sequence diagram: the browser polls the history endpoint, each response triggers a status
+check of Magic Hour, and both that check and Magic Hour's webhook end in the same claim-guarded
+finalize step](docs/diagrams/polling-sequence.svg)
+
+A render takes minutes, and nothing here holds a connection open that long. Two independent
+paths bring the result back, and either one alone is enough:
+
+- **The webhook is the fast path.** Magic Hour calls `POST /api/webhook` the moment a render
+  finishes. The signature is verified before the body is even parsed.
+- **The status check is the safety net.** Every `GET /api/history` response is followed —
+  after the response has already been sent — by a check of up to five of that user's
+  unfinished jobs, skipping any that were asked about in the last 60 seconds. A webhook that
+  never arrives therefore costs a delay, not the job.
+
+The browser is what keeps that safety net running. While a job is live it polls
+`GET /api/history` every 3 seconds, backing off to 10 and then 30 as the job runs on, and stops
+entirely once nothing is left to watch. Polling pauses while the tab is hidden or the browser is
+offline, and resumes on its own. It lives in the root layout rather than on one page, so it
+survives moving between Create and History.
+
+Both paths end in the same `finalize` step, which takes an exclusive claim on the job before
+doing anything. That is what makes the race safe: whichever of the two arrives second finds the
+job already claimed and does nothing, so a result is never stored twice.
+
+## Where the videos are stored
+
+![Diagram: the browser uploads to Uploadcare, Cloudinary fetches copies into sources/ and
+results/, Magic Hour reads the source URL, and MongoDB holds only urls and
+metadata](docs/diagrams/storage.svg)
+
+Three services hold video and the app server holds none of it. Every copy is made by one
+service fetching a URL from another, so no clip is ever streamed through a Vercel function.
+
+1. The browser uploads the original straight to **Uploadcare**, with a short-lived signature
+   issued by `POST /api/uploadcare-signature`.
+2. The browser sends only the resulting CDN URL to `POST /api/upload`.
+3. The server checks size, type and real duration against Uploadcare's own file info — never
+   the browser's claim.
+4. It asks **Cloudinary** to fetch that URL into `sources/`. This copy exists because Magic
+   Hour needs a plain HTTPS URL it can read without authentication.
+5. The `sources` row is written to **MongoDB**: the Uploadcare uuid and URL, the Cloudinary
+   public id and URL, and the format, bytes, duration and dimensions Cloudinary reported.
+6. `POST /api/transform` sends Magic Hour that Cloudinary URL, the chosen style and the trim
+   range.
+7. Finalize asks Cloudinary to fetch the finished render into `results/`. Magic Hour's own
+   download URL expires, which is why the render is copied rather than linked.
+8. The job row gets `output.cloudinaryUrl` and is marked complete.
+9. Both the source and the result play back from Cloudinary. The poster frame is an
+   on-the-fly Cloudinary transformation of the video, not a separate stored file.
+
+MongoDB stores URLs and metadata only — never a byte of video. Nothing is removed on its own;
+see "Cleaning up after a live manual test".
+
+## Who you are: the signed anonymous cookie
+
+![Sequence diagram: the root layout detects a missing cookie, POST /api/session mints and signs
+one, and every later request verifies the signature and scopes its database queries to that user
+id](docs/diagrams/auth-cookie.svg)
+
+There is no sign-in. Identity is a single cookie, `v2v_uid`, holding a random UUID, the time it
+was issued, and an HMAC-SHA256 signature over both, keyed with `SESSION_COOKIE_SECRET`.
+
+- **Minted on the first visit.** The root layout reads the cookie as it renders; if it is
+  missing, unreadable or over 30 days old, the page includes a small client component whose
+  only job is to call `POST /api/session`. That endpoint's entire answer is the `Set-Cookie`
+  header — 204, no body.
+- **Verified on every request.** Each route re-derives the signature and compares it in
+  constant time. The user id it yields scopes every `sources` and `jobs` query, so no request
+  can reach another visitor's rows.
+- **Unforgeable rather than secret.** The cookie is `HttpOnly` (no script on the page can read
+  it), `SameSite=Lax`, `Secure` outside localhost, and lasts a year. The signing secret never
+  leaves the server, so a user id cannot be invented.
+- **Renewed quietly.** Past 30 days the same user id is re-signed and re-set, so a returning
+  visitor keeps their history.
+- **A broken cookie is not an error.** Missing, tampered with and malformed all mean the same
+  thing: a new anonymous visitor with an empty history. That is also this design's cost —
+  clearing cookies, or switching browser or device, starts over.
+
 ## Local development
 
 Magic Hour cannot call `localhost`, and it registers **one** webhook URL for the whole
@@ -60,8 +142,9 @@ account — there is no per-environment callback. Pick one of these two options.
 
 **Option A — rely on the status check (recommended default).** Do nothing: leave the
 account's webhook registration pointed at production. As explained above, the app asks Magic
-Hour directly whenever History is loaded or refreshed, so a job started locally still
-completes with no webhook involved. This only became viable this cycle, now that the status
+Hour directly after every history request, and the browser makes those requests by itself every
+few seconds while a job is running — so a job started locally still completes, with no webhook
+involved and nothing to reload by hand. This only became viable this cycle, now that the status
 check runs the same finalize step the webhook does; it is the safer default for local work
 because it never touches the one shared registration.
 
@@ -71,8 +154,8 @@ tunnel — `ngrok http 3000` or `cloudflared tunnel --url http://localhost:3000`
 its public URL, `https://<tunnel>.example/api/webhook`, at
 https://magichour.ai/developer. **This replaces the account's one webhook registration**, so
 while it's active Magic Hour stops calling the production deployment; a production job still
-waiting on a webhook isn't lost — the status check catches it up the next time someone loads
-History — but it won't complete the instant it renders. **When you are done,
+waiting on a webhook isn't lost — the status check catches it up as soon as a browser has the
+app open again — but it won't complete the instant it renders. **When you are done,
 re-register the production URL** — `https://v2v-nu.vercel.app/api/webhook`, or your own
 production domain — at the same dashboard page. This step is not optional: skipping it leaves
 production depending on the status check alone until someone remembers to fix it.
@@ -95,7 +178,8 @@ production depending on the status check alone until someone remembers to fix it
 
 ## Tests and CI
 
-- The project needs Node 22.22.2 or later. `.nvmrc` pins 22; run `nvm use`.
+- The project needs Node 22, from 22.22.2 up (`engines` is `^22.22.2`, so Node 23+ is not
+  accepted). `.nvmrc` pins 22; run `nvm use`.
 - `pnpm test` runs unit and integration tests. Integration tests start an in-memory MongoDB
   (`mongodb-memory-server`); the first run downloads a MongoDB binary.
 - `pnpm test:e2e` starts an in-memory MongoDB and `PROVIDER_MODE=fake`, so no Uploadcare or
@@ -130,10 +214,11 @@ upload reuses one file across several sources.
   dormant `SUBMISSION_UNCONFIRMED` case (see Known limitations) — nothing currently recovers
   it automatically. Retry starts a fresh job; the original may still finish on its own but the
   app can no longer confirm it did.
-- **A job sits "Queued" or "Rendering" in local development and never updates by itself.**
-  Expected if you're using Option A (see "Local development") — the status check only runs
-  when the History page is loaded or refreshed, so reload the page rather than waiting for it
-  to update on its own.
+- **A job sits "Queued" or "Rendering" and stops updating.** Live updates pause while the tab
+  is hidden or the browser is offline, and resume by themselves — switch back to the tab
+  first. If the page is visible and still frozen, the poll gave up after five consecutive
+  failed requests and says so ("We lost track of job updates"); reload the page. Nothing is
+  lost either way: a result that lands while nothing is watching is still saved.
 - **"Taking longer than expected. Still checking" appears.** The job's estimated deadline
   passed but its grace period has not; this is not an error. Keep reloading History and it
   will keep checking.
@@ -165,9 +250,9 @@ upload reuses one file across several sources.
 ## Provider setup and deployment
 
 One-time steps for whoever deploys this project. Registering the webhook (step 4 below) is
-still required for production: without it, a job only completes when a real user's browser
-happens to be polling History (see "How a job flows"), and a browser that isn't open drives no
-recovery at all. Local development doesn't need it — see "Local development" above.
+still required for production: without it, a job only completes while a real user's browser is
+open and polling (see "How a finished render reaches the browser"), and a browser that isn't
+open drives no recovery at all. Local development doesn't need it — see "Local development" above.
 
 1. **Create accounts and collect keys.**
    - **Uploadcare** — sign up, then open the project's API keys at
@@ -250,10 +335,11 @@ recovery at all. Local development doesn't need it — see "Local development" a
   saved, the webhook falls back to matching on the `name` field it sent Magic Hour — but Magic
   Hour's own docs list `name` as optional on a delivery, and there's no API to look a job up
   another way. A delivery that arrives without `name` for such a job can never be matched.
-- **A lost webhook is recovered only when someone loads History.** The status check that
-  stands in for a missing webhook runs when the History page is loaded or refreshed, not on a
-  timer or schedule — if no one has the page open, nothing checks in the meantime, and the job
-  simply waits until the next visit.
+- **A lost webhook is recovered only while a browser is open.** The status check that stands
+  in for a missing webhook runs after a history request, and those requests come from the
+  browser's own polling — there is no timer or scheduled job on the server. With the app open
+  a job recovers within seconds; with nobody on the app, nothing checks at all, and the job
+  waits until the next visit.
 - **A cancelled job is labelled differently depending on how it's discovered.** A cancellation
   that arrives by webhook is stored as `MAGIC_HOUR_JOB_FAILED` (the same code used for a real
   render failure); the same cancellation found by the status check is correctly stored as
@@ -284,7 +370,7 @@ recovery at all. Local development doesn't need it — see "Local development" a
 | Signed anonymous identity | The `v2v_uid` cookie is `HttpOnly`, `Secure`, `SameSite=Lax` and HMAC-signed with `SESSION_COOKIE_SECRET`, so a user ID can't be forged.                                                                                                            | `src/server/services/identity.ts`                  |
 | Webhook verification      | HMAC-SHA256 over `timestamp.rawBody`, constant-time comparison, 5-minute replay window; fails closed if the secret is missing.                                                                                                                      | `POST /api/webhook`                                |
 | Signed uploads            | A short-lived Uploadcare upload signature is issued by our own endpoint, so only this app can upload into the project.                                                                                                                              | `POST /api/uploadcare-signature`                   |
-| Rate limiting             | 10 requests/user and 30/IP per 10 minutes on `/api/upload` and `/api/transform`, tracked in MongoDB; exceeded returns `429 RATE_LIMITED`.                                                                                                           | `src/server/services/rate-limit.ts`                |
+| Rate limiting             | 10 requests/user and 30/IP per 10 minutes, counted separately for `/api/upload`, `/api/transform` and `/api/uploadcare-signature`, tracked in MongoDB; exceeded returns `429 RATE_LIMITED`.                                                         | `src/server/services/rate-limit.ts`                |
 | Secrets                   | Only `NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY` reaches the browser; every other key is server-only, parsed at boot, and never logged.                                                                                                                     | `src/config/env.ts`                                |
 | Transport                 | HTTPS + HSTS enforced by Vercel; MongoDB Atlas over TLS; all provider calls over HTTPS.                                                                                                                                                             | Vercel, Atlas                                      |
 | Security headers          | A `Content-Security-Policy` scoped to our origin plus the Uploadcare/Cloudinary domains in use, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a restrictive `Permissions-Policy`. | `next.config.ts`, `src/config/security-headers.ts` |
@@ -312,5 +398,7 @@ recovery at all. Local development doesn't need it — see "Local development" a
 
 ## Design documentation
 
-Architecture decisions and diagrams live in [`docs/`](docs/), starting with
-[`docs/decisions-report.md`](docs/decisions-report.md).
+The three diagrams above are generated from the PlantUML sources beside them in
+[`docs/diagrams/`](docs/diagrams/); edit the `.puml` file and re-render to change one. The full
+architecture decision record and the detailed per-endpoint lifecycle diagrams live in the rest
+of `docs/`, which is not committed to this repository.

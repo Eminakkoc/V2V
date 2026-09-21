@@ -1,0 +1,44 @@
+@startuml Where the videos are stored
+title Where the videos are stored\nSolid = a call the app server makes.  Dashed = video bytes, which never pass through the app server.
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam linetype polyline
+skinparam nodesep 40
+skinparam ranksep 65
+
+rectangle "Browser" as B
+
+cloud "Uploadcare" as UC {
+  storage "the original file,\nexactly as uploaded" as UCF
+}
+
+rectangle "App server\n(Vercel functions)" as S
+
+database "MongoDB Atlas" as DB {
+  storage "sources + jobs\nurls, ids, metadata\nnever a byte of video" as DBR
+}
+
+cloud "Cloudinary" as CLD {
+  storage "sources/<id>\nwhat Magic Hour reads\nand the app plays back" as CS
+  storage "results/<id>\nthe finished render" as CR
+}
+
+cloud "Magic Hour" as MH {
+  storage "the render, on a\nurl that expires" as MHO
+}
+
+B ..> UCF : "1"
+B --> S : "2"
+S --> UCF : "3"
+S --> CS : "4"
+UCF ..> CS
+S --> DBR : "5"
+S --> MHO : "6"
+CS ..> MHO
+S --> CR : "7"
+MHO ..> CR
+S --> DBR : "8"
+CS ..> B : "9"
+CR ..> B : "9"
+@enduml

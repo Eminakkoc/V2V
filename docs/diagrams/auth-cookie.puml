@@ -1,0 +1,56 @@
+@startuml Who you are - the signed anonymous cookie
+title Who you are: the signed anonymous cookie\nThere is no sign-in. One HttpOnly cookie, signed by the server, is the whole identity.
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor Visitor as V
+participant "Browser" as B
+participant "Root layout\n(server component)" as L
+participant "POST /api/session" as S
+participant "Any /api/... route" as A
+database "MongoDB" as DB
+
+== First visit: the cookie is minted ==
+
+V -> B : open the app
+B -> L : request the page
+L -> L : read the v2v_uid cookie\n-> missing, forged or over 30 days old
+L --> B : the page, plus a small client component\nwhose only job is the call below
+B -> S : POST /api/session (no body)
+S -> S : mint a random UUID and sign it:\nv2v_uid = <uuid>.<issuedAt>.<HMAC-SHA256 of the two,\nkeyed with SESSION_COOKIE_SECRET>
+S --> B : 204 No Content\nSet-Cookie: v2v_uid=...; HttpOnly; Secure;\nSameSite=Lax; Path=/; Max-Age=1 year
+note over B
+  HttpOnly, so no script on the page can read it.
+  The signature is what makes a user id unforgeable:
+  the secret never leaves the server.
+end note
+
+== Every request after that ==
+
+B -> A : the browser attaches the cookie by itself
+A -> A : split it, then compare the signature\nin constant time
+
+alt the signature checks out
+  A -> DB : every query filtered by { userId }
+  DB --> A : this visitor's rows and no one else's
+  A --> B : the response
+  opt the cookie is more than 30 days old
+    A --> B : Set-Cookie: the same user id, freshly signed\n(a returning visitor never loses their history)
+  end
+else missing, tampered with, or malformed
+  A -> A : treated exactly like a first visit\n-> a brand-new user id
+  A --> B : the response + Set-Cookie for the new id
+  note right of A
+    Nothing is "rejected": an unreadable cookie
+    simply means a new anonymous visitor, who
+    sees an empty history.
+  end note
+end
+
+note across
+  The trade-off this buys: no passwords, no accounts, no personal data - but clearing
+  cookies, or switching browser or device, means starting over with an empty history.
+end note
+@enduml

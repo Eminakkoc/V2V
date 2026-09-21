@@ -51,4 +51,6 @@ next-env.d.ts
 /blob-report/
 
 
-/docs
+# docs holds local-only case-study material; the README's diagrams are the exception
+/docs/*
+!/docs/diagrams/

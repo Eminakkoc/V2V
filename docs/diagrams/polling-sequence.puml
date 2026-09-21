@@ -1,0 +1,60 @@
+@startuml How a finished render reaches the browser
+title How a finished render reaches the browser\nMagic Hour's webhook and the browser's own polling race to the same shared finalize step
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor User as U
+participant "Browser\n(whichever page is open)" as B
+participant "GET /api/history" as H
+participant "Status check\n(runs after the response)" as R
+participant "POST /api/webhook" as W
+participant "Finalize\n(shared, claim-guarded)" as F
+database "MongoDB" as DB
+participant "Magic Hour" as MH
+
+U -> B : press Transform
+B -> MH : (via POST /api/transform) job submitted, saved as processing
+
+== While the job is unfinished ==
+
+loop browser poll: 3s -> 10s -> 30s\n(paused while the tab is hidden or the browser is offline)
+  B -> H : GET /api/history
+  H -> DB : read this user's jobs
+  H --> B : job list + live counts\n(answered straight from the database)
+  group after() : once the response is already sent
+    H -> R : check this user's stale jobs
+    R -> DB : pick at most 5 unfinished jobs\nnot already checked in the last 60s
+    R -> MH : ask each one's status
+    MH --> R : queued / rendering / complete / failed
+    R -> DB : record the new phase
+  end
+end
+
+== Whichever finishes first ==
+
+alt Magic Hour's webhook arrives (the normal path)
+  MH -> W : video.completed
+  W -> W : verify HMAC signature + timestamp\n(fails closed - no secret, no action)
+  W -> F : finalize(job)
+else the webhook was lost, or none is reachable locally
+  R -> F : finalize(job) - the status check saw "complete"
+end
+
+F -> DB : claim the job (status = finalizing)
+note right of F
+  The claim is exclusive: whichever path
+  arrives second finds the job claimed
+  and does nothing.
+end note
+F -> MH : fetch the rendered video's URL
+F -> DB : store the result, status = complete\n(the file itself is copied into Cloudinary - see the storage diagram)
+
+== Next poll ==
+
+B -> H : GET /api/history
+H -> DB : read
+H --> B : the job is complete
+B -> B : nothing live left -> stop polling
+@enduml
