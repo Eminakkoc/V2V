@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HistoryBodySkeleton } from "./history-skeleton";
 
 export type HistoryTab = "jobs" | "sources";
 
@@ -21,18 +23,34 @@ export type HistoryTabsProps = {
 // manual activation for.
 export function HistoryTabs({ active, children }: HistoryTabsProps) {
   const router = useRouter();
+  const [requested, setRequested] = useState<HistoryTab | null>(null);
+  const [navigating, startNavigating] = useTransition();
+
+  // Inside a transition, so the clicked pill and this page's own skeleton paint immediately:
+  // router.push alone leaves the panel that is on its way out on screen for the whole round trip,
+  // which is the delay a reader feels as an unresponsive tab.
+  function selectTab(value: string) {
+    const tab = value as HistoryTab;
+    setRequested(tab);
+    startNavigating(() => router.push(hrefFor(tab)));
+  }
+
+  const shown = navigating && requested ? requested : active;
 
   return (
     <Tabs
-      value={active}
-      onValueChange={(value) => router.push(hrefFor(value as HistoryTab))}
+      value={shown}
+      onValueChange={selectTab}
       activationMode="manual"
+      className="min-h-0 flex-1"
     >
-      <TabsList aria-label="History views">
+      <TabsList aria-label="History views" className="shrink-0">
         <TabsTrigger value="jobs">Transformations</TabsTrigger>
         <TabsTrigger value="sources">Uploaded videos</TabsTrigger>
       </TabsList>
-      <TabsContent value={active}>{children}</TabsContent>
+      <TabsContent value={shown} className="flex min-h-0 flex-col">
+        {navigating ? <HistoryBodySkeleton /> : children}
+      </TabsContent>
     </Tabs>
   );
 }
