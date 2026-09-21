@@ -134,7 +134,7 @@ function TransformationsPanel({
   const hasActiveFilter = hasActiveJobFilter(query);
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 sm:gap-6">
       <FilterBar
         statusBucket={query.statusBucket}
         style={query.style}
@@ -151,57 +151,68 @@ function TransformationsPanel({
         </Alert>
       ) : null}
 
-      <HistoryEmptyState
-        tab="transformations"
-        rows={jobs}
-        hasActiveFilter={hasActiveFilter}
-        hasUploads={hasUploads}
-        uploadHref="/"
-        switchToUploadsHref="/history?tab=sources"
-        clearFiltersHref="/history"
-      />
+      {/* The one scrolling box on the page, so the filter row above it never
+          leaves; the inset padding keeps card shadows and focus rings from
+          being clipped against its edges. `relative` is load-bearing: the
+          cards' visually hidden live regions are position:absolute, and
+          without a containing block here they escape the clip and stretch the
+          document back into a page scroll. */}
+      <div
+        data-slot="history-scroll"
+        className="relative -mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 sm:gap-6"
+      >
+        <HistoryEmptyState
+          tab="transformations"
+          rows={jobs}
+          hasActiveFilter={hasActiveFilter}
+          hasUploads={hasUploads}
+          uploadHref="/"
+          switchToUploadsHref="/history?tab=sources"
+          clearFiltersHref="/history"
+        />
 
-      {isListEmpty ? null : (
-        <ul aria-busy={loadingMore} className="flex flex-col gap-4 sm:gap-6">
-          {jobs.map((job) => (
-            // The panel lives here, not on HistoryCard: the attempts disclosure is part of the same
-            // card and has to sit inside it.
-            <li key={job.id} className="flex flex-col rounded-card bg-surface shadow-sm">
-              <HistoryCard job={job} cloudName={cloudName} />
-              <PreviousAttempts attempts={job.attempts} cloudName={cloudName} />
-            </li>
-          ))}
-        </ul>
-      )}
+        {isListEmpty ? null : (
+          <ul aria-busy={loadingMore} className="flex flex-col gap-4 sm:gap-6">
+            {jobs.map((job) => (
+              // The panel lives here, not on HistoryCard: the attempts disclosure is part of the same
+              // card and has to sit inside it.
+              <li key={job.id} className="flex flex-col rounded-card bg-surface shadow-sm">
+                <HistoryCard job={job} cloudName={cloudName} />
+                <PreviousAttempts attempts={job.attempts} cloudName={cloudName} />
+              </li>
+            ))}
+          </ul>
+        )}
 
-      {/* F13: skeletons are aria-hidden, and paired with a visually hidden
-          announcement -- shown only for a client-side load (load more),
-          never on first paint, because the first page arrives server
-          rendered. */}
-      {loadingMore ? (
-        <>
-          <span role="status" className="sr-only">
-            Loading history
-          </span>
-          <div aria-hidden className="flex flex-col gap-4 sm:gap-6">
-            <Skeleton className="h-[172px] w-full rounded-card" />
-            <Skeleton className="h-[172px] w-full rounded-card" />
-          </div>
-        </>
-      ) : null}
+        {/* F13: skeletons are aria-hidden, and paired with a visually hidden
+            announcement -- shown only for a client-side load (load more),
+            never on first paint, because the first page arrives server
+            rendered. */}
+        {loadingMore ? (
+          <>
+            <span role="status" className="sr-only">
+              Loading history
+            </span>
+            <div aria-hidden className="flex flex-col gap-4 sm:gap-6">
+              <Skeleton className="h-[172px] w-full rounded-card" />
+              <Skeleton className="h-[172px] w-full rounded-card" />
+            </div>
+          </>
+        ) : null}
 
-      {!isListEmpty && cursor !== null ? (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleLoadMore}
-          disabled={loadingMore}
-          aria-busy={loadingMore}
-          className="self-center"
-        >
-          {loadingMore ? "Loading…" : "Load more"}
-        </Button>
-      ) : null}
+        {!isListEmpty && cursor !== null ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            aria-busy={loadingMore}
+            className="self-center"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

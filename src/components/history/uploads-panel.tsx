@@ -32,7 +32,14 @@ export function UploadsPanel({
   const hasRows = sources.length > 0;
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
+    // The one scrolling box on the page, so the tabs above it never leave; the inset padding keeps
+    // card shadows and focus rings from being clipped against its edges. `relative` is load-bearing:
+    // a visually hidden live region is position:absolute and would otherwise escape the clip and
+    // stretch the document back into a page scroll.
+    <div
+      data-slot="history-scroll"
+      className="relative -mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 sm:gap-6"
+    >
       <HistoryEmptyState
         tab="uploads"
         rows={sources}
