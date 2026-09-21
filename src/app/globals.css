@@ -187,6 +187,9 @@
   /* --btn-py, --seg-py and --touch-row-py are what hold interactive rows to a
      44px tap target on phones while keeping desktop controls compact. */
   --page-margin: 18px;
+  /* The header's whole box, border included -- /history subtracts it from the
+     viewport to size the column that holds its own scrolling list. */
+  --header-h: 60px;
   --header-py: 14px;
   --section-pt: 8px;
   --section-pb: 24px;
@@ -218,6 +221,16 @@
   --icon-btn: 44px;
   --card-max: 860px;
   --aside-w: 340px;
+}
+
+/* Narrow phones -- the one step down rather than up. "V2V Transform" at 23px is
+   wider than the header can give it once the nav has taken its share, and the
+   wordmark is the only element there with nothing left to shrink. */
+@media (width < 22.5rem) {
+  :root {
+    --text-brand: 17px;
+    --leading-brand: 22px;
+  }
 }
 
 /* Tablet. Outside @layer, so these override the names declared in @theme. */

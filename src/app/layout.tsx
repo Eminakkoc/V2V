@@ -26,7 +26,7 @@ const figtree = Figtree({
 });
 
 export const metadata: Metadata = {
-  title: { template: "%s · Restyle", default: "Restyle" },
+  title: { template: "%s · V2V Transform", default: "V2V Transform" },
   description: "Restyle your videos with AI video-to-video transformation.",
 };
 
