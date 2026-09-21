@@ -65,5 +65,19 @@ export function clampRange(next: TrimRange, previous: TrimRange, bounds: TrimBou
   start = clampToLimit(start, limit);
   end = clampToLimit(end, limit);
 
+  // Re-assert the gap AFTER the bounds clamp. Nudging the *other* handle open
+  // (above) only works while that handle has somewhere to go; at either end of
+  // the track the nudge is clamped straight back -- End on the start thumb
+  // proposes (limit, limit), the nudge asks for limit + minGap, and the clamp
+  // returns it to limit -- collapsing the pair onto one value and offering a
+  // zero-length clip the server then refuses. Here the handle that still has
+  // room gives way instead, including the dragged one: at the boundary there
+  // is no alternative, and stopping the dragged handle short of the edge is
+  // the same resolution a crossing already gets.
+  if (end - start < minGap) {
+    if (start + minGap <= limit) end = start + minGap;
+    else start = Math.max(0, end - minGap);
+  }
+
   return { startSeconds: round2(start), endSeconds: round2(end) };
 }

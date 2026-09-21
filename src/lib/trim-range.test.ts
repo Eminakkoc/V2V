@@ -103,3 +103,48 @@ describe("defaultRange", () => {
     }
   });
 });
+
+describe("clampRange at the track extremes", () => {
+  // The source is 12.5s, so the track runs 0 .. 12.5 and both thumbs can
+  // reach an edge. IR-003: a keyboard user could drive them onto the same
+  // value, which a pointer drag cannot do (Radix's minStepsBetweenThumbs),
+  // and the control then let an invalid clip be submitted.
+  const short = { duration: 12.5, minGap: 0.1, maxClipSeconds: 30 };
+
+  it("keeps the gap when End drives the start thumb onto the end thumb", () => {
+    expect(
+      clampRange(
+        { startSeconds: 12.5, endSeconds: 12.5 },
+        { startSeconds: 0, endSeconds: 12.5 },
+        short,
+      ),
+    ).toEqual({ startSeconds: 12.4, endSeconds: 12.5 });
+  });
+
+  it("keeps the gap when Home drives the end thumb onto the start thumb", () => {
+    expect(
+      clampRange({ startSeconds: 0, endSeconds: 0 }, { startSeconds: 0, endSeconds: 12.5 }, short),
+    ).toEqual({ startSeconds: 0, endSeconds: 0.1 });
+  });
+
+  it("never yields a zero-length clip from any single-handle proposal", () => {
+    const steps = [-5, -0.1, 0, 0.1, 5, 12.4, 12.5, 12.6, 99];
+    for (const value of steps) {
+      for (const previous of [
+        { startSeconds: 0, endSeconds: 12.5 },
+        { startSeconds: 6, endSeconds: 6.1 },
+        { startSeconds: 12.4, endSeconds: 12.5 },
+      ]) {
+        for (const proposal of [
+          { startSeconds: value, endSeconds: previous.endSeconds },
+          { startSeconds: previous.startSeconds, endSeconds: value },
+        ]) {
+          const r = clampRange(proposal, previous, short);
+          expect(r.endSeconds - r.startSeconds).toBeGreaterThanOrEqual(short.minGap - 1e-9);
+          expect(r.startSeconds).toBeGreaterThanOrEqual(0);
+          expect(r.endSeconds).toBeLessThanOrEqual(short.duration);
+        }
+      }
+    }
+  });
+});
