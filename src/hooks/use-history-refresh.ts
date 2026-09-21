@@ -63,7 +63,9 @@ export type UseHistoryRefreshOptions = {
 };
 
 export type UseHistoryRefreshResult = {
-  jobs: HistoryJobView[];
+  // Readonly so mergeRefreshed can hand back the array it was given when a
+  // poll changed nothing, instead of an equal copy React would re-render for.
+  jobs: readonly HistoryJobView[];
   error: boolean;
   stalled: boolean;
 };
@@ -78,7 +80,7 @@ export function useHistoryRefresh({
   includePrevious,
   hasMore,
 }: UseHistoryRefreshOptions): UseHistoryRefreshResult {
-  const [jobs, setJobs] = useState<HistoryJobView[]>(() => [...initial]);
+  const [jobs, setJobs] = useState<readonly HistoryJobView[]>(() => [...initial]);
   const [delay, setDelay] = useState<number | null>(null);
   const [error, setError] = useState(false);
   const [stalled, setStalled] = useState(false);
@@ -205,8 +207,12 @@ export function useHistoryRefresh({
     })();
   });
 
-  // Syncing with the history endpoint on mount is a sanctioned use of an
-  // Effect (react.dev/learn/synchronizing-with-effects).
+  // Deliberately kept, though `initial` was rendered moments ago: this tick
+  // asks a different question than the page did. ?changeable=true is
+  // account-wide and unfiltered (listChangeable), while `initial` is one
+  // filtered, paginated page -- so on a filtered view, or past the first page,
+  // the rows it reports are ones the render never mentioned, and skipping it
+  // would leave those jobs frozen until a reload.
   useEffect(() => {
     onTick();
   }, []);

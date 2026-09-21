@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useId } from "react";
+import { memo, useId } from "react";
 import { JobStatus } from "@/components/job/job-status";
 import { ActivityBar } from "@/components/ui/activity-bar";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -27,7 +27,14 @@ type HistoryCardProps = {
 // and a nested earlier attempt. The brief names three deliverables for this
 // view by name -- source URL, transformation parameters, generated URL -- so
 // all three are visible here as text/links, not merely implied by the players.
-export function HistoryCard({ job, cloudName, variant = "top" }: HistoryCardProps) {
+// memo, with the merge keeping an unchanged row's object identity: a poll
+// exists to notice the one job that moved, and without this every other card
+// on the page re-rendered on every tick alongside it.
+export const HistoryCard = memo(function HistoryCard({
+  job,
+  cloudName,
+  variant = "top",
+}: HistoryCardProps) {
   const titleId = useId();
   const Heading = variant === "top" ? "h2" : "h3";
   const running = job.status === "processing" || job.status === "finalizing";
@@ -115,4 +122,4 @@ export function HistoryCard({ job, cloudName, variant = "top" }: HistoryCardProp
       </div>
     </article>
   );
-}
+});

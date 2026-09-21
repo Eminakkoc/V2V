@@ -1,5 +1,6 @@
 import type { AttemptView, HistoryJobView } from "./history-contract";
 import { matchesFilter, type StatusFilter } from "./history-filters";
+import { jsonEqual } from "./json-equal";
 
 export type HistorySortKey = [number, number, string];
 
@@ -103,11 +104,16 @@ export function mergeRefreshed(
   loaded: readonly HistoryJobView[],
   refreshed: readonly HistoryJobView[],
   options: MergeRefreshedOptions,
-): HistoryJobView[] {
+): readonly HistoryJobView[] {
   const byId = new Map(loaded.map((row) => [row.id, row]));
   const boundary = loaded.length > 0 ? sortKeyOf(loaded[loaded.length - 1]!, options.sort) : null;
 
   let inserted = false;
+  // Whether this refresh actually altered anything. Most polls change nothing
+  // -- they exist to notice the one that does -- and a merge that rebuilt the
+  // list regardless handed every card a new object, re-rendering the whole
+  // page on a tick that learned nothing.
+  let changed = false;
   const supersededRows: HistoryJobView[] = [];
 
   for (const row of refreshed) {
@@ -125,15 +131,22 @@ export function mergeRefreshed(
       // nested copy is kept current unconditionally.
       supersededRows.push(row);
       if (!options.includePrevious) {
-        byId.delete(row.id);
+        if (byId.delete(row.id)) changed = true;
         continue;
       }
       // includePrevious: true -- also runs the normal top-level rules just
       // below, so the row can additionally stand as its own card.
     }
 
-    if (byId.has(row.id)) {
-      byId.set(row.id, row);
+    const existing = byId.get(row.id);
+    if (existing !== undefined) {
+      // The refreshed row is a different object every time, even when the
+      // job has not moved. Keeping the one already on screen is what lets a
+      // memoized card skip the render.
+      if (!jsonEqual(existing, row)) {
+        byId.set(row.id, row);
+        changed = true;
+      }
       continue;
     }
 
@@ -146,6 +159,7 @@ export function mergeRefreshed(
 
     byId.set(row.id, row);
     inserted = true;
+    changed = true;
   }
 
   // Second pass: every superseded row folds into its owner's nested
@@ -160,13 +174,23 @@ export function mergeRefreshed(
     if (!target) continue;
     if (!target.attempts.some((attempt) => attempt.id === row.id)) continue;
 
+    const attempt = toAttemptView(row);
+    if (
+      target.attempts.some((existing) => existing.id === row.id && jsonEqual(existing, attempt))
+    ) {
+      continue;
+    }
     byId.set(targetId, {
       ...target,
-      attempts: target.attempts.map((attempt) =>
-        attempt.id === row.id ? toAttemptView(row) : attempt,
-      ),
+      attempts: target.attempts.map((existing) => (existing.id === row.id ? attempt : existing)),
     });
+    changed = true;
   }
+
+  // The identical array, not a copy of it: React bails out of the update when
+  // the next state is the value it already holds, so a poll that found nothing
+  // new costs no render at all.
+  if (!changed) return loaded;
 
   const merged = [...byId.values()];
   if (!inserted) return merged;

@@ -594,3 +594,29 @@ describe("mergeRefreshed: purity", () => {
     expect(refreshed).toEqual(refreshedSnapshot);
   });
 });
+
+// The reason mergeRefreshed keeps identity at all: a poll exists to notice the
+// one job that moved, and handing every card a fresh object on the ticks that
+// found nothing re-rendered the whole list for no reason.
+describe("mergeRefreshed identity", () => {
+  it("returns the very same array when the refresh changed nothing", () => {
+    const loaded = [job({ id: "a", status: "processing" }), job({ id: "b", status: "complete" })];
+    const refreshed = [{ ...job({ id: "a", status: "processing" }) }];
+
+    const merged = mergeRefreshed(loaded, refreshed, options());
+
+    expect(merged).toBe(loaded);
+  });
+
+  it("keeps the untouched rows' own objects when one row did change", () => {
+    const loaded = [job({ id: "a", status: "processing" }), job({ id: "b", status: "processing" })];
+    const refreshed = [job({ id: "a", status: "complete" })];
+
+    const merged = mergeRefreshed(loaded, refreshed, options());
+
+    expect(merged).not.toBe(loaded);
+    expect(merged[0]).not.toBe(loaded[0]);
+    expect(merged[0]?.status).toBe("complete");
+    expect(merged[1]).toBe(loaded[1]);
+  });
+});
