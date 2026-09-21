@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { OfflineBanner } from "@/components/app-shell/offline-banner";
 import { TopBar } from "@/components/app-shell/top-bar";
+import { JobPollingProvider } from "@/components/job/job-polling-provider";
 import { SessionBootstrap } from "@/components/session-bootstrap";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -45,11 +46,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           Skip to main content
         </a>
         <TooltipProvider>
-          <TopBar />
-          <OfflineBanner />
-          <main id="main" className="flex flex-1 flex-col">
-            {children}
-          </main>
+          {/* Above the page, so the job poll is not torn down and restarted
+              every time the router moves between Create and History. */}
+          <JobPollingProvider>
+            <TopBar />
+            <OfflineBanner />
+            <main id="main" className="flex flex-1 flex-col">
+              {children}
+            </main>
+          </JobPollingProvider>
         </TooltipProvider>
         <Toaster />
         {needsSession ? <SessionBootstrap /> : null}

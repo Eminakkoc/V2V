@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UploadState } from "@/hooks/use-source-upload";
-import { useJobPolling } from "@/hooks/use-job-polling";
+import { useJobPolling } from "@/components/job/job-polling-provider";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import type { HistoryJobView } from "@/lib/history-contract";
@@ -15,7 +15,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
   apiFetch: vi.fn(),
 }));
 
-vi.mock("@/hooks/use-job-polling", () => ({ useJobPolling: vi.fn() }));
+vi.mock("@/components/job/job-polling-provider", () => ({ useJobPolling: vi.fn() }));
 
 // The uploader widget wraps a third-party web component with no test
 // coverage of its own; CreateFlow only depends on the callbacks it invokes,

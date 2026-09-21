@@ -6,7 +6,7 @@ import { useCallback, useReducer, useRef } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { SourceUploader, type UploaderSettings } from "@/components/upload/source-uploader";
-import { useJobPolling } from "@/hooks/use-job-polling";
+import { useJobPolling } from "@/components/job/job-polling-provider";
 import type { UploadState } from "@/hooks/use-source-upload";
 import { ApiError, apiFetch, toErrorLike } from "@/lib/api-client";
 import { videoUrl } from "@/lib/cloudinary-urls";
@@ -297,31 +297,38 @@ export function CreateFlow({
   // (never the draft currently on screen), and it must never reuse that past
   // job's idempotency key -- reusing it would just hand back the original job
   // and start nothing.
-  async function handleRetry(job: HistoryJobView) {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    dispatch({ type: "retry-started" });
-    try {
-      const response = await apiFetch("/api/transform", {
-        body: {
-          sourceId: job.sourceId,
-          params: job.params,
-          retryOfJobId: job.id,
-          idempotencyKey: crypto.randomUUID(),
-        },
-        schema: transformResponseSchema,
-      });
-      // A retry re-runs the retried job's own source, so the new card can show
-      // the Source player straight away rather than waiting for a poll.
-      insertOptimistic({ ...response.job, source: job.source, attempts: [] });
-      refresh();
-      dispatch({ type: "retry-succeeded" });
-    } catch (error) {
-      dispatch({ type: "retry-failed", error: messageFor(toErrorLike(error), settings) });
-    } finally {
-      submittingRef.current = false;
-    }
-  }
+  const handleRetry = useCallback(
+    async (job: HistoryJobView) => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
+      dispatch({ type: "retry-started" });
+      try {
+        const response = await apiFetch("/api/transform", {
+          body: {
+            sourceId: job.sourceId,
+            params: job.params,
+            retryOfJobId: job.id,
+            idempotencyKey: crypto.randomUUID(),
+          },
+          schema: transformResponseSchema,
+        });
+        // A retry re-runs the retried job's own source, so the new card can show
+        // the Source player straight away rather than waiting for a poll.
+        insertOptimistic({ ...response.job, source: job.source, attempts: [] });
+        refresh();
+        dispatch({ type: "retry-succeeded" });
+      } catch (error) {
+        dispatch({ type: "retry-failed", error: messageFor(toErrorLike(error), settings) });
+      } finally {
+        submittingRef.current = false;
+      }
+    },
+    [insertOptimistic, refresh, settings],
+  );
+
+  // Stable, so the memoized JobCard is not handed a new handler on every
+  // render of the draft it sits beneath.
+  const onRetry = useCallback((job: HistoryJobView) => void handleRetry(job), [handleRetry]);
 
   const source = state.source;
   const params = state.params;
@@ -432,7 +439,7 @@ export function CreateFlow({
             <JobCard
               job={currentJob}
               cloudName={settings.cloudName}
-              onRetry={(job) => void handleRetry(job)}
+              onRetry={onRetry}
               retryDisabled={state.submitting}
             />
           ) : null}

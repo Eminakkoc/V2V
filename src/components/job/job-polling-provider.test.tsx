@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import type { HistoryJobsResponse, HistoryJobView } from "@/lib/history-contract";
 import { transformParamsSchema } from "@/lib/transform-contract";
-import { useJobPolling } from "./use-job-polling";
+import { JobPollingProvider, useJobPolling } from "./job-polling-provider";
 
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClientModule>()),
@@ -42,6 +42,12 @@ function response(overrides: Partial<HistoryJobsResponse> = {}): HistoryJobsResp
   return { items: [], nextCursor: null, active: { ...noneActive }, ...overrides };
 }
 
+// The poll now lives in a provider above the pages, so every consumer in
+// these tests needs that provider around it.
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <JobPollingProvider>{children}</JobPollingProvider>;
+}
+
 async function flush() {
   await act(async () => {
     await Promise.resolve();
@@ -64,7 +70,7 @@ afterEach(() => {
 describe("useJobPolling", () => {
   it("fetches the history endpoint once on mount", async () => {
     fetchMock.mockResolvedValueOnce(response());
-    renderHook(() => useJobPolling());
+    renderHook(() => useJobPolling(), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/history",
@@ -79,7 +85,7 @@ describe("useJobPolling", () => {
         .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }))
         .mockResolvedValueOnce(response({ active: noneActive }));
 
-      renderHook(() => useJobPolling());
+      renderHook(() => useJobPolling(), { wrapper });
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -104,7 +110,7 @@ describe("useJobPolling", () => {
       .mockResolvedValueOnce(response())
       .mockResolvedValueOnce(response({ items: [confirmed] }));
 
-    const { result } = renderHook(() => useJobPolling());
+    const { result } = renderHook(() => useJobPolling(), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     act(() => result.current.insertOptimistic(optimistic));
@@ -119,7 +125,7 @@ describe("useJobPolling", () => {
     const existing = job({ id: "job-existing", status: "processing", phase: "rendering" });
     fetchMock.mockResolvedValueOnce(response({ items: [existing] }));
 
-    const { result } = renderHook(() => useJobPolling());
+    const { result } = renderHook(() => useJobPolling(), { wrapper });
     await waitFor(() => expect(result.current.jobs).toEqual([existing]));
 
     const optimistic = job({ id: "job-new", status: "processing", phase: "queued" });
@@ -136,7 +142,7 @@ describe("useJobPolling", () => {
         .mockRejectedValueOnce(new Error("network down"))
         .mockResolvedValueOnce(response({ items: [recovered] }));
 
-      const { result } = renderHook(() => useJobPolling());
+      const { result } = renderHook(() => useJobPolling(), { wrapper });
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(result.current.error).toBe(true);
@@ -160,7 +166,7 @@ describe("useJobPolling", () => {
     vi.useFakeTimers();
     try {
       fetchMock.mockRejectedValue(new Error("still down"));
-      const { result } = renderHook(() => useJobPolling());
+      const { result } = renderHook(() => useJobPolling(), { wrapper });
 
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -188,7 +194,7 @@ describe("useJobPolling", () => {
       .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }))
       .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }));
 
-    renderHook(() => useJobPolling());
+    renderHook(() => useJobPolling(), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
@@ -205,7 +211,7 @@ describe("useJobPolling", () => {
       .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }))
       .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }));
 
-    renderHook(() => useJobPolling());
+    renderHook(() => useJobPolling(), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
@@ -221,7 +227,7 @@ describe("useJobPolling", () => {
     vi.useFakeTimers();
     try {
       fetchMock.mockRejectedValue(new Error("still down"));
-      const { result } = renderHook(() => useJobPolling());
+      const { result } = renderHook(() => useJobPolling(), { wrapper });
 
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);

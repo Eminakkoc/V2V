@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useJobPolling } from "@/hooks/use-job-polling";
+import { useJobPolling } from "@/components/job/job-polling-provider";
 import type { HistoryJobView } from "@/lib/history-contract";
 import { CreateFlow, type CreateFlowSettings } from "./create-flow";
 
@@ -13,7 +13,7 @@ import { CreateFlow, type CreateFlowSettings } from "./create-flow";
 // and its dynamic-import/custom-element behavior isn't suited to jsdom.
 vi.mock("@uploadcare/react-uploader/next", () => ({ FileUploaderRegular: () => null }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
-vi.mock("@/hooks/use-job-polling", () => ({ useJobPolling: vi.fn() }));
+vi.mock("@/components/job/job-polling-provider", () => ({ useJobPolling: vi.fn() }));
 
 const useJobPollingMock = vi.mocked(useJobPolling);
 
