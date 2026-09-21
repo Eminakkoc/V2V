@@ -31,6 +31,16 @@ const HowItRuns = dynamic(() => import("./how-it-runs").then((m) => m.HowItRuns)
 
 export type CreateFlowSettings = UploaderSettings & { cloudName: string };
 
+// The poll carries only rows that can still change, so with nothing running the server's row wins.
+function newestOf(
+  polled: HistoryJobView | undefined,
+  seeded: HistoryJobView | null,
+): HistoryJobView | undefined {
+  if (!seeded) return polled;
+  if (!polled) return seeded;
+  return Date.parse(seeded.createdAt) > Date.parse(polled.createdAt) ? seeded : polled;
+}
+
 type FlowState = {
   fileName: string | null;
   source: UploadResponse | null;
@@ -191,12 +201,15 @@ function reducer(state: FlowState, action: Action): FlowState {
 export function CreateFlow({
   settings,
   initialSource = null,
+  initialJob = null,
   reuseCard,
 }: {
   settings: CreateFlowSettings;
   // Rendered on the server and streamed in: whether there is anything to reuse is a database
   // question, and the drop zone should not wait on it.
   reuseCard?: React.ReactNode;
+  // The newest job at page load, for the card shown before this session has submitted anything.
+  initialJob?: HistoryJobView | null;
   // Set from page.tsx when the caller arrived via a History "Transform" link with an id that
   // resolved to a source they own; null in every other case.
   initialSource?: UploadResponse | null;
@@ -305,7 +318,7 @@ export function CreateFlow({
   const source = state.source;
   const params = state.params;
   const ready = source !== null && params !== null;
-  const currentJob = state.showJob ? jobs[0] : undefined;
+  const currentJob = state.showJob ? newestOf(jobs[0], initialJob) : undefined;
   const clipSeconds = params ? params.endSeconds - params.startSeconds : 0;
 
   // Rendered inside OptionsForm so it sits at the foot of the form panel from tablet up; `fixed`

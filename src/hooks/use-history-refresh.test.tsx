@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  renderHook as baseRenderHook,
+  waitFor,
+  type RenderHookOptions,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import type { AttemptView, HistoryJobsResponse, HistoryJobView } from "@/lib/history-contract";
 import { transformParamsSchema } from "@/lib/transform-contract";
+import { JobPollingProvider } from "@/components/job/job-polling-provider";
 import { useHistoryRefresh, type UseHistoryRefreshOptions } from "./use-history-refresh";
 
 vi.mock("@/lib/api-client", async (importOriginal) => ({
@@ -20,6 +26,19 @@ const baseParams = transformParamsSchema.parse({
   endSeconds: 5,
   artStyle: "Watercolor",
 });
+
+// The hook reads the shared poll rather than fetching, so every case runs inside the provider that
+// owns it.
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <JobPollingProvider>{children}</JobPollingProvider>;
+}
+
+function renderHook<Result, Props>(
+  callback: (props: Props) => Result,
+  options?: Omit<RenderHookOptions<Props>, "wrapper">,
+) {
+  return baseRenderHook(callback, { ...options, wrapper });
+}
 
 let autoId = 0;
 
@@ -514,61 +533,56 @@ describe("useHistoryRefresh", () => {
   });
 
   describe("rows loaded via `additional` (load more)", () => {
-    it("folds a load-more row into its own tracked list, so a later poll updates it in place instead of excluding it under the insertion-window rule", async () => {
-      vi.useFakeTimers();
-      try {
-        const stillLive = job({
-          id: "keep-alive",
-          status: "processing",
-          createdAt: "2026-09-20T00:00:00.000Z",
-        });
-        // Older on purpose: a `load more` row is always older than what is on screen, so it sorts
-        // after the boundary the insertion-window rule checks.
-        const loadedViaLoadMore = job({
-          id: "job-old",
-          status: "timed_out",
-          createdAt: "2026-09-19T00:00:00.000Z",
-        });
-        const refreshedViaPoll = job({
-          id: "job-old",
-          status: "complete",
-          createdAt: "2026-09-19T00:00:00.000Z",
-        });
+    it("registers a load-more row with the shared poll, so it is updated in place instead of being excluded under the insertion-window rule", async () => {
+      const stillLive = job({
+        id: "keep-alive",
+        status: "processing",
+        createdAt: "2026-09-20T00:00:00.000Z",
+      });
+      // Older on purpose: a `load more` row is always older than what is on screen, so it sorts
+      // after the boundary the insertion-window rule checks.
+      const loadedViaLoadMore = job({
+        id: "job-old",
+        status: "timed_out",
+        createdAt: "2026-09-19T00:00:00.000Z",
+      });
+      const refreshedViaPoll = job({
+        id: "job-old",
+        status: "complete",
+        createdAt: "2026-09-19T00:00:00.000Z",
+      });
 
-        fetchMock.mockResolvedValueOnce(changeableResponse([stillLive]));
+      fetchMock.mockResolvedValueOnce(changeableResponse([stillLive]));
 
-        const { result, rerender } = renderHook(
-          (options: UseHistoryRefreshOptions) => useHistoryRefresh(options),
-          { initialProps: defaultOptions({ initial: [stillLive], hasMore: true }) },
-        );
-        await flush();
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+      const { result, rerender } = renderHook(
+        (options: UseHistoryRefreshOptions) => useHistoryRefresh(options),
+        { initialProps: defaultOptions({ initial: [stillLive], hasMore: true }) },
+      );
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
-        // Simulates `load more`: job-old is appended while more pages remain, exactly what
-        // TransformationsPanel hands the hook as `additional`.
-        rerender(
-          defaultOptions({ initial: [stillLive], hasMore: true, additional: [loadedViaLoadMore] }),
-        );
-        expect(result.current.jobs.map((j) => j.id).sort()).toEqual(["job-old", "keep-alive"]);
+      fetchMock
+        .mockResolvedValueOnce(changeableResponse([stillLive]))
+        .mockResolvedValueOnce(changeableResponse([refreshedViaPoll]));
 
-        fetchMock
-          .mockResolvedValueOnce(changeableResponse([stillLive]))
-          .mockResolvedValueOnce(changeableResponse([refreshedViaPoll]));
+      // Simulates `load more`: job-old is appended while more pages remain, exactly what
+      // TransformationsPanel hands the hook as `additional`.
+      rerender(
+        defaultOptions({ initial: [stillLive], hasMore: true, additional: [loadedViaLoadMore] }),
+      );
+      expect(result.current.jobs.map((j) => j.id).sort()).toEqual(["job-old", "keep-alive"]);
+      await flush();
 
-        act(() => vi.advanceTimersByTime(3_000));
-        await flush();
-
-        expect(fetchMock).toHaveBeenCalledTimes(3);
-        expect(fetchMock).toHaveBeenNthCalledWith(
-          3,
-          "/api/history?ids=job-old",
-          expect.objectContaining({ method: "GET" }),
-        );
-        const jobOld = result.current.jobs.find((j) => j.id === "job-old");
-        expect(jobOld?.status).toBe("complete");
-      } finally {
-        vi.useRealTimers();
-      }
+      // The row is on screen as changeable and the poll's own list never mentioned it, so the
+      // lookup goes out at once rather than waiting for a tick that may never come.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "/api/history?ids=job-old",
+        expect.objectContaining({ method: "GET" }),
+      );
+      const jobOld = result.current.jobs.find((j) => j.id === "job-old");
+      expect(jobOld?.status).toBe("complete");
     });
 
     it("folds a second load-more page in on top of the first, without duplicating the first page's row", async () => {

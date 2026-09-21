@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { randomUUID } from "node:crypto";
 import { isValidElement, type ReactElement } from "react";
-import { render, screen } from "@testing-library/react";
+import { render as baseRender, screen, type RenderOptions } from "@testing-library/react";
 import type * as NextServerModule from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { HistoryView } from "@/components/history/history-view";
+import { JobPollingProvider } from "@/components/job/job-polling-provider";
 import { transformParamsSchema } from "@/lib/transform-contract";
 import { buildServerDeps, setServerDepsForTests } from "@/server/deps";
 import type { MagicHourAdapter, Providers } from "@/server/providers/types";
@@ -16,6 +17,16 @@ import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
 import { HistoryPanel } from "./history-panel";
 import HistoryPage from "./page";
+
+// The rendered panel hands its rows to the shared poll's consumer, so it needs the provider that
+// owns it.
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <JobPollingProvider>{children}</JobPollingProvider>;
+}
+
+function render(ui: React.ReactElement, options?: Omit<RenderOptions, "wrapper">) {
+  return baseRender(ui, { ...options, wrapper });
+}
 
 // Direct-invocation tests never enter Next's request pipeline, so after() and cookies() are
 // replaced with stubs this file controls.

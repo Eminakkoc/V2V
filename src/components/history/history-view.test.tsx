@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  render as baseRender,
+  screen,
+  waitFor,
+  within,
+  type RenderOptions,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -10,6 +17,7 @@ import type {
   HistorySourcesResponse,
   SourceView,
 } from "@/lib/history-contract";
+import { JobPollingProvider } from "@/components/job/job-polling-provider";
 import { transformParamsSchema } from "@/lib/transform-contract";
 import { HistoryView } from "./history-view";
 
@@ -34,6 +42,16 @@ const baseParams = transformParamsSchema.parse({
   endSeconds: 5,
   artStyle: "Watercolor",
 });
+
+// The view reads the shared poll rather than fetching, so every case runs inside the provider that
+// owns it.
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <JobPollingProvider>{children}</JobPollingProvider>;
+}
+
+function render(ui: React.ReactElement, options?: Omit<RenderOptions, "wrapper">) {
+  return baseRender(ui, { ...options, wrapper });
+}
 
 let autoId = 0;
 
@@ -459,7 +477,7 @@ describe("HistoryView -- keying the shell on the search params", () => {
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
   });
 
-  it("contrast: re-rendering the SAME key with new props does not reset anything -- the reset is the remount, not a props-watching effect", async () => {
+  it("contrast: re-rendering the SAME key keeps the loaded pages and the cursor -- the reset is the remount, not a props-watching effect", async () => {
     fetchMock.mockImplementation((path: string) => {
       if (path.includes("changeable=true")) return new Promise(() => {});
       return Promise.resolve(jobsResponse([buildJob("A, page 2")], null));
@@ -492,11 +510,12 @@ describe("HistoryView -- keying the shell on the search params", () => {
       />,
     );
 
-    // Same key, so no remount: the reset in the test above comes from the key change, not from
-    // HistoryView reacting to its props.
-    expect(screen.getByText("A, page 1")).toBeInTheDocument();
+    // Same key, so no remount: the load-more page and the exhausted cursor both survive, because
+    // nothing here watches the props to clear them. The reset in the test above comes from the key
+    // change alone -- page 1 is only ever the rows the server render last handed over.
     expect(screen.getByText("A, page 2")).toBeInTheDocument();
-    expect(screen.queryByText("B, page 1")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    expect(screen.getByText("B, page 1")).toBeInTheDocument();
   });
 });
 

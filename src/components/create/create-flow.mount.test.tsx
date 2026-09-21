@@ -55,6 +55,7 @@ describe("CreateFlow mount, against the real SourceUploader", () => {
       jobs: [job()],
       refresh: vi.fn(),
       insertOptimistic: vi.fn(),
+      trackChangeable: vi.fn(),
       error: false,
       stalled: false,
     });

@@ -95,6 +95,7 @@ beforeEach(() => {
     jobs: [],
     refresh: vi.fn(),
     insertOptimistic: vi.fn(),
+    trackChangeable: vi.fn(),
     error: false,
     stalled: false,
   });
@@ -154,6 +155,7 @@ describe("CreateFlow", () => {
       jobs: [],
       refresh: vi.fn(),
       insertOptimistic,
+      trackChangeable: vi.fn(),
       error: false,
       stalled: false,
     });
@@ -301,6 +303,7 @@ describe("CreateFlow", () => {
       jobs: [],
       refresh: vi.fn(),
       insertOptimistic,
+      trackChangeable: vi.fn(),
       error: false,
       stalled: false,
     });
@@ -394,6 +397,7 @@ describe("CreateFlow", () => {
       jobs: [job({ status: "complete" })],
       refresh: vi.fn(),
       insertOptimistic: vi.fn(),
+      trackChangeable: vi.fn(),
       error: false,
       stalled: false,
     });
@@ -417,6 +421,7 @@ describe("CreateFlow", () => {
       jobs: [],
       refresh: vi.fn(),
       insertOptimistic: vi.fn(),
+      trackChangeable: vi.fn(),
       error: true,
       stalled: true,
     });
@@ -431,6 +436,7 @@ describe("CreateFlow", () => {
       jobs: [failedJob],
       refresh: vi.fn(),
       insertOptimistic,
+      trackChangeable: vi.fn(),
       error: false,
       stalled: false,
     });

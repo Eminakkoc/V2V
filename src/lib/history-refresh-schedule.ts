@@ -3,8 +3,7 @@ import type { JobStatus } from "./job-status";
 const LIVE: readonly JobStatus[] = ["processing", "finalizing"];
 const WAITING: readonly JobStatus[] = ["timed_out", "superseded"];
 
-// Separate from polling-schedule.ts, which keys on active counts that exclude `abandoned` --
-// reusing it would stop refreshing while reconciliation still checks those hourly.
+// Keyed on the rows, not the active counts: those exclude `abandoned`, still checked hourly.
 export function nextRefreshDelayMs(
   changeable: readonly { status: JobStatus }[],
   ageMs: number,

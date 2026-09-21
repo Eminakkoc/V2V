@@ -64,12 +64,12 @@ afterEach(() => {
 });
 
 describe("useJobPolling", () => {
-  it("fetches the history endpoint once on mount", async () => {
+  it("fetches the changeable rows once on mount", async () => {
     fetchMock.mockResolvedValueOnce(response());
     renderHook(() => useJobPolling(), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/history",
+      "/api/history?changeable=true",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -78,22 +78,29 @@ describe("useJobPolling", () => {
     vi.useFakeTimers();
     try {
       fetchMock
-        .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }))
-        .mockResolvedValueOnce(response({ active: noneActive }));
+        .mockResolvedValueOnce(response({ items: [job({ status: "processing" })] }))
+        .mockResolvedValueOnce(response())
+        .mockResolvedValueOnce(response({ items: [job({ status: "complete" })] }));
 
       renderHook(() => useJobPolling(), { wrapper });
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
+      // Two: the scheduled poll, then the lookup for the job that left the changeable set with it.
       act(() => vi.advanceTimersByTime(3_000));
       await flush();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "/api/history?ids=job-1",
+        expect.objectContaining({ method: "GET" }),
+      );
 
       // The schedule returned null, so the interval must have been torn down rather than kept
       // running at the last cadence.
       act(() => vi.advanceTimersByTime(60_000));
       await flush();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }

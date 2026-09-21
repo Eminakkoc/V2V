@@ -20,6 +20,10 @@ export const CHANGEABLE_STATUSES: readonly JobStatus[] = [
   "abandoned",
 ];
 
+export function changeableIdsOf(rows: readonly { id: string; status: JobStatus }[]): string[] {
+  return rows.filter((row) => CHANGEABLE_STATUSES.includes(row.status)).map((row) => row.id);
+}
+
 export const JOB_PHASES = ["submitting", "queued", "rendering"] as const;
 
 export type JobPhase = (typeof JOB_PHASES)[number];
