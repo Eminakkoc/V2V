@@ -15,7 +15,6 @@ function defaultProps(overrides: Partial<FilterBarProps> = {}): FilterBarProps {
   return {
     sort: "createdAt",
     dir: "desc",
-    includePrevious: false,
     isListEmpty: false,
     ...overrides,
   };
@@ -63,15 +62,13 @@ describe("FilterBar", () => {
     expect(router.push).toHaveBeenCalledWith("/history?sort=duration&dir=desc");
   });
 
-  it("toggling include-previous on sends includePrevious=true, and off removes it", () => {
-    const { rerender } = render(<FilterBar {...defaultProps({ includePrevious: false })} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Include previous attempts" }));
-    expect(router.push).toHaveBeenLastCalledWith("/history?includePrevious=true");
-
-    searchParamsValue.current = new URLSearchParams("includePrevious=true");
-    rerender(<FilterBar {...defaultProps({ includePrevious: true })} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Include previous attempts" }));
-    expect(router.push).toHaveBeenLastCalledWith("/history");
+  // Previous attempts are always nested under the job that superseded them,
+  // so the filter row no longer offers to promote them to top-level rows.
+  it("offers no include-previous control", () => {
+    render(<FilterBar {...defaultProps()} />);
+    expect(
+      screen.queryByRole("checkbox", { name: "Include previous attempts" }),
+    ).not.toBeInTheDocument();
   });
 
   it("a filter change drops any existing page cursor, since the old page no longer follows from the new query", () => {
@@ -88,13 +85,16 @@ describe("FilterBar", () => {
   // from the filter row the moment a filter matched nothing, which shifted
   // everything beside it, and left no way to re-sort from an empty result
   // without first clearing the filter.
-  it("disables the sort control while the list is empty, on both layouts, without removing it", () => {
+  //
+  // There is exactly one sort control at any width -- the phone layout shows
+  // the same element beside the Filter button rather than a second copy
+  // inside the sheet, which would put two of them in the accessibility tree
+  // at once (the desktop row is only hidden with CSS).
+  it("disables the sort control while the list is empty, without removing it", () => {
     render(<FilterBar {...defaultProps({ isListEmpty: true })} />);
-    expect(screen.getByRole("combobox", { name: /^Sort:/ })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("combobox", { name: /^Sort:/ })).toBeDisabled();
+    const sortControls = screen.getAllByRole("combobox", { name: /^Sort:/ });
+    expect(sortControls).toHaveLength(1);
+    expect(sortControls[0]).toBeDisabled();
   });
 
   it("enables the sort control once the list is non-empty", () => {
@@ -105,7 +105,7 @@ describe("FilterBar", () => {
   describe("the phone filter sheet", () => {
     it("opens as a modal dialog with the status and style controls exposed as radiogroups of chips", () => {
       render(<FilterBar {...defaultProps({ statusBucket: "complete" })} />);
-      fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -118,7 +118,7 @@ describe("FilterBar", () => {
         "false",
       );
 
-      const styleGroup = within(dialog).getByRole("radiogroup", { name: "Style" });
+      const styleGroup = within(dialog).getByRole("radiogroup", { name: "Art style" });
       expect(within(styleGroup).getByRole("radio", { name: "Watercolor" })).toHaveAttribute(
         "aria-checked",
         "false",
@@ -127,7 +127,7 @@ describe("FilterBar", () => {
 
     it("selecting a status chip inside the sheet pushes the same URL the desktop control would", () => {
       render(<FilterBar {...defaultProps()} />);
-      fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
       const dialog = screen.getByRole("dialog");
 
       fireEvent.click(within(dialog).getByRole("radio", { name: "Taking longer" }));
@@ -138,7 +138,7 @@ describe("FilterBar", () => {
     describe("the radiogroup chips' keyboard model", () => {
       function openDialog(props: Partial<FilterBarProps> = {}) {
         render(<FilterBar {...defaultProps(props)} />);
-        fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+        fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
         return screen.getByRole("dialog");
       }
 
@@ -243,7 +243,7 @@ describe("FilterBar", () => {
 
       it("applies the same keyboard model to the Style radiogroup", () => {
         const dialog = openDialog();
-        const styleGroup = within(dialog).getByRole("radiogroup", { name: "Style" });
+        const styleGroup = within(dialog).getByRole("radiogroup", { name: "Art style" });
         const allStyles = within(styleGroup).getByRole("radio", { name: "All styles" });
         const firstStyle = within(styleGroup).getByRole("radio", { name: "3D Render" });
 
@@ -257,7 +257,7 @@ describe("FilterBar", () => {
 
     it("starts with focus inside the sheet once it opens", () => {
       render(<FilterBar {...defaultProps()} />);
-      fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
       const dialog = screen.getByRole("dialog");
       expect(dialog.contains(document.activeElement)).toBe(true);
@@ -277,7 +277,7 @@ describe("FilterBar", () => {
 
       try {
         render(<FilterBar {...defaultProps()} />);
-        fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+        fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
         const dialog = screen.getByRole("dialog");
         expect(dialog.contains(document.activeElement)).toBe(true);
 
@@ -292,7 +292,7 @@ describe("FilterBar", () => {
 
     it("returns focus to the Filter button once the sheet is closed with its close button", async () => {
       render(<FilterBar {...defaultProps()} />);
-      const filterButton = screen.getByRole("button", { name: "Filter" });
+      const filterButton = screen.getByRole("button", { name: /^Filter/ });
       fireEvent.click(filterButton);
 
       fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
@@ -306,7 +306,7 @@ describe("FilterBar", () => {
 
     it("returns focus to the Filter button once the sheet is closed with Escape", async () => {
       render(<FilterBar {...defaultProps()} />);
-      const filterButton = screen.getByRole("button", { name: "Filter" });
+      const filterButton = screen.getByRole("button", { name: /^Filter/ });
       fireEvent.click(filterButton);
 
       fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -317,10 +317,12 @@ describe("FilterBar", () => {
 
     it("the drag handle is decorative and not exposed to assistive tech", () => {
       render(<FilterBar {...defaultProps()} />);
-      fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
       // The sheet portals into document.body, outside the render container.
-      const handle = screen.getByRole("dialog").querySelector('[aria-hidden="true"].bg-muted');
+      const handle = screen
+        .getByRole("dialog")
+        .querySelector('[aria-hidden="true"][data-slot="sheet-grabber"]');
       expect(handle).toBeInTheDocument();
     });
   });

@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { Alert } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { AttemptView, HistoryJobView } from "@/lib/history-contract";
 import type { JobStatus } from "@/lib/job-status";
@@ -50,32 +51,37 @@ export function PreviousAttempts({ attempts, cloudName }: PreviousAttemptsProps)
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
   const finishedCount = ordered.filter(isFinished).length;
-  const headerText =
-    finishedCount > 0
-      ? `Previous attempts (${ordered.length}) — ${finishedCount} finished`
-      : `Previous attempts (${ordered.length})`;
 
   return (
-    <Collapsible className="flex flex-col gap-2">
-      <div className="flex flex-col gap-1">
-        <CollapsibleTrigger
-          className={cn(
-            "flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium",
-            "data-[state=open]:[&>svg]:rotate-180",
-          )}
-        >
-          <ChevronDown aria-hidden className="size-4 transition-transform" />
-          {headerText}
-        </CollapsibleTrigger>
-        {/* F11: surfaced next to the header, not only inside the expanded
-            content, so a reader never has to open the disclosure to learn a
-            paid result exists behind a card that currently reads Failed. */}
+    // Figma "Disclosure", Kind=Attempts (53:1347): a hairline rule, the
+    // chevron, the count, and the finished tally as quiet meta beside it.
+    <Collapsible className="flex flex-col gap-3 px-4 pb-4 sm:px-6 sm:pb-6">
+      {/* F11: surfaced next to the header, not only inside the expanded
+          content, so a reader never has to open the disclosure to learn a
+          paid result exists behind a card that currently reads Failed. */}
+      {finishedCount > 0 ? (
+        <Alert tone="success" kind="callout" role="status">
+          <p className="min-w-[200px] flex-1 type-body">
+            An earlier attempt finished, so a result is already waiting.
+          </p>
+        </Alert>
+      ) : null}
+      <CollapsibleTrigger
+        className={cn(
+          "flex min-h-11 w-full items-center gap-3 rounded-lg border-t border-divider py-(--disclosure-py) type-body font-semibold focus-ring",
+          "data-[state=open]:[&>svg]:rotate-180",
+        )}
+      >
+        <ChevronDown aria-hidden className="size-[18px] shrink-0 transition-transform" />
+        Previous attempts ({ordered.length}){" "}
         {finishedCount > 0 ? (
-          <p className="text-sm text-muted-foreground">An earlier attempt finished — view result</p>
+          <span className="type-caption font-normal text-muted-foreground">
+            {finishedCount} finished
+          </span>
         ) : null}
-      </div>
+      </CollapsibleTrigger>
       <CollapsibleContent>
-        <ul className="flex flex-col gap-4">
+        <ul className="flex flex-col gap-4 pl-0 sm:pl-8">
           {ordered.map((attempt) => (
             <li key={attempt.id}>
               <HistoryCard

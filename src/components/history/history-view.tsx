@@ -12,9 +12,10 @@ import {
   type HistorySourcesResponse,
   type SourceView,
 } from "@/lib/history-contract";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BrowserScopedNote, HistoryEmptyState } from "./empty-states";
+import { HistoryEmptyState } from "./empty-states";
 import { FilterBar } from "./filter-bar";
 import { HistoryCard } from "./history-card";
 import { HistoryTabs } from "./history-tabs";
@@ -143,22 +144,21 @@ function TransformationsPanel({
   const hasActiveFilter = hasActiveJobFilter(query);
 
   return (
-    <div className="flex flex-col gap-4">
-      <BrowserScopedNote />
-
+    <div className="flex flex-col gap-4 sm:gap-6">
       <FilterBar
         statusBucket={query.statusBucket}
         style={query.style}
         sort={query.sort}
         dir={query.dir}
-        includePrevious={query.includePrevious}
         isListEmpty={isListEmpty}
       />
 
       {stalled ? (
-        <p role="alert" className="text-sm text-destructive">
-          We lost track of job updates. Reload the page to check the latest status.
-        </p>
+        <Alert role="alert">
+          <AlertDescription>
+            We lost track of job updates. Reload the page to check the latest status.
+          </AlertDescription>
+        </Alert>
       ) : null}
 
       <HistoryEmptyState
@@ -172,9 +172,11 @@ function TransformationsPanel({
       />
 
       {isListEmpty ? null : (
-        <ul aria-busy={loadingMore} className="flex flex-col gap-4">
+        <ul aria-busy={loadingMore} className="flex flex-col gap-4 sm:gap-6">
           {jobs.map((job) => (
-            <li key={job.id} className="flex flex-col gap-2">
+            // The panel lives here, not on HistoryCard: the attempts
+            // disclosure is part of the same card and has to sit inside it.
+            <li key={job.id} className="flex flex-col rounded-card bg-surface shadow-sm">
               <HistoryCard job={job} cloudName={cloudName} />
               <PreviousAttempts attempts={job.attempts} cloudName={cloudName} />
             </li>
@@ -191,9 +193,9 @@ function TransformationsPanel({
           <span role="status" className="sr-only">
             Loading history
           </span>
-          <div aria-hidden className="flex flex-col gap-4">
-            <Skeleton className="h-48 w-full rounded-xl" />
-            <Skeleton className="h-48 w-full rounded-xl" />
+          <div aria-hidden className="flex flex-col gap-4 sm:gap-6">
+            <Skeleton className="h-[172px] w-full rounded-card" />
+            <Skeleton className="h-[172px] w-full rounded-card" />
           </div>
         </>
       ) : null}
@@ -205,7 +207,7 @@ function TransformationsPanel({
           onClick={handleLoadMore}
           disabled={loadingMore}
           aria-busy={loadingMore}
-          className="min-h-11 self-center"
+          className="self-center"
         >
           {loadingMore ? "Loading…" : "Load more"}
         </Button>

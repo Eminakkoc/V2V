@@ -1,11 +1,9 @@
 "use client";
 
-import { XIcon } from "lucide-react";
+import { Check, XIcon } from "lucide-react";
 import { useId, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
   Sheet,
   SheetClose,
@@ -160,12 +158,15 @@ function RadioChipGroup<T extends string>({
             onClick={() => onChange(option.value)}
             onKeyDown={handleKeyDown}
             className={cn(
-              "min-h-11 min-w-11 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-hidden",
+              // Figma "Filter chip" (16:457): the selected state is marked by
+              // a check as well as by the fill, never by colour alone.
+              "inline-flex min-h-11 items-center gap-1.5 rounded-pill px-(--chip-px) py-(--chip-py) type-body-sm focus-ring transition-colors",
               checked
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-background text-foreground hover:bg-muted",
+                ? "bg-accent-strong text-bg"
+                : "border border-divider bg-neutral-100 text-foreground hover:bg-neutral-200",
             )}
           >
+            {checked ? <Check aria-hidden strokeWidth={2.75} className="size-3.5" /> : null}
             {option.label}
           </button>
         );
@@ -178,15 +179,16 @@ export type FilterSheetProps = {
   // The element that opens the sheet -- rendered through SheetTrigger so
   // Radix's Dialog owns focus trapping while it is open and restores focus
   // to this exact element once it closes (F20, F21).
-  trigger: React.ReactNode;
+  //
+  // Omitted when the caller drives `open` itself: the design's phone row has
+  // two buttons (Filter and Sort) that open this one sheet, and Radix allows
+  // a single SheetTrigger. Focus still returns to whichever button was
+  // clicked, because Radix restores it to whatever had focus on open.
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   statusBucket?: StatusBucket;
   style?: ArtStyle;
-  sort: "createdAt" | "duration";
-  dir: "asc" | "desc";
-  includePrevious: boolean;
-  // F15: nothing to sort while the list is empty. Disables the control
-  // rather than removing it (IR-008).
-  isListEmpty: boolean;
 };
 
 // The phone filter panel (F18, F20, F21): a role="dialog" bottom sheet whose
@@ -196,30 +198,24 @@ export type FilterSheetProps = {
 // values it is given and pushes a new URL on each change.
 export function FilterSheet({
   trigger,
+  open,
+  onOpenChange,
   statusBucket,
   style,
-  sort,
-  dir,
-  includePrevious,
-  isListEmpty,
 }: FilterSheetProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusLabelId = useId();
   const styleLabelId = useId();
-  const includePreviousId = useId();
+  const hasAnyFilter = Boolean(statusBucket || style);
 
   function navigate(changes: Record<string, string | undefined>) {
     router.push(buildFilterHref(searchParams, changes));
   }
 
-  const sortValue = sortValueOf(sort, dir);
-  const currentSortLabel =
-    SORT_OPTIONS.find((option) => sortValueOf(option.sort, option.dir) === sortValue)?.label ?? "";
-
   return (
-    <Sheet>
-      <SheetTrigger asChild>{trigger}</SheetTrigger>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {trigger ? <SheetTrigger asChild>{trigger}</SheetTrigger> : null}
       <SheetContent
         side="bottom"
         showCloseButton={false}
@@ -231,19 +227,33 @@ export function FilterSheet({
       >
         {/* Decorative drag handle -- the sheet is dismissed with the close
             button or Escape, never a gesture on this bar (F21). */}
-        <div aria-hidden className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-muted" />
-        <SheetHeader className="flex-row items-center justify-between space-y-0">
-          <SheetTitle>Filters</SheetTitle>
+        <div
+          aria-hidden
+          data-slot="sheet-grabber"
+          className="mx-auto mt-4 h-[5px] w-11 shrink-0 rounded-pill bg-neutral-400"
+        />
+        <SheetHeader className="flex-row items-center gap-2 space-y-0">
+          <SheetTitle className="flex-1">Filters</SheetTitle>
+          {hasAnyFilter ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="ghost"
+              onClick={() => navigate({ statusBucket: undefined, style: undefined })}
+            >
+              Clear all
+            </Button>
+          ) : null}
           <SheetClose asChild>
-            <Button type="button" variant="ghost" size="icon" aria-label="Close filters">
-              <XIcon aria-hidden className="size-4" />
+            <Button type="button" variant="outline" size="icon" aria-label="Close filters">
+              <XIcon aria-hidden strokeWidth={2.75} />
             </Button>
           </SheetClose>
         </SheetHeader>
 
-        <div className="flex flex-col gap-6 px-4 pb-6">
-          <div className="flex flex-col gap-2">
-            <span id={statusLabelId} className="text-sm font-medium">
+        <div className="flex flex-col gap-4 px-(--page-margin) pb-6">
+          <div className="flex flex-col gap-1.5">
+            <span id={statusLabelId} className="type-caption text-ink-label">
               Status
             </span>
             <RadioChipGroup
@@ -260,9 +270,9 @@ export function FilterSheet({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <span id={styleLabelId} className="text-sm font-medium">
-              Style
+          <div className="flex flex-col gap-1.5">
+            <span id={styleLabelId} className="type-caption text-ink-label">
+              Art style
             </span>
             <div className="max-h-48 overflow-y-auto">
               <RadioChipGroup
@@ -277,46 +287,13 @@ export function FilterSheet({
             </div>
           </div>
 
-          {/* Disabled, not unmounted -- matching the inline row (IR-008), so
-              the two layouts agree about what an empty list does to the sort
-              control. F15's intent is kept: an empty list still cannot be
-              reordered. */}
-          <Select
-            value={sortValue}
-            disabled={isListEmpty}
-            onValueChange={(value) => {
-              const option = SORT_OPTIONS.find(
-                (candidate) => sortValueOf(candidate.sort, candidate.dir) === value,
-              );
-              if (!option) return;
-              navigate({ sort: option.sort, dir: option.dir });
-            }}
-          >
-            <SelectTrigger className="w-full" aria-label={`Sort: ${currentSortLabel}`}>
-              Sort: {currentSortLabel}
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map((option) => (
-                <SelectItem
-                  key={sortValueOf(option.sort, option.dir)}
-                  value={sortValueOf(option.sort, option.dir)}
-                >
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id={includePreviousId}
-              checked={includePrevious}
-              onChange={() => navigate({ includePrevious: includePrevious ? undefined : "true" })}
-              className="h-5 w-5 rounded border-input"
-            />
-            <Label htmlFor={includePreviousId}>Include previous attempts</Label>
-          </div>
+          {/* Every control above navigates on change, so the list behind the
+              sheet is already up to date -- this button only dismisses it. */}
+          <SheetClose asChild>
+            <Button type="button" className="w-full">
+              Show results
+            </Button>
+          </SheetClose>
         </div>
       </SheetContent>
     </Sheet>
