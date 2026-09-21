@@ -9,7 +9,7 @@ import {
 import { apiFetch } from "@/lib/api-client";
 import { isOnline, isOnlineOnServer, subscribeOnlineStatus } from "@/lib/online-status";
 import { nextDelayMs } from "@/lib/polling-schedule";
-import { historyResponseSchema, type JobView } from "@/lib/transform-contract";
+import { historyJobsResponseSchema, type HistoryJobView } from "@/lib/history-contract";
 
 function subscribeVisibility(onChange: () => void) {
   document.addEventListener("visibilitychange", onChange);
@@ -33,13 +33,17 @@ function isVisibleOnServer() {
 const RETRY_DELAY_MS = 10_000;
 const MAX_CONSECUTIVE_FAILURES = 5;
 
+// Reads the same /api/history payload the History page does, rather than the
+// narrower job-only projection: that is where a job's `source` lives, and
+// without it a reload leaves the card with a result and no source to pair it
+// with -- the session that uploaded it is the only other place that knows.
 export function useJobPolling() {
-  const [fetchedItems, setFetchedItems] = useState<JobView[]>([]);
+  const [fetchedItems, setFetchedItems] = useState<HistoryJobView[]>([]);
   // A job just created via the transform route, shown before it can appear in a
   // fetched page. Kept separate from `fetchedItems` so a poll can drop it by id
   // once the real row arrives, instead of the two ever being merged into one
   // list that has to be de-duplicated in place.
-  const [optimisticExtra, setOptimisticExtra] = useState<JobView[]>([]);
+  const [optimisticExtra, setOptimisticExtra] = useState<HistoryJobView[]>([]);
   const [delay, setDelay] = useState<number | null>(null);
   const [error, setError] = useState(false);
   const [stalled, setStalled] = useState(false);
@@ -60,7 +64,7 @@ export function useJobPolling() {
     try {
       const data = await apiFetch("/api/history", {
         method: "GET",
-        schema: historyResponseSchema,
+        schema: historyJobsResponseSchema,
         signal: controller.signal,
       });
       failuresRef.current = 0;
@@ -130,7 +134,7 @@ export function useJobPolling() {
     void fetchOnce();
   }, [fetchOnce]);
 
-  const insertOptimistic = useCallback((job: JobView) => {
+  const insertOptimistic = useCallback((job: HistoryJobView) => {
     setOptimisticExtra((prev) => [job, ...prev.filter((existing) => existing.id !== job.id)]);
   }, []);
 

@@ -215,8 +215,15 @@ describe("Trimmer", () => {
       return screen.getByTestId("preview") as HTMLVideoElement;
     }
 
+    // jsdom has no playback engine, so `paused` is a always-true getter;
+    // looping only ever applies to a playing video, which has to be said here.
+    function setPlaying(video: HTMLVideoElement, playing: boolean) {
+      Object.defineProperty(video, "paused", { value: !playing, configurable: true });
+    }
+
     it("seeks the preview back to the start once it passes the end while looping is on", () => {
       const video = renderWithPreview({ startSeconds: 5, endSeconds: 10 });
+      setPlaying(video, true);
       video.currentTime = 10.2;
       fireEvent(video, new Event("timeupdate"));
       expect(video.currentTime).toBe(5);
@@ -224,11 +231,24 @@ describe("Trimmer", () => {
 
     it("leaves the preview alone once looping is turned off", () => {
       const video = renderWithPreview({ startSeconds: 5, endSeconds: 10 });
-      fireEvent.click(screen.getByRole("checkbox", { name: "Loop preview" }));
+      setPlaying(video, true);
+      fireEvent.click(screen.getByRole("button", { name: "Loop selection" }));
 
       video.currentTime = 10.2;
       fireEvent(video, new Event("timeupdate"));
       expect(video.currentTime).toBe(10.2);
+    });
+
+    // Dragging the end handle parks the preview on exactly endSeconds so the
+    // reader can see the frame they picked. Seeking fires timeupdate too, so
+    // a loop that ignored `paused` would read that as "reached the end" and
+    // rewind -- leaving the end handle apparently unable to move the frame.
+    it("holds a paused preview on the end frame instead of rewinding it", () => {
+      const video = renderWithPreview({ startSeconds: 5, endSeconds: 10 });
+      setPlaying(video, false);
+      video.currentTime = 10;
+      fireEvent(video, new Event("timeupdate"));
+      expect(video.currentTime).toBe(10);
     });
   });
 

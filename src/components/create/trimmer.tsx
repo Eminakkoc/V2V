@@ -1,6 +1,8 @@
 "use client";
 
+import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -48,6 +50,11 @@ function useLoopPlayback(
 ) {
   const onTimeUpdate = useEffectEvent((video: HTMLVideoElement) => {
     if (!looping) return;
+    // Only while actually playing. Seeking fires timeupdate too, so without
+    // this a drag of the end handle -- which parks the preview on exactly
+    // endSeconds -- reads as "reached the end" and is rewound to the start,
+    // leaving the frame the reader asked for on screen for one tick.
+    if (video.paused) return;
     if (video.currentTime >= range.endSeconds) {
       video.currentTime = range.startSeconds;
     }
@@ -178,11 +185,30 @@ export function Trimmer({
     };
   }
 
+  // Centres the "selected" pill over the selection. `limit` is never 0 here
+  // (a source with no duration cannot reach the trimmer), but the guard keeps
+  // the division honest.
+  const selectionCentre =
+    limit > 0 ? ((value.startSeconds + value.endSeconds) / 2 / limit) * 100 : 50;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="relative flex h-10 items-center">
+    // Figma "Trimmer" (57:1952): a surface panel at radius/panel holding the
+    // header, the track and the synced Start/End inputs.
+    <div className="flex flex-col gap-3 rounded-panel bg-surface px-4 py-4 sm:px-6">
+      <div className="flex items-center justify-between gap-3">
+        <p className="type-body font-semibold">Trim</p>
+        <p className="flex-1 text-right type-caption text-muted-foreground">
+          Drag the handles or type exact times · clips up to {maxClipSeconds} s
+        </p>
+      </div>
+
+      <div className="relative h-(--trim-track-height)">
         {src ? (
-          <Filmstrip src={src} duration={limit} className="pointer-events-none absolute inset-0" />
+          <Filmstrip
+            src={src}
+            duration={limit}
+            className="pointer-events-none absolute inset-0 rounded-sm opacity-50"
+          />
         ) : null}
         <Slider
           min={0}
@@ -192,7 +218,7 @@ export function Trimmer({
           value={[value.startSeconds, value.endSeconds]}
           disabled={disabled}
           onValueChange={handleSliderChange}
-          className="relative"
+          className="h-full"
           thumbProps={[
             {
               "aria-label": "Clip start",
@@ -206,30 +232,23 @@ export function Trimmer({
             },
           ]}
         />
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p aria-live="polite" className="text-sm text-muted-foreground">
+        {/* The live length rides on the selection itself, as in the design.
+            aria-live carries the same figure for readers who cannot see it. */}
+        <p
+          aria-live="polite"
+          style={{ left: `${selectionCentre}%` }}
+          className="pointer-events-none absolute -top-[13px] -translate-x-1/2 rounded-pill bg-accent-strong px-3 py-0.5 type-tag whitespace-nowrap text-bg"
+        >
           {selectedSeconds.toFixed(2)}s selected
         </p>
-        <label
-          htmlFor={loopToggleId}
-          className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground"
-        >
-          <input
-            id={loopToggleId}
-            type="checkbox"
-            checked={looping}
-            disabled={disabled}
-            onChange={(event) => setLooping(event.target.checked)}
-          />
-          Loop preview
-        </label>
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={startInputId}>Clip start</Label>
+
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor={startInputId}>Start</Label>
           <Input
             id={startInputId}
+            aria-label="Clip start"
             type="number"
             inputMode="decimal"
             min={0}
@@ -238,12 +257,14 @@ export function Trimmer({
             disabled={disabled}
             value={value.startSeconds}
             onChange={handleNumberChange("start")}
+            className="w-[90px] text-right"
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={endInputId}>Clip end</Label>
+        <div className="flex items-center gap-2">
+          <Label htmlFor={endInputId}>End</Label>
           <Input
             id={endInputId}
+            aria-label="Clip end"
             type="number"
             inputMode="decimal"
             min={0}
@@ -252,8 +273,20 @@ export function Trimmer({
             disabled={disabled}
             value={value.endSeconds}
             onChange={handleNumberChange("end")}
+            className="w-[90px] text-right"
           />
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          id={loopToggleId}
+          aria-pressed={looping}
+          disabled={disabled}
+          onClick={() => setLooping((on) => !on)}
+        >
+          <RotateCcw aria-hidden />
+          Loop selection
+        </Button>
       </div>
     </div>
   );

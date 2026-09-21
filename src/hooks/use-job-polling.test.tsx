@@ -3,11 +3,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import {
-  transformParamsSchema,
-  type HistoryResponse,
-  type JobView,
-} from "@/lib/transform-contract";
+import type { HistoryJobsResponse, HistoryJobView } from "@/lib/history-contract";
+import { transformParamsSchema } from "@/lib/transform-contract";
 import { useJobPolling } from "./use-job-polling";
 
 vi.mock("@/lib/api-client", async (importOriginal) => ({
@@ -24,7 +21,7 @@ const baseParams = transformParamsSchema.parse({
   artStyle: "Watercolor",
 });
 
-function job(overrides: Partial<JobView> = {}): JobView {
+function job(overrides: Partial<HistoryJobView> = {}): HistoryJobView {
   return {
     id: "job-1",
     sourceId: "source-1",
@@ -33,13 +30,15 @@ function job(overrides: Partial<JobView> = {}): JobView {
     params: baseParams,
     createdAt: "2026-09-20T00:00:00.000Z",
     deadlineAt: "2026-09-20T01:00:00.000Z",
+    source: null,
+    attempts: [],
     ...overrides,
   };
 }
 
 const noneActive = { processing: 0, finalizing: 0, timedOut: 0, superseded: 0 };
 
-function response(overrides: Partial<HistoryResponse> = {}): HistoryResponse {
+function response(overrides: Partial<HistoryJobsResponse> = {}): HistoryJobsResponse {
   return { items: [], nextCursor: null, active: { ...noneActive }, ...overrides };
 }
 

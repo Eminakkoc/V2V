@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UploadState } from "@/hooks/use-source-upload";
 import { useJobPolling } from "@/hooks/use-job-polling";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import type { JobView } from "@/lib/transform-contract";
+import type { HistoryJobView } from "@/lib/history-contract";
 import type { UploadResponse } from "@/lib/upload-contract";
 import type { SourceUploaderProps } from "@/components/upload/source-uploader";
 import { CreateFlow, type CreateFlowSettings } from "./create-flow";
@@ -54,7 +54,7 @@ const uploadResult: UploadResponse = {
   posterUrl: "https://res.cloudinary.com/demo/video/upload/so_0/sources/a.jpg",
 };
 
-function job(overrides: Partial<JobView> = {}): JobView {
+function job(overrides: Partial<HistoryJobView> = {}): HistoryJobView {
   return {
     id: "job-1",
     sourceId: "source-1",
@@ -72,6 +72,12 @@ function job(overrides: Partial<JobView> = {}): JobView {
     },
     createdAt: "2026-09-20T00:00:00.000Z",
     deadlineAt: "2026-09-20T01:00:00.000Z",
+    source: {
+      cloudinaryPublicId: "sources/a",
+      cloudinaryUrl: "https://res.cloudinary.com/demo/video/upload/sources/a.mp4",
+      duration: 10,
+    },
+    attempts: [],
     ...overrides,
   };
 }
@@ -96,6 +102,23 @@ beforeEach(() => {
 });
 
 describe("CreateFlow", () => {
+  // The page h1 belongs to whichever screen is showing: "Restyle a clip" while
+  // nothing has been uploaded, the file's own name once one has (Figma's File
+  // header names it "page h1 on the configure screen"). There is never more
+  // than one.
+  it("titles the page 'Restyle a clip' before an upload and the file name after", async () => {
+    render(<CreateFlow settings={settings} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Restyle a clip" })).toBeInTheDocument();
+
+    selectAndReady();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { level: 1, name: "Restyle a clip" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it("shows neither the trimmer nor the options form before an upload", () => {
     render(<CreateFlow settings={settings} />);
     expect(screen.queryByRole("slider", { name: "Clip start" })).not.toBeInTheDocument();
@@ -126,7 +149,7 @@ describe("CreateFlow", () => {
   it("defaults the job name to the uploaded file's name", async () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady("holiday.mov");
-    expect(await screen.findByRole("textbox", { name: "Job name" })).toHaveValue("holiday.mov");
+    expect(await screen.findByRole("textbox", { name: "Name" })).toHaveValue("holiday.mov");
   });
 
   it("posts once and inserts the returned job optimistically", async () => {
@@ -144,7 +167,7 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Transform" }));
+      fireEvent.click(screen.getByRole("button", { name: "Start transformation" }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -162,12 +185,12 @@ describe("CreateFlow", () => {
     expect(insertOptimistic).toHaveBeenCalledWith(created);
   });
 
-  it("disables the Transform button while a submit is in flight", async () => {
+  it("disables the Start transformation button while a submit is in flight", async () => {
     fetchMock.mockReturnValueOnce(new Promise(() => {}));
     render(<CreateFlow settings={settings} />);
     selectAndReady();
 
-    const button = screen.getByRole("button", { name: "Transform" });
+    const button = screen.getByRole("button", { name: "Start transformation" });
     await act(async () => {
       fireEvent.click(button);
     });
@@ -179,7 +202,7 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
 
-    const button = screen.getByRole("button", { name: "Transform" });
+    const button = screen.getByRole("button", { name: "Start transformation" });
     await act(async () => {
       fireEvent.click(button);
       fireEvent.click(button);
@@ -199,7 +222,7 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
 
-    const button = screen.getByRole("button", { name: "Transform" });
+    const button = screen.getByRole("button", { name: "Start transformation" });
     await act(async () => {
       fireEvent.click(button);
       await Promise.resolve();
@@ -219,7 +242,7 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
 
-    const button = screen.getByRole("button", { name: "Transform" });
+    const button = screen.getByRole("button", { name: "Start transformation" });
     await act(async () => {
       fireEvent.click(button);
       await Promise.resolve();
@@ -239,6 +262,79 @@ describe("CreateFlow", () => {
     expect(secondKey).toBe(firstKey);
   });
 
+  // The counterpart to the test above: a key is only worth reusing while the
+  // submission's fate is unknown. A definite rejection has already written a
+  // failed job under it, so reusing it replays that failure and the click
+  // looks like it did nothing.
+  it("issues a fresh idempotency key after the provider definitely refused the submission", async () => {
+    fetchMock
+      .mockRejectedValueOnce(
+        new ApiError({
+          status: 422,
+          code: "MAGIC_HOUR_INVALID_PARAMS",
+          message: "These transform settings were rejected. Try different options.",
+          retryable: false,
+          details: { definite: true },
+        }),
+      )
+      .mockResolvedValueOnce({ job: job() });
+    render(<CreateFlow settings={settings} />);
+    selectAndReady();
+
+    const button = screen.getByRole("button", { name: "Start transformation" });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstKey = (fetchMock.mock.calls[0]?.[1] as { body: { idempotencyKey: string } }).body
+      .idempotencyKey;
+    const secondKey = (fetchMock.mock.calls[1]?.[1] as { body: { idempotencyKey: string } }).body
+      .idempotencyKey;
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  it("reports a replayed job that already failed as a failure, not as a start", async () => {
+    const insertOptimistic = vi.fn();
+    useJobPollingMock.mockReturnValue({
+      jobs: [],
+      refresh: vi.fn(),
+      insertOptimistic,
+      error: false,
+      stalled: false,
+    });
+    fetchMock.mockResolvedValueOnce({
+      job: job({
+        status: "failed",
+        errorCode: "MAGIC_HOUR_INVALID_PARAMS",
+        errorMessage: "These transform settings were rejected. Try different options.",
+      }),
+    });
+    render(<CreateFlow settings={settings} />);
+    selectAndReady();
+
+    const button = screen.getByRole("button", { name: "Start transformation" });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "These transform settings were rejected. Try different options.",
+    );
+    // Still recorded, so the job card can show what the click actually found.
+    expect(insertOptimistic).toHaveBeenCalledTimes(1);
+    expect(button).toBeEnabled();
+  });
+
   it("issues a fresh idempotency key for a new submission after a completed one", async () => {
     fetchMock
       .mockResolvedValueOnce({ job: job() })
@@ -246,7 +342,7 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
 
-    const button = screen.getByRole("button", { name: "Transform" });
+    const button = screen.getByRole("button", { name: "Start transformation" });
     await act(async () => {
       fireEvent.click(button);
       await Promise.resolve();
@@ -275,14 +371,14 @@ describe("CreateFlow", () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
 
-    const button = screen.getByRole("button", { name: "Transform" });
+    const button = screen.getByRole("button", { name: "Start transformation" });
     await act(async () => {
       fireEvent.click(button);
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Job name" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "renamed.mp4" },
     });
 
@@ -310,12 +406,16 @@ describe("CreateFlow", () => {
     });
     render(<CreateFlow settings={settings} />);
     selectAndReady();
-    expect(await screen.findByText("Complete")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Complete", { selector: '[data-slot="badge"]' }),
+    ).toBeInTheDocument();
     expect(await screen.findByRole("combobox", { name: "Art style" })).toBeInTheDocument();
 
     act(() => captured.props?.onStateChange?.({ status: "idle" }));
 
-    expect(screen.queryByText("Complete")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Complete", { selector: '[data-slot="badge"]' }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Art style" })).not.toBeInTheDocument();
   });
 
@@ -390,7 +490,7 @@ describe("CreateFlow", () => {
       "max",
       "42",
     );
-    expect(await screen.findByRole("textbox", { name: "Job name" })).toHaveValue("mp4");
+    expect(await screen.findByRole("textbox", { name: "Name" })).toHaveValue("mp4");
   });
 
   it("without an initial source, still shows neither the trimmer nor the options form until a real upload", () => {

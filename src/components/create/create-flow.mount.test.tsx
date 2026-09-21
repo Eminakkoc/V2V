@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useJobPolling } from "@/hooks/use-job-polling";
-import type { JobView } from "@/lib/transform-contract";
+import type { HistoryJobView } from "@/lib/history-contract";
 import { CreateFlow, type CreateFlowSettings } from "./create-flow";
 
 // This file deliberately does NOT mock SourceUploader (create-flow.test.tsx
@@ -25,7 +25,7 @@ const settings: CreateFlowSettings = {
   cloudName: "demo",
 };
 
-function job(overrides: Partial<JobView> = {}): JobView {
+function job(overrides: Partial<HistoryJobView> = {}): HistoryJobView {
   return {
     id: "job-1",
     sourceId: "source-1",
@@ -43,6 +43,12 @@ function job(overrides: Partial<JobView> = {}): JobView {
     },
     createdAt: "2026-09-20T00:00:00.000Z",
     deadlineAt: "2026-09-20T01:00:00.000Z",
+    source: {
+      cloudinaryPublicId: "sources/a",
+      cloudinaryUrl: "https://res.cloudinary.com/demo/video/upload/sources/a.mp4",
+      duration: 10,
+    },
+    attempts: [],
     ...overrides,
   };
 }
@@ -64,6 +70,8 @@ describe("CreateFlow mount, against the real SourceUploader", () => {
     // CreateFlow would read it as a reset and hide this job.
     // findBy, not getBy: JobCard is a dynamic import, so it resolves a tick
     // after the first render.
-    expect(await screen.findByText("Complete")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Complete", { selector: '[data-slot="badge"]' }),
+    ).toBeInTheDocument();
   });
 });

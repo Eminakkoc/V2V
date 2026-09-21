@@ -6,6 +6,10 @@ import { Slider as SliderPrimitive } from "radix-ui"
 
 type ThumbProps = React.ComponentProps<typeof SliderPrimitive.Thumb>
 
+// Styled for the Figma "Trimmer" (57:1952), this control's only caller: the
+// track is the filmstrip bed, the range is the selection (a 3px accent-strong
+// frame over a translucent wash) and each thumb is a tall pill that overhangs
+// the track by 3px top and bottom, with a 44px hit area behind it.
 function Slider({
   className,
   defaultValue,
@@ -39,18 +43,18 @@ function Slider({
       min={min}
       max={max}
       className={cn(
-        "relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
+        "relative flex w-full touch-none items-center select-none data-disabled:opacity-45",
         className
       )}
       {...props}
     >
       <SliderPrimitive.Track
         data-slot="slider-track"
-        className="relative grow overflow-hidden rounded-full bg-muted data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+        className="relative h-full w-full grow rounded-sm"
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className="absolute bg-primary select-none data-horizontal:h-full data-vertical:w-full"
+          className="absolute h-full rounded-sm border-[length:var(--stroke-emphasis)] border-accent-strong bg-selection select-none"
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => {
@@ -61,7 +65,11 @@ function Slider({
             key={index}
             {...thumbOverrides}
             className={cn(
-              "relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring transition-[color,box-shadow] select-none after:absolute after:-inset-4 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
+              // Height comes from the track token, not 100%: Radix wraps each
+              // thumb in an absolutely positioned, auto-height span, so a
+              // percentage here resolves against that wrapper rather than the
+              // track and collapses the pill to its own 2px borders (4px tall).
+              "focus-ring relative block h-[calc(var(--trim-track-height)+6px)] w-[18px] shrink-0 rounded-pill border-[length:var(--stroke-rule)] border-bg bg-accent-strong shadow-sm select-none after:absolute after:-inset-x-[13px] after:-inset-y-1.5 disabled:pointer-events-none",
               thumbClassName
             )}
           />
