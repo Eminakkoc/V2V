@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { randomUUID } from "node:crypto";
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { isValidElement, type ReactElement } from "react";
 import { render, screen } from "@testing-library/react";
 import type * as NextServerModule from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import { createSourcesRepository } from "@/server/repositories/sources";
 import { signIdentity } from "@/server/services/identity";
 import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
+import { HistoryPanel } from "./history-panel";
 import HistoryPage from "./page";
 
 // Direct-invocation tests never enter Next's own request pipeline, so
@@ -120,18 +121,15 @@ function searchParams(
   return Promise.resolve(raw);
 }
 
-// Drills into the page's returned tree for the actual key React would use
-// to decide whether to remount <HistoryView>. Reading `.key` directly off
-// the child element (not via React.Children, which rewrites explicit keys
-// with a positional prefix) so this is the literal value page.tsx computed.
+// The actual key React would use to decide whether to remount <HistoryView>.
+// HistoryPanel returns that element directly, and `.key` is read off it rather
+// than through React.Children (which rewrites explicit keys with a positional
+// prefix), so this is the literal value the panel computed.
 function historyViewKey(element: ReactElement): unknown {
-  const children = (element.props as { children: ReactNode }).children;
-  const list = Array.isArray(children) ? children : [children];
-  const historyView = list.find(
-    (child): child is ReactElement => isValidElement(child) && child.type === HistoryView,
-  );
-  if (!historyView) throw new Error("HistoryPage's tree has no <HistoryView> child");
-  return historyView.key;
+  if (!isValidElement(element) || element.type !== HistoryView) {
+    throw new Error("HistoryPanel did not return a <HistoryView>");
+  }
+  return element.key;
 }
 
 beforeEach(async () => {
@@ -144,13 +142,13 @@ beforeEach(async () => {
 });
 afterEach(() => setServerDepsForTests(undefined));
 
-describe("HistoryPage", () => {
+describe("HistoryPanel", () => {
   it("server-renders the caller's own jobs with no client fetch, and never another user's", async () => {
     await insertJob(userId, { params: { ...baseParams, name: "Mine" } });
     await insertJob(otherUserId, { params: { ...baseParams, name: "Not mine" } });
     setCookie(userId);
 
-    const element = await HistoryPage({ searchParams: searchParams() });
+    const element = await HistoryPanel({ searchParams: searchParams() });
     render(element);
 
     // apiFetch never resolves (mocked to hang), so this text can only have
@@ -159,27 +157,25 @@ describe("HistoryPage", () => {
     expect(screen.queryByText("Not mine")).not.toBeInTheDocument();
   });
 
-  it("renders <h1>History</h1> for a visitor with no cookie, showing the empty state rather than an error", async () => {
-    const element = await HistoryPage({ searchParams: searchParams() });
+  it("shows the empty state, not an error, for a visitor with no cookie", async () => {
+    const element = await HistoryPanel({ searchParams: searchParams() });
     render(element);
 
-    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No transformations yet" })).toBeInTheDocument();
   });
 
-  it("renders <h1>History</h1> for a signed-in caller with an empty history too", async () => {
+  it("renders the empty state for a signed-in caller with an empty history too", async () => {
     setCookie(userId);
-    const element = await HistoryPage({ searchParams: searchParams() });
+    const element = await HistoryPanel({ searchParams: searchParams() });
     render(element);
 
-    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No transformations yet" })).toBeInTheDocument();
   });
 
-  it("renders <h1>History</h1> on the Uploads tab's empty state too", async () => {
-    const element = await HistoryPage({ searchParams: searchParams({ tab: "sources" }) });
+  it("renders the Uploads tab's empty state too", async () => {
+    const element = await HistoryPanel({ searchParams: searchParams({ tab: "sources" }) });
     render(element);
 
-    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No uploads yet" })).toBeInTheDocument();
   });
 
@@ -190,7 +186,7 @@ describe("HistoryPage", () => {
     // (what the page must use) still resolves it to the same user.
     setCookie(userId, 40 * 24 * 60 * 60);
 
-    const element = await HistoryPage({ searchParams: searchParams() });
+    const element = await HistoryPanel({ searchParams: searchParams() });
     render(element);
 
     expect(screen.getByText("Old cookie, still mine")).toBeInTheDocument();
@@ -200,13 +196,13 @@ describe("HistoryPage", () => {
     await insertJob(userId);
     setCookie(userId);
 
-    await HistoryPage({ searchParams: searchParams() });
+    await HistoryPanel({ searchParams: searchParams() });
 
     expect(scheduled).toHaveLength(1);
   });
 
   it("schedules no reconciliation pass for a visitor with no cookie", async () => {
-    await HistoryPage({ searchParams: searchParams() });
+    await HistoryPanel({ searchParams: searchParams() });
 
     expect(scheduled).toHaveLength(0);
   });
@@ -227,7 +223,7 @@ describe("HistoryPage", () => {
     });
     setCookie(userId);
 
-    const element = await HistoryPage({ searchParams: searchParams() });
+    const element = await HistoryPanel({ searchParams: searchParams() });
     render(element);
 
     expect(screen.getByRole("link", { name: "Transform an upload" })).toBeInTheDocument();
@@ -253,19 +249,18 @@ describe("HistoryPage", () => {
     await insertJob(userId, { params: { ...baseParams, name: "Mine" } });
     setCookie(userId);
 
-    const element = await HistoryPage({ searchParams: searchParams(raw) });
+    const element = await HistoryPanel({ searchParams: searchParams(raw) });
     render(element);
 
-    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
     expect(screen.getByText("Mine")).toBeInTheDocument();
   });
 });
 
-describe("HistoryPage -- keys the client shell on the serialized search params", () => {
+describe("HistoryPanel -- keys the client shell on the serialized search params", () => {
   it("computes the same key for two navigations with the same search params", async () => {
     setCookie(userId);
-    const first = await HistoryPage({ searchParams: searchParams({ statusBucket: "complete" }) });
-    const second = await HistoryPage({ searchParams: searchParams({ statusBucket: "complete" }) });
+    const first = await HistoryPanel({ searchParams: searchParams({ statusBucket: "complete" }) });
+    const second = await HistoryPanel({ searchParams: searchParams({ statusBucket: "complete" }) });
 
     expect(historyViewKey(first)).toBe(historyViewKey(second));
   });
@@ -283,9 +278,22 @@ describe("HistoryPage -- keys the client shell on the serialized search params",
     ["tab", { tab: "sources" }],
   ] as const)("computes a different key when %s changes", async (_name, changed) => {
     setCookie(userId);
-    const base = await HistoryPage({ searchParams: searchParams({}) });
-    const withChange = await HistoryPage({ searchParams: searchParams(changed) });
+    const base = await HistoryPanel({ searchParams: searchParams({}) });
+    const withChange = await HistoryPanel({ searchParams: searchParams(changed) });
 
     expect(historyViewKey(withChange)).not.toBe(historyViewKey(base));
+  });
+});
+
+// The page is now only the static shell: it awaits nothing, so the header
+// paints the instant a navigation starts and the panel streams in behind a
+// skeleton. Rendering it here proves it needs neither a cookie nor a database.
+describe("HistoryPage shell", () => {
+  it("renders the header and a loading placeholder without awaiting any data", () => {
+    render(HistoryPage({ searchParams: new Promise(() => {}) }));
+
+    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New transformation" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading history");
   });
 });

@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { Suspense } from "react";
 import { CreateFlow } from "@/components/create/create-flow";
 import { posterUrl } from "@/lib/cloudinary-urls";
 import type { UploadResponse } from "@/lib/upload-contract";
 import { getServerDeps, type ServerDeps } from "@/server/deps";
 import type { Source } from "@/server/repositories/sources";
 import { IDENTITY_COOKIE, verifyIdentity } from "@/server/services/identity";
+import { ReuseCard } from "./reuse-card";
 
 export const metadata: Metadata = { title: "Create" };
 
@@ -40,6 +42,11 @@ function toUploadResponse(source: Source, cloudName: string): UploadResponse {
 // into the ordinary empty upload state with no error: a stale or shared link
 // looks like a fresh visit, never a failure that would also leak whether the
 // id exists for another account.
+//
+// This is the page's only blocking read, and it touches the database only
+// when the URL actually carries a sourceId -- on an ordinary visit it settles
+// without a round trip. The aside's "does this account have uploads" read,
+// which has no such escape, streams in separately below.
 async function resolveInitialSource(
   rawSourceId: string | string[] | undefined,
   deps: ServerDeps,
@@ -62,17 +69,10 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
   const initialSource = await resolveInitialSource(params.sourceId, deps);
 
   return (
-    // max-w-5xl, matching the header, the offline banner and /history. This
-    // page was the only one on max-w-6xl, so its content overhung the nav
-    // above it by 64px on each side while History lined up with it exactly.
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:py-12">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Create</h1>
-        <p className="text-muted-foreground">
-          Upload a video, trim the part you want, pick an art style. We hand it to the model and
-          tell you the moment it lands.
-        </p>
-      </div>
+    // The page gutter and vertical rhythm of the Figma Create frames; the page
+    // title itself belongs to CreateFlow, which shows it only while nothing
+    // has been uploaded (the configure screen's heading is the file name).
+    <div className="page-shell pt-(--section-pt) pb-(--section-pb)">
       <CreateFlow
         settings={{
           publicKey: uploadcare.publicKey,
@@ -82,6 +82,14 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           cloudName: cloudinary.cloudName,
         }}
         initialSource={initialSource}
+        // No skeleton: the card is an optional extra that often resolves to
+        // nothing at all, and reserving space for something that may never
+        // arrive would shift the aside once the answer came back.
+        reuseCard={
+          <Suspense fallback={null}>
+            <ReuseCard />
+          </Suspense>
+        }
       />
     </div>
   );
