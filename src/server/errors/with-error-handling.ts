@@ -24,9 +24,20 @@ export function withErrorHandling(handler: RouteHandler) {
   };
 }
 
+// A provider rejection is logged whatever its status. The client-facing
+// message is deliberately generic ("These transform settings were rejected"),
+// so without this the only record of *why* the provider refused -- the one
+// thing that says which setting to change -- leaves with the response.
+function logAppError(error: AppError): void {
+  const provider = error.providerError;
+  if (error.status < 500 && !provider) return;
+  const detail = provider ? ` (provider ${provider.code}: ${provider.message})` : "";
+  console.error(`[${error.code}]`, `${errorMessage(error.cause ?? error)}${detail}`);
+}
+
 function toAppError(error: unknown): AppError {
   if (error instanceof AppError) {
-    if (error.status >= 500) console.error(`[${error.code}]`, errorMessage(error.cause ?? error));
+    logAppError(error);
     return error;
   }
   if (error instanceof ZodError) {

@@ -28,6 +28,11 @@ const adapter = (over: { create?: MagicHourCreate; get?: MagicHourGet } = {}) =>
 
 const httpError = (status: number) => Object.assign(new Error("boom"), { status });
 
+// The SDK throws its ApiError with the provider's Response still unread, so a
+// fixture has to keep the body behind text() the way a real one does.
+const httpErrorWithBody = (status: number, body: string) =>
+  Object.assign(new Error("boom"), { response: { status, text: async () => body } });
+
 describe("createJob", () => {
   it("sends the Cloudinary URL, the clip window and the style, and returns only the id", async () => {
     const create = vi.fn<MagicHourCreate>(async () => ({ id: "mh-1", creditsCharged: 12 }));
@@ -65,6 +70,72 @@ describe("createJob", () => {
     const attempt = adapter({ create }).createJob(input);
     await expect(attempt).rejects.toBeInstanceOf(AppError);
     await expect(attempt).rejects.toMatchObject({ code, details: { definite: true } });
+  });
+
+  it("keeps the provider's own reason for the rejection, which the status alone does not give", async () => {
+    const create = vi.fn(async () => {
+      throw httpErrorWithBody(
+        422,
+        JSON.stringify({
+          code: "unprocessable_entity",
+          message: "V3 models are not available yet.",
+        }),
+      );
+    });
+    await expect(adapter({ create }).createJob(input)).rejects.toMatchObject({
+      code: "MAGIC_HOUR_INVALID_PARAMS",
+      providerError: {
+        code: "unprocessable_entity",
+        message: "V3 models are not available yet.",
+      },
+    });
+  });
+
+  it("never lets the provider's words reach the browser-facing details", async () => {
+    const create = vi.fn(async () => {
+      throw httpErrorWithBody(422, JSON.stringify({ code: "x", message: "internal detail" }));
+    });
+    await expect(adapter({ create }).createJob(input)).rejects.toMatchObject({
+      details: { definite: true },
+    });
+    const error = await adapter({ create })
+      .createJob(input)
+      .catch((e: unknown) => e);
+    expect((error as AppError).details).toEqual({ definite: true });
+  });
+
+  it.each([
+    ["not JSON at all", "<html>502 Bad Gateway</html>"],
+    ["JSON without a message", JSON.stringify({ code: "x" })],
+    ["an empty message", JSON.stringify({ code: "x", message: "" })],
+  ])("classifies normally when the body is %s", async (_label, body) => {
+    const create = vi.fn(async () => {
+      throw httpErrorWithBody(422, body);
+    });
+    const error = await adapter({ create })
+      .createJob(input)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AppError);
+    expect((error as AppError).code).toBe("MAGIC_HOUR_INVALID_PARAMS");
+    expect((error as AppError).providerError).toBeUndefined();
+  });
+
+  it("survives a response whose body has already been consumed", async () => {
+    const create = vi.fn(async () => {
+      throw Object.assign(new Error("boom"), {
+        response: {
+          status: 422,
+          text: async () => {
+            throw new TypeError("body used already");
+          },
+        },
+      });
+    });
+    const error = await adapter({ create })
+      .createJob(input)
+      .catch((e: unknown) => e);
+    expect((error as AppError).code).toBe("MAGIC_HOUR_INVALID_PARAMS");
+    expect((error as AppError).providerError).toBeUndefined();
   });
 
   it.each([500, 502, 503, 504])("classifies a %s as an uncertain outcome", async (status) => {

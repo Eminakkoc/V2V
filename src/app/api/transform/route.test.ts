@@ -271,6 +271,39 @@ describe("POST /api/transform", () => {
     },
   );
 
+  it("stores the provider's own reason on the failed job without returning it to the caller", async () => {
+    // A 422 now logs, because a provider rejection is worth a server-side
+    // record whatever its status.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const source = await insertSource(userId);
+    createJob.mockRejectedValueOnce(
+      new AppError("MAGIC_HOUR_INVALID_PARAMS", {
+        details: { definite: true },
+        providerError: {
+          code: "unprocessable_entity",
+          message: "V3 models are not available yet.",
+        },
+      }),
+    );
+    const response = await transform(makeBody(source.id));
+    expect(response.status).toBe(422);
+
+    const body = await errorOf(response);
+    expect(body.code).toBe("MAGIC_HOUR_INVALID_PARAMS");
+    expect(JSON.stringify(body)).not.toContain("V3 models");
+
+    const saved = await (await getDb()).collection("jobs").findOne({});
+    expect(saved).toMatchObject({
+      status: "failed",
+      errorCode: "MAGIC_HOUR_INVALID_PARAMS",
+      magicHourError: {
+        code: "unprocessable_entity",
+        message: "V3 models are not available yet.",
+      },
+    });
+    expect(logged.mock.calls.flat().join(" ")).toContain("V3 models are not available yet.");
+  });
+
   it("returns 202 with the job still processing/submitting when the provider outcome is uncertain, and records lastError", async () => {
     const source = await insertSource(userId);
     createJob.mockRejectedValueOnce(

@@ -84,12 +84,18 @@ export const ERROR_SPECS: Record<ErrorCode, ErrorSpec> = {
   INTERNAL: { status: 500, retryable: false, message: "Something went wrong on our side." },
 };
 
+type ProviderError = { code: string; message: string };
+
 type AppErrorOptions = {
   message?: string;
   retryable?: boolean;
   details?: Record<string, unknown>;
   retryAfterSeconds?: number;
   cause?: unknown;
+  // The provider's own words for the rejection. Deliberately separate from
+  // `details`, which is serialized to the browser: this is internal detail,
+  // withheld for the same reason toJobView withholds magicHourError.
+  providerError?: ProviderError;
 };
 
 export class AppError extends Error {
@@ -98,6 +104,7 @@ export class AppError extends Error {
   readonly retryable: boolean;
   readonly details: Record<string, unknown> | undefined;
   readonly retryAfterSeconds: number | undefined;
+  readonly providerError: ProviderError | undefined;
 
   constructor(code: ErrorCode, options: AppErrorOptions = {}) {
     const spec = ERROR_SPECS[code];
@@ -108,6 +115,7 @@ export class AppError extends Error {
     this.retryable = options.retryable ?? spec.retryable;
     this.details = options.details;
     this.retryAfterSeconds = options.retryAfterSeconds;
+    this.providerError = options.providerError;
   }
 }
 

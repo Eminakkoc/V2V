@@ -99,6 +99,9 @@ export async function startTransform(
       await deps.jobs.markFailed(job.id, {
         errorCode: error.code,
         errorMessage: error.message,
+        // The provider's own reason, kept beside the generic client message
+        // exactly as the webhook and reconcile paths keep theirs.
+        ...(error.providerError ? { magicHourError: error.providerError } : {}),
       });
       throw error;
     }

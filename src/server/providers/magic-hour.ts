@@ -90,7 +90,7 @@ export function createMagicHourAdapter(
         const result = await create(body);
         return { magicHourId: result.id };
       } catch (error) {
-        throw toAppError(error);
+        throw await toAppError(error);
       }
     },
 
@@ -106,7 +106,7 @@ export function createMagicHourAdapter(
           error: result.error ?? null,
         };
       } catch (error) {
-        throw toAppError(error);
+        throw await toAppError(error);
       }
     },
 
@@ -155,7 +155,35 @@ function classify(error: unknown): { code: ErrorCode; definite: boolean } {
   return { code: "MAGIC_HOUR_REQUEST_FAILED", definite: refused };
 }
 
-function toAppError(error: unknown): AppError {
+// The SDK throws with the provider's HTTP response still unread, so the one
+// sentence that says *which* setting was refused ("V3 models are not available
+// yet.") is discarded unless it is consumed here. The status has already been
+// classified, so a body that cannot be read costs nothing.
+async function readProviderError(
+  error: unknown,
+): Promise<{ code: string; message: string } | undefined> {
+  if (typeof error !== "object" || error === null) return undefined;
+  const response = (error as { response?: unknown }).response;
+  if (typeof response !== "object" || response === null) return undefined;
+  const text = (response as { text?: unknown }).text;
+  if (typeof text !== "function") return undefined;
+  try {
+    const body: unknown = JSON.parse(await (text as () => Promise<string>).call(response));
+    if (typeof body !== "object" || body === null) return undefined;
+    const { code, message } = body as { code?: unknown; message?: unknown };
+    if (typeof message !== "string" || message.length === 0) return undefined;
+    return { code: typeof code === "string" ? code : "unknown", message };
+  } catch {
+    return undefined;
+  }
+}
+
+async function toAppError(error: unknown): Promise<AppError> {
   const { code, definite } = classify(error);
-  return new AppError(code, { details: { definite }, cause: error });
+  const providerError = await readProviderError(error);
+  return new AppError(code, {
+    details: { definite },
+    cause: error,
+    ...(providerError ? { providerError } : {}),
+  });
 }
