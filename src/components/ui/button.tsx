@@ -11,11 +11,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "border-transparent bg-accent-strong text-bg hover:bg-accent-800",
-        outline: "border-divider text-foreground hover:bg-neutral-100",
-        secondary: "border-divider bg-neutral-100 text-foreground hover:bg-neutral-200",
-        // Bordered like the outline variant, and padded like every other button: the label alone
-        // left it guessing whether the words were a button at all.
-        ghost: "border-divider text-accent-strong hover:bg-accent-100",
+        outline: "border-input text-foreground hover:bg-neutral-100",
+        secondary: "border-input bg-neutral-100 text-foreground hover:bg-neutral-200",
+        // --input, the border every select and text field already carries, rather than the lighter
+        // --divider that rules and card edges use: at 16% alpha the outline read as bare text
+        // beside a filled button, which is what made "Restyle again" look unpadded next to
+        // "Download". One border colour now covers every bordered control on the page.
+        ghost: "border-input text-accent-strong hover:bg-accent-100",
         // The design has no red; a blocked or undoing action is carried by the lighter end of the
         // same terracotta ramp.
         destructive: "border-transparent bg-accent-200 text-accent-900 hover:bg-accent-300",
