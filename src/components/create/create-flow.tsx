@@ -74,6 +74,24 @@ function defaultParams(name: string, duration: number, maxClipSeconds: number): 
   };
 }
 
+// Lazy useReducer init (below), not a new action: an already-uploaded source
+// preloaded from History (page.tsx) needs the exact same derived state a
+// fresh "source-ready" produces, just computed once at mount instead of
+// dispatched, so it skips SourceUploader's upload step without adding a case
+// the reducer -- and its callers -- would otherwise have to account for.
+function initialFlowState(initialSource: UploadResponse | null, maxClipSeconds: number): FlowState {
+  if (!initialSource) return initialState;
+  return {
+    ...initialState,
+    source: initialSource,
+    params: defaultParams(
+      initialSource.sourceVideo.format,
+      initialSource.sourceVideo.duration,
+      maxClipSeconds,
+    ),
+  };
+}
+
 function reducer(state: FlowState, action: Action): FlowState {
   switch (action.type) {
     case "file-selected":
@@ -126,8 +144,20 @@ function reducer(state: FlowState, action: Action): FlowState {
   }
 }
 
-export function CreateFlow({ settings }: { settings: CreateFlowSettings }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+export function CreateFlow({
+  settings,
+  initialSource = null,
+}: {
+  settings: CreateFlowSettings;
+  // Set from page.tsx when the caller arrived via a History "Transform" link
+  // (/?sourceId=<id>) with an id that resolved to a source they own. null in
+  // every other case -- unauthenticated, no id, or an id that didn't
+  // resolve -- which is exactly today's fresh-visit behavior.
+  initialSource?: UploadResponse | null;
+}) {
+  const [state, dispatch] = useReducer(reducer, initialSource, (source) =>
+    initialFlowState(source, settings.maxClipSeconds),
+  );
   const { jobs, insertOptimistic, refresh, stalled } = useJobPolling();
   const previewRef = useRef<HTMLVideoElement>(null);
   // React batches the state updates from two synchronous clicks before either

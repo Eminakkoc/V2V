@@ -360,4 +360,34 @@ describe("CreateFlow", () => {
     );
     expect(insertOptimistic).toHaveBeenCalledWith(retryJob);
   });
+
+  it("shows the preview, trimmer and options form from an initial source, with no upload interaction at all", () => {
+    // selectAndReady() (which drives SourceUploader's onFileSelected/
+    // onStateChange callbacks) is never called here -- this state comes only
+    // from the initial-source prop, mirroring how page.tsx preloads a source
+    // resolved from a History "Transform" link.
+    render(<CreateFlow settings={settings} initialSource={uploadResult} />);
+    expect(screen.getByRole("slider", { name: "Clip start" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Art style" })).toBeInTheDocument();
+  });
+
+  it("takes the trimmer's bounds and job name from an initial source's own data, the same as a real upload's", () => {
+    render(
+      <CreateFlow
+        settings={settings}
+        initialSource={{
+          ...uploadResult,
+          sourceVideo: { ...uploadResult.sourceVideo, duration: 42 },
+        }}
+      />,
+    );
+    expect(screen.getByRole("spinbutton", { name: "Clip end" })).toHaveAttribute("max", "42");
+    expect(screen.getByRole("textbox", { name: "Job name" })).toHaveValue("mp4");
+  });
+
+  it("without an initial source, still shows neither the trimmer nor the options form until a real upload", () => {
+    render(<CreateFlow settings={settings} />);
+    expect(screen.queryByRole("slider", { name: "Clip start" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Art style" })).not.toBeInTheDocument();
+  });
 });
