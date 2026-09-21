@@ -56,10 +56,26 @@ function SelectTrigger({
   )
 }
 
+// "popper", not Radix's "item-aligned" default. item-aligned positions the
+// popup relative to the ACTIVE ITEM, "similar to a native MacOS menu" -- so
+// the trigger's geometry is not what places it. On the History filters that
+// degenerated to the literal top-left corner of the viewport (wrapper computed
+// top:0 left:0 min-width:0), and on the Create page it got the horizontal axis
+// right but opened over the controls above the field being edited. popper is
+// the mode that anchors to the trigger, the way Popover and DropdownMenu do.
+//
+// It also fixes the long lists: item-aligned ignored
+// --radix-select-content-available-height, so the 75-entry Style filter
+// rendered 2128px tall against a 720px viewport instead of scrolling. As
+// popper it measures 441px and scrolls.
+//
+// The popper-only utilities in the className below, and the data-[position=
+// popper] rules on the Viewport, were already here -- this file was adapted
+// from a popper-based original and only the default was changed.
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
+  position = "popper",
   align = "center",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
@@ -77,8 +93,7 @@ function SelectContent({
         <SelectPrimitive.Viewport
           data-position={position}
           className={cn(
-            "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
-            position === "popper" && ""
+            "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)"
           )}
         >
           {children}

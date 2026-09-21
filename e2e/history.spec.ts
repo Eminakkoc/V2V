@@ -235,3 +235,43 @@ test("the History list server-renders its first page, filters and sorts through 
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
   });
 });
+
+// IR-007. Costs nothing against the rate-limit tally above: it seeds nothing
+// and never calls /api/upload or /api/transform. The filter controls render
+// whether or not the list has rows, which is all this needs.
+test("every filter dropdown opens anchored to its own trigger", async ({ page }) => {
+  await page.goto("/history");
+
+  for (const name of ["Status", "Style"]) {
+    // Scope to the visible one: FilterBar also renders a phone-only copy
+    // behind `md:hidden`, whose trigger exists in the DOM at every viewport.
+    const trigger = page.getByRole("combobox", { name }).and(page.locator(":visible"));
+    await expect(trigger).toBeVisible();
+    const triggerBox = await trigger.boundingBox();
+    if (!triggerBox) throw new Error(`${name} trigger has no box`);
+
+    await trigger.click();
+    const popup = page.locator("[data-slot=select-content]").first();
+    await expect(popup).toBeVisible();
+    const popupBox = await popup.boundingBox();
+    if (!popupBox) throw new Error(`${name} popup has no box`);
+
+    // Radix's "item-aligned" default placed these relative to the selected
+    // ITEM, not the trigger, and on this page that collapsed to the literal
+    // top-left corner of the viewport: popup (0,0) against a trigger at
+    // (144,237). Anchored, the popup opens just below its own trigger and
+    // overlaps it horizontally.
+    expect(popupBox.y).toBeGreaterThan(triggerBox.y);
+    expect(popupBox.x).toBeGreaterThan(triggerBox.x - popupBox.width);
+    expect(popupBox.x).toBeLessThan(triggerBox.x + triggerBox.width);
+
+    // item-aligned also ignored --radix-select-content-available-height, so
+    // the 75-entry Style list rendered 2128px tall against a 720px viewport
+    // instead of scrolling.
+    const viewport = page.viewportSize();
+    if (viewport) expect(popupBox.height).toBeLessThanOrEqual(viewport.height);
+
+    await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
+  }
+});
