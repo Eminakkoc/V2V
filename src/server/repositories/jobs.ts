@@ -327,7 +327,21 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
     listForUser: (userId, query) =>
       withDb(getDb, async (db) => {
         const conditions: Document[] = [{ userId }];
-        if (!query.includePrevious) conditions.push({ status: { $ne: "superseded" } });
+        // Two exclusions, not one. The status test alone is not enough:
+        // "superseded" is in CHANGEABLE_STATUSES, so reconciliation can move
+        // a previous attempt on to "complete" or "failed" (claimForFinalize
+        // accepts "superseded" as a source status) while supersededByJobId
+        // stays -- markSuperseded writes the link once and nothing clears it.
+        // Such a row escapes a status-keyed exclusion and returns to the top
+        // level while collectAttemptChains still nests it under its successor,
+        // so the same attempt is rendered twice. The link is the durable fact
+        // that a row is a previous attempt, which is why it is tested first;
+        // the status test is kept beside it so a row carrying the status
+        // without the link is still excluded.
+        if (!query.includePrevious) {
+          conditions.push({ supersededByJobId: { $exists: false } });
+          conditions.push({ status: { $ne: "superseded" } });
+        }
         if (query.statuses?.length) conditions.push({ status: { $in: query.statuses } });
         if (query.artStyle) conditions.push({ "params.artStyle": query.artStyle });
 

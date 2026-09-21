@@ -241,6 +241,38 @@ describe("listForUser", () => {
     expect(await jobs.listForUser("user-1", { ...base, includePrevious: true })).toHaveLength(2);
   });
 
+  // Regression for IR-001 / manual test F.5. "superseded" is in
+  // CHANGEABLE_STATUSES, so reconciliation can finalize a previous attempt
+  // whose render landed late -- markComplete leaves supersededByJobId in
+  // place. An exclusion keyed only on status let that row back onto the top
+  // level while collectAttemptChains still nested it under its successor,
+  // so the attempt was rendered twice.
+  it("keeps excluding a previous attempt that reconciliation moved off superseded", async () => {
+    const attempt = await jobs.insert("user-1", { ...input, status: "failed" });
+    const latest = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: "k2",
+      retryOfJobId: attempt.id,
+    });
+    expect((await jobs.markSuperseded(attempt.id, latest.id))?.status).toBe("superseded");
+
+    // The late render arrives: the attempt finalizes, but stays a previous
+    // attempt -- the link is never cleared.
+    const finalized = await jobs.markComplete(attempt.id, {
+      output: { cloudinaryPublicId: "sources/abc", cloudinaryUrl: "https://example.com/abc.mp4" },
+    });
+    expect(finalized?.status).toBe("complete");
+    expect(finalized?.supersededByJobId).toBe(latest.id);
+
+    const base = { includePrevious: false, dir: "desc" as const, limit: 20 };
+    const top = await jobs.listForUser("user-1", base);
+    expect(top.map((job) => job.id)).toEqual([latest.id]);
+
+    // The toggle still promotes it, exactly as for a still-superseded row.
+    const withPrevious = await jobs.listForUser("user-1", { ...base, includePrevious: true });
+    expect(withPrevious.map((job) => job.id).sort()).toEqual([attempt.id, latest.id].sort());
+  });
+
   it("paginates newest first on a (createdAt, id) cursor", async () => {
     const made = [];
     for (let i = 0; i < 3; i += 1) {
