@@ -173,11 +173,14 @@ describe("CreatePage", () => {
     expect(initialSource).toBeFalsy();
   });
 
-  it("renders the Create heading and hands CreateFlow no initial source when the URL carries no sourceId", async () => {
+  // The page title itself belongs to CreateFlow, which shows it only while
+  // nothing has been uploaded -- once a source is picked, the file name is the
+  // page heading. create-flow.test.tsx covers it.
+  it("hands CreateFlow no initial source when the URL carries no sourceId", async () => {
     const element = await CreatePage({ searchParams: searchParams({}) });
-    const { getByRole } = render(element);
+    render(element);
 
-    expect(getByRole("heading", { level: 1, name: "Create" })).toBeInTheDocument();
+    expect(captured.props).toBeTruthy();
     expect(captured.props?.initialSource).toBeFalsy();
   });
 });

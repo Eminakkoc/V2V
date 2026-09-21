@@ -10,7 +10,7 @@ import { useUploadFocus } from "@/hooks/use-upload-focus";
 import { apiFetch, toErrorLike } from "@/lib/api-client";
 import { messageFor, type ErrorLike } from "@/lib/error-messages";
 import { describeFormats, formatBytes } from "@/lib/format";
-import { uploadSignatureSchema } from "@/lib/upload-contract";
+import { uploadSignatureSchema, type UploadResponse } from "@/lib/upload-contract";
 import { createVideoRules } from "@/lib/video-rules";
 import { DropZone } from "./drop-zone";
 import { SourceSummary } from "./source-summary";
@@ -48,6 +48,13 @@ const TELEMETRY_OFF = { "quality-insights": "false" } as const;
 
 export type SourceUploaderProps = {
   settings: UploaderSettings;
+  // A source that was already uploaded in an earlier session and handed back
+  // by the History "Transform" link (/?sourceId=<id>). There is no upload to
+  // run for it, so this component's own state machine stays idle -- without
+  // this it would show the drop zone under a page that is already showing
+  // that source's preview and trimmer. Cleared by Replace video, which puts
+  // the drop zone back.
+  initialResult?: UploadResponse | null;
   // The container (create-flow.tsx) needs the source id, duration and original
   // file name once upload settles, none of which it can otherwise observe from
   // this component's own reducer state. Both are optional and no-op by default,
@@ -60,10 +67,20 @@ export type SourceUploaderProps = {
   onFileSelected?: (name: string) => void;
 };
 
-export function SourceUploader({ settings, onStateChange, onFileSelected }: SourceUploaderProps) {
+export function SourceUploader({
+  settings,
+  initialResult = null,
+  onStateChange,
+  onFileSelected,
+}: SourceUploaderProps) {
   const uploaderRef = useRef<UploadCtxProvider>(null);
   const pendingFileRef = useRef<File | null>(null);
   const [ready, setReady] = useState(false);
+  // The picker reports the file's own name and size; neither is part of the
+  // upload state machine (which only tracks progress), but the design shows
+  // both -- on the uploading row and again as the configure screen's heading.
+  const [selectedFile, setSelectedFile] = useState<{ name: string; size: number } | null>(null);
+  const [restored, setRestored] = useState<UploadResponse | null>(initialResult);
   const limits = useMemo(
     () => ({ allowedFormats: settings.allowedFormats, maxBytes: settings.maxBytes }),
     [settings.allowedFormats, settings.maxBytes],
@@ -119,12 +136,16 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
   }
 
   function chooseAnother() {
+    setSelectedFile(null);
+    setRestored(null);
     upload.reset();
     openChooser();
   }
 
   function replace() {
     focusAfter("dropzone");
+    setSelectedFile(null);
+    setRestored(null);
     api()?.removeAllFiles();
     upload.reset();
   }
@@ -140,7 +161,8 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
       : state.status === "failed"
         ? messageFor(state.error, limits, { stage: "failed" })
         : null;
-  const hint = `${describeFormats(settings.allowedFormats)} · up to ${formatBytes(settings.maxBytes)} · pick a clip of up to ${settings.maxClipSeconds} seconds next`;
+  const formatsHint = `${describeFormats(settings.allowedFormats)} · up to ${formatBytes(settings.maxBytes)}`;
+  const clipHint = `Any length. You will pick a clip of up to ${settings.maxClipSeconds} seconds next.`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,6 +180,7 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
         secureUploadsSignatureResolver={resolveSignature}
         onFileAdded={(entry) => {
           if (upload.select({ name: entry.name, mimeType: entry.mimeType, size: entry.size })) {
+            setSelectedFile({ name: entry.name, size: entry.size });
             onFileSelected?.(entry.name);
           } else {
             api()?.removeFileByInternalId(entry.internalId);
@@ -173,13 +196,23 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
           upload.uploadFailed();
         }}
       />
-      {state.status === "ready" ? (
-        <SourceSummary result={state.result} onReplace={replace} />
+      {state.status === "ready" || (state.status === "idle" && restored) ? (
+        <SourceSummary
+          result={state.status === "ready" ? state.result : restored!}
+          fileName={selectedFile?.name ?? null}
+          onReplace={replace}
+        />
       ) : state.status === "uploading" || state.status === "storing" ? (
-        <UploadProgress state={state} labelRef={progressLabelRef} />
+        <UploadProgress
+          state={state}
+          file={selectedFile}
+          onCancel={replace}
+          labelRef={progressLabelRef}
+        />
       ) : (
         <DropZone
-          hint={hint}
+          formatsHint={formatsHint}
+          clipHint={clipHint}
           invalid={problem !== null}
           describedBy={problem ? ERROR_ID : undefined}
           disabled={!ready}

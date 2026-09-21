@@ -14,8 +14,12 @@ export function NavLink({ href, children }: NavLinkProps) {
       href={href}
       aria-current={isCurrent ? "page" : undefined}
       className={cn(
-        "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-hidden",
-        isCurrent && "bg-muted text-foreground",
+        // The current page is marked three ways, never by colour alone (1.4.1):
+        // accent-strong, SemiBold and underlined, plus aria-current.
+        "inline-flex min-h-11 items-center rounded-pill px-1 type-body focus-ring transition-colors sm:min-h-0",
+        isCurrent
+          ? "font-semibold text-accent-strong underline decoration-from-font"
+          : "text-foreground hover:text-accent-strong",
       )}
     >
       {children}

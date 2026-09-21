@@ -1,13 +1,16 @@
 import * as React from "react"
 import { cn } from "cn"
 
+// Figma "Text field" (37:1048): a surface-filled pill with a border-input
+// hairline. Focus turns the border to color/focus and adds a flush 2px ring
+// (outline-offset 0) rather than the detached ring buttons use.
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       type={type}
       data-slot="input"
       className={cn(
-        "h-8 w-full any-pointer-coarse:min-h-11 min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:focus-visible:border-ring aria-invalid:focus-visible:ring-ring md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        "focus-ring-flush w-full min-w-0 rounded-pill border border-input bg-surface px-(--input-px) py-(--input-py) type-input text-foreground transition-colors any-pointer-coarse:min-h-11 placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45 aria-invalid:border-accent-900",
         className
       )}
       {...props}

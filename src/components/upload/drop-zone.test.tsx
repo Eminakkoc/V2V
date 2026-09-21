@@ -6,7 +6,8 @@ import { DropZone } from "./drop-zone";
 
 function renderZone(overrides: Partial<Parameters<typeof DropZone>[0]> = {}) {
   const props = {
-    hint: "MP4 or MOV · up to 100 MB",
+    formatsHint: "MP4 or MOV · up to 100 MB",
+    clipHint: "Any length. You will pick a clip of up to 60 seconds next.",
     invalid: false,
     onFile: vi.fn(),
     onChoose: vi.fn(),

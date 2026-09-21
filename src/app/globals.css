@@ -11,12 +11,80 @@
    those utilities stay inert. */
 @custom-variant dark (&:is(.dark *));
 
+/* ---------------------------------------------------------------------------
+   Figma → Tailwind: the Primitives collection, transcribed.
+
+   Every value below is a Figma variable, named the way Figma names it, so a
+   token can be traced back to the file without a lookup table. The semantic
+   shadcn layer further down is derived from these and never carries a colour
+   of its own.
+   --------------------------------------------------------------------------- */
+@theme {
+  /* Tailwind ships a cool-grey `neutral` ramp; the design has a warm one with
+     different stops. Clearing the namespace first means a shade the design
+     never defined (neutral-500, neutral-950) fails to compile instead of
+     silently rendering a grey that belongs to no palette. */
+  --color-neutral-*: initial;
+
+  --color-bg: #f5ead8;
+  --color-surface: #ebddc5;
+  --color-ink: #201e1d;
+  --color-ink-muted: #201e1dad;
+  --color-ink-label: #201e1db2;
+  --color-divider: #201e1d29;
+
+  --color-accent-strong: #8c491a;
+  --color-accent-100: #fff2eb;
+  --color-accent-200: #ffe1d0;
+  --color-accent-300: #ffc6a5;
+  --color-accent-800: #643312;
+  --color-accent-900: #402310;
+
+  /* Figma's "accent 2" — the olive ramp that carries success and counts. */
+  --color-accent2-100: #f0fae1;
+  --color-accent2-200: #e1eecc;
+  --color-accent2-700: #56633f;
+  --color-accent2-800: #3d472b;
+  --color-accent2-900: #272e1b;
+
+  --color-neutral-100: #f9f4ed;
+  --color-neutral-200: #eee7db;
+  --color-neutral-300: #dcd3c4;
+  --color-neutral-400: #c0b6a5;
+  --color-neutral-600: #82796a;
+  --color-neutral-700: #645c50;
+  --color-neutral-800: #474238;
+  --color-neutral-900: #2e2b25;
+
+  --color-dropzone: #fff2ebb2;
+  --color-selection: #c671391f;
+  --color-scrim: #201e1dbd;
+  --color-backdrop: #2e2b2580;
+  --color-border-input: #82796a;
+  --color-focus: #8c491a;
+
+  /* Caprasimo sets every heading, button and the wordmark; Figtree sets
+     everything else. The design uses no monospace face. */
+  --font-display: var(--font-caprasimo);
+  --font-sans: var(--font-figtree);
+
+  /* The design's three elevations, replacing Tailwind's own scale. */
+  --shadow-sm: 0 1px 2px 0 #2e2b2524;
+  --shadow-md: 0 3px 10px 0 #2e2b2529;
+  --shadow-lg: 0 12px 32px 0 #2e2b2538;
+
+  --radius-xs: 5px;
+  /* Mobile-mode values; stepped up alongside the type scale below. */
+  --radius-card: 26px;
+  --radius-panel: 22px;
+  --radius-media: 22px;
+  --radius-pill: 999px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -46,6 +114,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* --radius is 20px (Figma radius/lg), which makes the derived scale land on
+     the design's own stops: sm → 12 (radius/sm), lg → 20, xl → 28
+     (radius/panel and radius/media-lg). Vendored components that ask for
+     `rounded-lg` or `rounded-xl` therefore need no edit. */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -55,45 +127,181 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* The semantic layer every vendored shadcn component reads. Each line points
+   at a primitive above; nothing here introduces a colour of its own. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: var(--color-bg);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-bg);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-accent-strong);
+  --primary-foreground: var(--color-bg);
+  --secondary: var(--color-neutral-100);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-neutral-100);
+  --muted-foreground: var(--color-ink-muted);
+  --accent: var(--color-accent-100);
+  --accent-foreground: var(--color-accent-900);
   /* The design has no red: errors are carried by the terracotta accent ramp
-     (Figma color/accent-900 for ink, accent-100/200 for fills). Repointed here
-     rather than at each call site so Tailwind's own aria-invalid: rules pick it
-     up unchanged. A single token cannot reproduce the design's fill/ink pair --
-     bg-destructive/10 approximates accent-100 rather than matching it -- so the
-     error surfaces move to explicit accent tokens when the full ramp lands. */
-  --destructive: #402310;
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.556 0 0);
+     (accent-900 for ink, accent-100/200/300 for fills and borders). Repointed
+     here rather than at each call site so Tailwind's own aria-invalid: rules
+     pick it up unchanged. */
+  --destructive: var(--color-accent-900);
+  --border: var(--color-divider);
+  --input: var(--color-border-input);
+  --ring: var(--color-focus);
+  --chart-1: var(--color-accent-strong);
+  --chart-2: var(--color-accent2-700);
+  --chart-3: var(--color-accent-800);
+  --chart-4: var(--color-neutral-600);
+  --chart-5: var(--color-neutral-800);
+  --radius: 1.25rem;
+  --sidebar: var(--color-surface);
+  --sidebar-foreground: var(--color-ink);
+  --sidebar-primary: var(--color-accent-strong);
+  --sidebar-primary-foreground: var(--color-bg);
+  --sidebar-accent: var(--color-accent-100);
+  --sidebar-accent-foreground: var(--color-accent-900);
+  --sidebar-border: var(--color-divider);
+  --sidebar-ring: var(--color-focus);
+
+  /* ---- Type scale -------------------------------------------------------
+     Figma's own variable names. These are deliberately NOT Tailwind theme
+     keys: a `--text-*` theme key generates a `text-<name>` utility, and
+     tailwind-merge (the `cn` package) cannot distinguish `text-caption`
+     (a size) from `text-accent-strong` (a colour) -- it puts both in one
+     group and keeps only the last, silently dropping the colour. The
+     `type-*` utilities defined below read these instead, so a size class
+     and a colour class can never collide.
+
+     The display sizes and the input size are the Figma Mobile mode's; the
+     two media queries below step them up. Everything else is one size in
+     all three modes. Figma letterSpacing is a percentage: -1.5 → -0.015em,
+     10 → 0.1em, and every Caprasimo style shares the same -1.5. */
+  --tracking-display: -0.015em;
+  --text-brand: 23px;
+  --leading-brand: 28px;
+  --text-h1: 28px;
+  --leading-h1: 32px;
+  --text-h3: 19px;
+  --leading-h3: 24px;
+  --text-h4: 18px;
+  --leading-h4: 22px;
+  --text-h5: 17px;
+  --leading-h5: 20px;
+  --text-body-lg: 15px;
+  --leading-body-lg: 24px;
+  --text-body: 14px;
+  --leading-body: 22px;
+  --text-body-sm: 13px;
+  --leading-body-sm: 20px;
+  --text-caption: 12px;
+  --leading-caption: 18px;
+  --text-tag: 11px;
+  --leading-tag: 16px;
+  --text-eyebrow: 10px;
+  --leading-eyebrow: 14px;
+  --text-button: 14px;
+  --leading-button: 17px;
+  --text-button-lg: 15px;
+  --leading-button-lg: 18px;
+  /* 16px on phones is deliberate: iOS Safari zooms the viewport when a field
+     under 16px takes focus. */
+  --text-input: 16px;
+  --leading-input: 24px;
+
+  /* Layout and control metrics from Figma. The design carries one mobile and
+     one desktop value for each of these, which is why they are variables
+     rather than literals: the media queries below are the only place the
+     phone/desktop split is written down.
+
+     --btn-py, --seg-py and --touch-row-py are what hold interactive rows to a
+     44px tap target on phones (13.5 + 17 + 13.5 = 44, 12 + 20 + 12 = 44)
+     while keeping desktop controls compact. */
+  --page-margin: 18px;
+  --header-py: 14px;
+  --section-pt: 8px;
+  --section-pb: 24px;
+  --column-gutter: 24px;
+  --btn-py: 13.5px;
+  --btn-lg-py: 13px;
+  --seg-py: 12px;
+  --touch-row-py: 11px;
+  --input-py: 12px;
+  --measure: 324px;
+  --preview-height: 190px;
+  --trim-track-height: 52px;
+  --btn-px: 16px;
+  --btn-lg-px: 22px;
+  --btn-ghost-px: 4px;
+  --input-px: 14px;
+  --chip-px: 14px;
+  --chip-py: 12px;
+  --tag-px: 10px;
+  --tag-py: 3px;
+  --badge-px: 12px;
+  --badge-py: 5px;
+  --seg-px: 14px;
+  --disclosure-py: 12px;
+  --stroke-hairline: 1px;
+  --stroke-control: 1.5px;
+  --stroke-rule: 2px;
+  --stroke-emphasis: 3px;
+  --icon-btn: 44px;
+  --card-max: 860px;
+  --aside-w: 340px;
+}
+
+/* Tablet -- the Figma "Tablet · 1024" frames' mode. These sit outside
+   @layer, so they override the same names declared in @theme above. */
+@media (width >= 40rem) {
+  :root {
+    --text-h1: 36px;
+    --leading-h1: 42px;
+    --text-h3: 22px;
+    --leading-h3: 26px;
+    --text-h4: 20px;
+    --leading-h4: 24px;
+    --text-input: 14px;
+    --leading-input: 22px;
+    --radius-card: 28px;
+    --radius-panel: 24px;
+    --radius-media: 26px;
+    --page-margin: 30px;
+    --header-py: 18px;
+    --section-pt: 20px;
+    --section-pb: 40px;
+    --btn-py: 10px;
+    --btn-lg-py: 12px;
+    --seg-py: 8px;
+    --touch-row-py: 0px;
+    --input-py: 9px;
+    --measure: 520px;
+    --preview-height: 300px;
+    --trim-track-height: 58px;
+  }
+}
+
+/* Desktop -- the Figma "Desktop · 1280" frames' mode. */
+@media (width >= 64rem) {
+  :root {
+    --text-h1: 42px;
+    --leading-h1: 48px;
+    --text-h3: 25px;
+    --leading-h3: 28px;
+    --radius-card: 30px;
+    --radius-panel: 28px;
+    --radius-media: 28px;
+    --page-margin: 44px;
+    --header-py: 20px;
+    --section-pt: 24px;
+    --section-pb: 48px;
+    --column-gutter: 48px;
+    --preview-height: 380px;
+    --trim-track-height: 66px;
+  }
 }
 
 @layer base {
@@ -104,7 +312,7 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans type-body;
     /* Reserve the scrollbar's space whether or not the page currently
        overflows. Without it, filtering /history down to no matches takes the
        document from 1838px to 720px, the scrollbar goes away, and on any
@@ -112,5 +320,131 @@
        ~15px -- which shifts every centred container, the header included.
        That is the flicker; the header is not sizing to its content. */
     scrollbar-gutter: stable;
+  }
+  /* Caprasimo has one weight. Asking for bold anywhere would synthesise a
+     smeared faux-bold, so headings opt out explicitly. */
+  :where(h1, h2, h3, h4, h5, h6) {
+    @apply font-display font-normal;
+  }
+}
+
+/* The design's type styles. Named `type-*` rather than `text-*` so a size
+   class and a colour class can never be merged into one group -- see the
+   note on the scale above. */
+@utility type-brand {
+  font-size: var(--text-brand);
+  line-height: var(--leading-brand);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-h1 {
+  font-size: var(--text-h1);
+  line-height: var(--leading-h1);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-h3 {
+  font-size: var(--text-h3);
+  line-height: var(--leading-h3);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-h4 {
+  font-size: var(--text-h4);
+  line-height: var(--leading-h4);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-h5 {
+  font-size: var(--text-h5);
+  line-height: var(--leading-h5);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-body-lg {
+  font-size: var(--text-body-lg);
+  line-height: var(--leading-body-lg);
+}
+
+@utility type-body {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+@utility type-body-sm {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+@utility type-caption {
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+@utility type-tag {
+  font-size: var(--text-tag);
+  line-height: var(--leading-tag);
+}
+
+@utility type-eyebrow {
+  font-size: var(--text-eyebrow);
+  line-height: var(--leading-eyebrow);
+  letter-spacing: 0.1em;
+}
+
+@utility type-button {
+  font-size: var(--text-button);
+  line-height: var(--leading-button);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-button-lg {
+  font-size: var(--text-button-lg);
+  line-height: var(--leading-button-lg);
+  letter-spacing: var(--tracking-display);
+}
+
+@utility type-input {
+  font-size: var(--text-input);
+  line-height: var(--leading-input);
+}
+
+/* The page gutter, as one class: 18 / 30 / 44 to match the Figma frames, with
+   the content column capped at the 1280px artboard. */
+@utility page-shell {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 1280px;
+  padding-inline: var(--page-margin);
+}
+
+/* The design's focus treatment. Buttons, chips and checkboxes take a detached
+   2px ring in color/focus; fields take the same ring flush against a border
+   that also turns to color/focus (Figma "keyboard focus" state sheet). */
+@utility focus-ring {
+  &:focus-visible {
+    outline: var(--stroke-rule) solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+@utility focus-ring-flush {
+  &:focus-visible {
+    border-color: var(--color-focus);
+    outline: var(--stroke-rule) solid var(--color-focus);
+    outline-offset: 0;
+  }
+}
+
+/* Indeterminate progress. The segment runs back and forth for as long as the
+   work is in flight; `alternate` is what makes it ease back rather than jump
+   to the start. Callers apply it under `motion-safe:`, so a reader who asks
+   for reduced motion gets a static bar (WCAG 2.2.2). */
+@keyframes activity-slide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(233%);
   }
 }

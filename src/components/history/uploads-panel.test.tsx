@@ -24,14 +24,6 @@ function buildSource(overrides: Partial<SourceView> = {}): SourceView {
 }
 
 describe("UploadsPanel", () => {
-  it("shows the browser-scoped note whether the list is empty or not", () => {
-    const { rerender } = render(<UploadsPanel sources={[]} cloudName="demo" hasMore={false} />);
-    expect(screen.getByText("History is tied to this browser.")).toBeInTheDocument();
-
-    rerender(<UploadsPanel sources={[buildSource()]} cloudName="demo" hasMore={false} />);
-    expect(screen.getByText("History is tied to this browser.")).toBeInTheDocument();
-  });
-
   it("shows the No uploads yet state, and no source cards, when there are no sources", () => {
     render(<UploadsPanel sources={[]} cloudName="demo" hasMore={false} />);
 

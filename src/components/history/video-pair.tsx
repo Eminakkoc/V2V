@@ -1,10 +1,10 @@
+import { VideoFrame } from "@/components/media/video-frame";
 import { posterAtWidth, posterUrl } from "@/lib/cloudinary-urls";
-import { CopyableUrl } from "./copyable-url";
+import { cn } from "@/lib/utils";
 
 type MediaProjection = { cloudinaryPublicId: string; cloudinaryUrl: string };
 
-// Requested at the card's own container width (v2v-tailwind's @container
-// history-card example), not the viewport's.
+// Requested at the frame's own rendered width, not the viewport's.
 const POSTER_WIDTH = 480;
 
 type VideoPairProps = {
@@ -19,6 +19,9 @@ type VideoPairProps = {
   // API because the source record itself no longer exists.
   source: MediaProjection | null | undefined;
   output: MediaProjection | undefined;
+  // Sizing for each frame. History cards use a fixed 200 x 124 thumbnail;
+  // the create-page job card uses a pair of tall, equal-width players.
+  frameClassName?: string;
 };
 
 function VideoPlayer({
@@ -26,20 +29,20 @@ function VideoPlayer({
   name,
   cloudName,
   media,
+  className,
 }: {
   label: string;
   name: string;
   cloudName: string;
   media: MediaProjection;
+  className?: string;
 }) {
   const poster = posterAtWidth(posterUrl(cloudName, media.cloudinaryPublicId), POSTER_WIDTH);
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <span className="text-sm font-medium">{label}</span>
+    <VideoFrame label={label} className={className}>
       <video
         aria-label={`${label}: ${name}`}
-        className="aspect-video w-full rounded-lg bg-muted"
         src={media.cloudinaryUrl}
         poster={poster}
         controls
@@ -47,24 +50,47 @@ function VideoPlayer({
         muted
         preload="none"
       />
-      <CopyableUrl kind={label.toLowerCase()} url={media.cloudinaryUrl} />
-    </div>
+    </VideoFrame>
   );
 }
 
-export function VideoPair({ name, cloudName, source, output }: VideoPairProps) {
+export function VideoPair({
+  name,
+  cloudName,
+  source,
+  output,
+  frameClassName = "h-[124px] w-full sm:w-[200px]",
+}: VideoPairProps) {
+  if (source === undefined && !output) return null;
+
   return (
-    <div className="grid gap-4 @sm:grid-cols-2">
+    <div className="flex shrink-0 gap-3">
       {source === undefined ? null : source ? (
-        <VideoPlayer label="Source" name={name} cloudName={cloudName} media={source} />
+        <VideoPlayer
+          label="Source"
+          name={name}
+          cloudName={cloudName}
+          media={source}
+          className={cn("flex-1", frameClassName)}
+        />
       ) : (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Source</span>
-          <p className="text-sm text-muted-foreground">Source unavailable</p>
+        <div
+          className={cn(
+            "flex flex-1 items-center justify-center rounded-lg bg-neutral-300 p-3 text-center type-caption text-muted-foreground",
+            frameClassName,
+          )}
+        >
+          Source unavailable
         </div>
       )}
       {output ? (
-        <VideoPlayer label="Result" name={name} cloudName={cloudName} media={output} />
+        <VideoPlayer
+          label="Result"
+          name={name}
+          cloudName={cloudName}
+          media={output}
+          className={cn("flex-1", frameClassName)}
+        />
       ) : null}
     </div>
   );

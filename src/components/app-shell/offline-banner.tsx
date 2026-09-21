@@ -11,10 +11,10 @@ export function OfflineBanner() {
   if (online) return null;
 
   return (
-    <div role="status" className="border-b bg-muted px-4 py-2">
-      <p className="mx-auto flex w-full max-w-5xl items-center gap-2 text-sm text-muted-foreground">
-        <WifiOff aria-hidden className="size-4 shrink-0" />
-        You are offline. Nothing is lost — updates will resume once you are back online.
+    <div role="status" className="page-shell">
+      <p className="flex items-center gap-2 rounded-pill border border-divider bg-neutral-200 px-4 py-3 type-body font-semibold text-foreground sm:gap-3 sm:px-6">
+        <WifiOff aria-hidden className="size-[18px] shrink-0" />
+        You are offline. Live updates are paused and will resume automatically.
       </p>
     </div>
   );

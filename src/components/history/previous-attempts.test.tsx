@@ -79,7 +79,7 @@ describe("PreviousAttempts", () => {
       render(<PreviousAttempts attempts={attempts} cloudName="demo" />);
 
       expect(
-        screen.getByRole("button", { name: "Previous attempts (1) — 1 finished" }),
+        screen.getByRole("button", { name: "Previous attempts (1) 1 finished" }),
       ).toBeInTheDocument();
     },
   );
@@ -99,12 +99,12 @@ describe("PreviousAttempts", () => {
     const attempt = buildAttempt({ status: "timed_out" });
     const { rerender } = render(<PreviousAttempts attempts={[attempt]} cloudName="demo" />);
     expect(
-      screen.getByRole("button", { name: "Previous attempts (1) — 1 finished" }),
+      screen.getByRole("button", { name: "Previous attempts (1) 1 finished" }),
     ).toBeInTheDocument();
 
     rerender(<PreviousAttempts attempts={[{ ...attempt, status: "complete" }]} cloudName="demo" />);
     expect(
-      screen.getByRole("button", { name: "Previous attempts (1) — 1 finished" }),
+      screen.getByRole("button", { name: "Previous attempts (1) 1 finished" }),
     ).toBeInTheDocument();
   });
 
@@ -112,7 +112,9 @@ describe("PreviousAttempts", () => {
     const { rerender } = render(
       <PreviousAttempts attempts={[buildAttempt({ status: "complete" })]} cloudName="demo" />,
     );
-    expect(screen.getByText("An earlier attempt finished — view result")).toBeInTheDocument();
+    expect(
+      screen.getByText("An earlier attempt finished, so a result is already waiting."),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Previous attempts/ })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -130,17 +132,17 @@ describe("PreviousAttempts", () => {
 
     const trigger = screen.getByRole("button", { name: /Previous attempts/ });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("heading", { name: "Only attempt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^Only attempt · / })).not.toBeInTheDocument();
 
     fireEvent.click(trigger);
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("heading", { level: 3, name: "Only attempt" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: /^Only attempt · / })).toBeInTheDocument();
 
     fireEvent.click(trigger);
 
     expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("heading", { name: "Only attempt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^Only attempt · / })).not.toBeInTheDocument();
   });
 
   it("lists attempts oldest-to-newest regardless of input order", () => {
@@ -155,7 +157,9 @@ describe("PreviousAttempts", () => {
     render(<PreviousAttempts attempts={[newer, older]} cloudName="demo" />);
     fireEvent.click(screen.getByRole("button", { name: /Previous attempts/ }));
 
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((el) => el.textContent);
+    const headings = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((el) => el.textContent?.split(" · ")[0]);
     expect(headings).toEqual(["Older attempt", "Newer attempt"]);
   });
 });

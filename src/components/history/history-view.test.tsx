@@ -115,33 +115,6 @@ beforeEach(() => {
   hangingFetch();
 });
 
-describe("HistoryView -- browser-scoped note on both tabs", () => {
-  it("shows the note on the Transformations tab", () => {
-    render(
-      <HistoryView
-        tab="jobs"
-        query={buildQuery()}
-        initial={jobsResponse([buildJob("Only job")])}
-        hasUploads={false}
-        cloudName="demo"
-      />,
-    );
-    expect(screen.getByText("History is tied to this browser.")).toBeInTheDocument();
-  });
-
-  it("shows the note on the Uploaded videos tab", () => {
-    render(
-      <HistoryView
-        tab="sources"
-        query={buildQuery({ tab: "sources" })}
-        initial={sourcesResponse([buildSource()])}
-        cloudName="demo"
-      />,
-    );
-    expect(screen.getByText("History is tied to this browser.")).toBeInTheDocument();
-  });
-});
-
 describe("HistoryView -- the first page arrives server-rendered", () => {
   it("shows the server-provided job synchronously, before the mount poll can ever resolve", () => {
     // The changeable-poll fetch never resolves (hangingFetch, set in
@@ -585,6 +558,8 @@ describe("HistoryView -- previous attempts nest under their owning job", () => {
     );
 
     expect(screen.getByText(/Previous attempts \(1\)/)).toBeInTheDocument();
-    within(screen.getByRole("region", { name: /Latest attempt/ }));
+    // The card is an <article> (Figma names it so): one item of a list, not a
+    // landmark region.
+    within(screen.getByRole("article", { name: /Latest attempt/ }));
   });
 });

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import type { SourceView } from "@/lib/history-contract";
-import { BrowserScopedNote, HistoryEmptyState } from "./empty-states";
+import { HistoryEmptyState } from "./empty-states";
 import { SourceCard } from "./source-card";
 
 export type UploadsPanelProps = {
@@ -40,9 +40,7 @@ export function UploadsPanel({
   const hasRows = sources.length > 0;
 
   return (
-    <div className="flex flex-col gap-4">
-      <BrowserScopedNote />
-
+    <div className="flex flex-col gap-4 sm:gap-6">
       <HistoryEmptyState
         tab="uploads"
         rows={sources}
@@ -52,9 +50,9 @@ export function UploadsPanel({
       />
 
       {hasRows ? (
-        <ul className="flex flex-col gap-4">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
           {sources.map((source) => (
-            <li key={source.id}>
+            <li key={source.id} className="flex">
               <SourceCard source={source} cloudName={cloudName} />
             </li>
           ))}
@@ -70,7 +68,7 @@ export function UploadsPanel({
           onClick={onLoadMore}
           disabled={loadingMore}
           aria-busy={loadingMore}
-          className="min-h-11 self-center"
+          className="self-center"
         >
           {loadingMore ? "Loading…" : "Load more"}
         </Button>

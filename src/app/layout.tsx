@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Caprasimo, Figtree } from "next/font/google";
 import { cookies } from "next/headers";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { OfflineBanner } from "@/components/app-shell/offline-banner";
@@ -11,18 +11,21 @@ import { getConfig } from "@/config/env";
 import { hasFreshIdentity, IDENTITY_COOKIE } from "@/server/services/identity";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-sans",
+// Caprasimo ships a single weight, so `weight` is required and headings must
+// never ask for bold -- see the :where(h1..h6) rule in globals.css.
+const caprasimo = Caprasimo({
+  variable: "--font-caprasimo",
+  weight: "400",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const figtree = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: { template: "%s · V2V Transform", default: "V2V Transform" },
+  title: { template: "%s · Restyle", default: "Restyle" },
   description: "Restyle your videos with AI video-to-video transformation.",
 };
 
@@ -33,11 +36,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     getConfig().sessionCookieSecret,
   );
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${caprasimo.variable} ${figtree.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-background focus:px-4 focus:py-3 focus:ring-3 focus:ring-ring"
+          className="sr-only font-semibold text-accent-strong underline decoration-from-font focus-ring focus:not-sr-only focus:fixed focus:top-1.5 focus:left-(--page-margin) focus:z-50 focus:rounded-pill focus:bg-bg focus:px-4 focus:py-3 focus:shadow-md"
         >
           Skip to main content
         </a>

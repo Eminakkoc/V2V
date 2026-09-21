@@ -1,32 +1,41 @@
+import { Play, SlidersHorizontal, Video } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 
 // F5/F25: shown on both History tabs, always -- not gated on any list being
 // empty. Callers render it once per tab's panel.
 export function BrowserScopedNote() {
-  return <p className="text-sm text-muted-foreground">History is tied to this browser.</p>;
+  return <p className="type-body text-muted-foreground">History is tied to this browser.</p>;
 }
 
+// Figma "Empty state" (55:1712): a surface panel with a tinted icon disc, the
+// heading, one line of body at the design's 420px measure, and a single
+// large action. The tabs stay visible above it.
 function EmptyStateShell({
   headingId,
   heading,
   body,
+  icon: Icon,
   action,
 }: {
   headingId: string;
   heading: string;
   body: string;
+  icon: typeof Play;
   action: React.ReactNode;
 }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6"
+      className="flex flex-col items-center gap-4 rounded-card bg-surface px-6 py-12 text-center sm:py-16"
     >
-      <h2 id={headingId} className="text-lg font-medium">
+      <span className="flex size-20 items-center justify-center rounded-pill bg-accent2-200 sm:size-24">
+        <Icon aria-hidden strokeWidth={2.75} className="size-9 text-accent2-800 sm:size-[42px]" />
+      </span>
+      <h2 id={headingId} className="type-h3">
         {heading}
       </h2>
-      <p className="text-muted-foreground">{body}</p>
+      <p className="max-w-[420px] type-body-lg text-muted-foreground">{body}</p>
       {action}
     </section>
   );
@@ -43,8 +52,9 @@ export function NoUploadsYet({ uploadHref }: NoUploadsYetProps) {
       headingId="no-uploads-yet-heading"
       heading="No uploads yet"
       body="Videos you upload will collect here, ready to transform again without re-uploading."
+      icon={Video}
       action={
-        <Link href={uploadHref} className={buttonVariants({ className: "min-h-11" })}>
+        <Link href={uploadHref} className={buttonVariants({ size: "lg" })}>
           Upload your first video
         </Link>
       }
@@ -71,14 +81,15 @@ export function NoTransformationsYet({
     <EmptyStateShell
       headingId="no-transformations-yet-heading"
       heading="No transformations yet"
-      body="Your transformations will collect here, source and result side by side."
+      body="Your transformations will collect here, source and result side by side. History is tied to this browser."
+      icon={Play}
       action={
         hasUploads ? (
-          <Link href={switchToUploadsHref} className={buttonVariants({ className: "min-h-11" })}>
+          <Link href={switchToUploadsHref} className={buttonVariants({ size: "lg" })}>
             Transform an upload
           </Link>
         ) : (
-          <Link href={uploadHref} className={buttonVariants({ className: "min-h-11" })}>
+          <Link href={uploadHref} className={buttonVariants({ size: "lg" })}>
             Upload your first video
           </Link>
         )
@@ -103,10 +114,11 @@ export function NoMatches({ tab, clearFiltersHref }: NoMatchesProps) {
       headingId="no-matches-heading"
       heading="No matches"
       body={body}
+      icon={SlidersHorizontal}
       action={
         <Link
           href={clearFiltersHref}
-          className={buttonVariants({ variant: "outline", className: "min-h-11" })}
+          className={buttonVariants({ variant: "outline", size: "lg" })}
         >
           Clear filters
         </Link>

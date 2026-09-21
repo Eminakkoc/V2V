@@ -3,16 +3,16 @@ import { NavLink } from "./nav-link";
 
 export function TopBar() {
   return (
-    <header className="border-b">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-1">
+    <header className="w-full">
+      <div className="page-shell flex h-[60px] items-center gap-4 sm:gap-6">
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center rounded-lg font-semibold tracking-tight focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-hidden"
+          className="flex-1 rounded-pill font-display type-brand text-foreground focus-ring"
         >
-          V2V Transform
+          Restyle
         </Link>
         <nav aria-label="Main">
-          <ul className="flex items-center gap-1">
+          <ul className="flex items-center gap-4 sm:gap-6">
             <li>
               <NavLink href="/">Create</NavLink>
             </li>

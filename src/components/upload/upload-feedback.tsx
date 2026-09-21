@@ -1,48 +1,88 @@
 "use client";
 
+import { Loader, Upload } from "lucide-react";
 import { useEffect, useState, type Ref } from "react";
+import { ActivityBar } from "@/components/ui/activity-bar";
+import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { ErrorMessage } from "@/lib/error-messages";
+import { formatBytes } from "@/lib/format";
 
 type BusyState = { status: "uploading"; progress: number } | { status: "storing" };
 
 type UploadProgressProps = {
   state: BusyState;
+  // The file being uploaded, when the picker reported one. Shown in place of
+  // the generic heading, as in the design.
+  file?: { name: string; size: number } | null;
+  onCancel?: () => void;
   // Focus target after "Try again": the label is a stable element that survives
   // the retry, so focus does not fall back to the document body.
   labelRef?: Ref<HTMLParagraphElement>;
 };
 
-export function UploadProgress({ state, labelRef }: UploadProgressProps) {
+// Figma "Upload area", State=Uploading / State=Storing (55:1554, 55:1563):
+// the same dashed frame as the idle drop zone, with the file on one row and a
+// bar beneath -- determinate for real bytes, indeterminate for the Cloudinary
+// copy, which reports no percentage.
+export function UploadProgress({ state, file, onCancel, labelRef }: UploadProgressProps) {
   const uploading = state.status === "uploading";
   const labelId = uploading ? "upload-progress-label" : "storing-label";
+  const Icon = uploading ? Upload : Loader;
+
   return (
-    <div className="flex flex-col gap-3 rounded-xl border p-4">
-      <p id={labelId} ref={labelRef} tabIndex={-1} className="font-medium">
-        {uploading ? "Uploading your video" : "Storing your video"}
-      </p>
-      <div
-        role="progressbar"
-        aria-labelledby={labelId}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={uploading ? state.progress : undefined}
-        className="h-2 overflow-hidden rounded-full bg-muted"
-      >
-        {uploading ? (
+    <div className="flex flex-col gap-4 rounded-card border-[length:var(--stroke-rule)] border-dashed border-accent-300 bg-dropzone p-6 sm:p-8">
+      <div className="flex items-center gap-4">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-pill bg-accent-200">
+          <Icon aria-hidden strokeWidth={2.75} className="size-5 text-accent-900" />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p
+            id={labelId}
+            ref={labelRef}
+            tabIndex={-1}
+            className={
+              uploading && file ? "truncate type-body-lg font-bold" : "font-display type-h4"
+            }
+          >
+            {uploading ? (file ? file.name : "Uploading your video") : "Storing your video"}
+          </p>
+          <p className="type-body-sm text-muted-foreground">
+            {uploading
+              ? `${file ? `${formatBytes(file.size)} · ` : ""}Uploading, ${state.progress}%`
+              : "Copying it to storage. Large files can take up to a minute."}
+          </p>
+        </div>
+        {onCancel ? (
+          <Button type="button" variant="ghost" size="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+      {uploading ? (
+        <div
+          role="progressbar"
+          aria-labelledby={labelId}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={state.progress}
+          className="h-2.5 overflow-hidden rounded-pill bg-neutral-300"
+        >
           <div
-            className="h-full bg-primary transition-[width]"
+            className="h-full rounded-pill bg-accent-strong transition-[width]"
             style={{ width: `${state.progress}%` }}
           />
-        ) : (
-          <div className="h-full w-1/3 bg-primary motion-safe:animate-pulse" />
-        )}
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {uploading
-          ? `${state.progress}%`
-          : "Copying it to secure storage. Large files take up to a minute."}
-      </p>
+        </div>
+      ) : (
+        <ActivityBar
+          className="h-2.5"
+          role="progressbar"
+          aria-hidden={undefined}
+          aria-labelledby={labelId}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        />
+      )}
     </div>
   );
 }
@@ -56,31 +96,25 @@ type UploadErrorProps = {
 
 export function UploadError({ id, message, onRetry, onChooseAnother }: UploadErrorProps) {
   return (
-    <div
-      id={id}
-      role="alert"
-      className="flex flex-col gap-3 rounded-xl border border-destructive/50 bg-destructive/5 p-4"
-    >
-      <div className="flex flex-col gap-1">
-        <p className="font-medium">{message.title}</p>
-        <p className="text-sm text-muted-foreground">{message.description}</p>
+    <Alert id={id} role="alert">
+      <div className="flex flex-col">
+        <AlertTitle>{message.title}</AlertTitle>
+        <AlertDescription>{message.description}</AlertDescription>
       </div>
-      {message.action === "retry" ? (
-        <Button type="button" className="min-h-11 self-start" onClick={onRetry}>
-          Try again
-        </Button>
+      {message.action === "retry" || message.action === "choose-another-file" ? (
+        <AlertActions>
+          {message.action === "retry" ? (
+            <Button type="button" onClick={onRetry}>
+              Try again
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={onChooseAnother}>
+              Choose another file
+            </Button>
+          )}
+        </AlertActions>
       ) : null}
-      {message.action === "choose-another-file" ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11 self-start"
-          onClick={onChooseAnother}
-        >
-          Choose another file
-        </Button>
-      ) : null}
-    </div>
+    </Alert>
   );
 }
 
@@ -106,18 +140,16 @@ export function UploadWaitRetry({ id, message, retryAfterSeconds, onRetry }: Upl
   }, [retryAfterSeconds]);
 
   return (
-    <div
-      id={id}
-      role="alert"
-      className="flex flex-col gap-3 rounded-xl border border-destructive/50 bg-destructive/5 p-4"
-    >
-      <div className="flex flex-col gap-1">
-        <p className="font-medium">{message.title}</p>
-        <p className="text-sm text-muted-foreground">{message.description}</p>
+    <Alert id={id} role="alert">
+      <div className="flex flex-col">
+        <AlertTitle>{message.title}</AlertTitle>
+        <AlertDescription>{message.description}</AlertDescription>
       </div>
-      <Button type="button" className="min-h-11 self-start" disabled={!ready} onClick={onRetry}>
-        Try again
-      </Button>
-    </div>
+      <AlertActions>
+        <Button type="button" variant="outline" disabled={!ready} onClick={onRetry}>
+          Try again
+        </Button>
+      </AlertActions>
+    </Alert>
   );
 }

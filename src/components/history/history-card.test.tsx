@@ -62,7 +62,7 @@ describe("HistoryCard", () => {
       job.output!.cloudinaryUrl,
     );
     expect(screen.getByText("Ghibli Anime")).toBeInTheDocument();
-    expect(screen.getByText("0:12 clip")).toBeInTheDocument();
+    expect(screen.getByText("12.00s · 2.00 to 14.00")).toBeInTheDocument();
   });
 
   it("renders no result player, URL or copy control when the job has no output", () => {
@@ -125,10 +125,20 @@ describe("HistoryCard", () => {
   it("uses a lower heading level for a nested attempt than for a top-level card", () => {
     const job = buildJob();
     const { rerender } = render(<HistoryCard job={job} cloudName="demo" variant="top" />);
-    expect(screen.getByRole("heading", { level: 2, name: job.params.name })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: `${job.params.name} · ${job.params.artStyle}`,
+      }),
+    ).toBeInTheDocument();
 
     rerender(<HistoryCard job={job} cloudName="demo" variant="attempt" />);
-    expect(screen.getByRole("heading", { level: 3, name: job.params.name })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        level: 3,
+        name: `${job.params.name} · ${job.params.artStyle}`,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("shows the job's created time as a machine-readable <time>, on both variants", () => {
@@ -148,8 +158,8 @@ describe("HistoryCard", () => {
   it("shows the job's completed time only once it has actually completed", () => {
     const notYet = buildJob({ completedAt: undefined });
     const notYetRendered = render(<HistoryCard job={notYet} cloudName="demo" />);
-    expect(notYetRendered.getByText("Created", { exact: false })).toBeInTheDocument();
-    expect(notYetRendered.queryByText("Completed", { exact: false })).not.toBeInTheDocument();
+    expect(notYetRendered.getByText("Started", { exact: false })).toBeInTheDocument();
+    expect(notYetRendered.queryByText("finished", { exact: false })).not.toBeInTheDocument();
 
     const done = buildJob({ completedAt: "2026-01-01T00:12:00.000Z" });
     const doneRendered = render(<HistoryCard job={done} cloudName="demo" />);

@@ -1,4 +1,4 @@
-import { formatDuration } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
 import type { TransformParams } from "@/lib/transform-contract";
 
 // Copy matches the create-page form (src/components/create/options-form.tsx)
@@ -20,30 +20,32 @@ type ParamSummaryProps = {
   params: TransformParams;
 };
 
-// Compact parameter summary (6.6): art style, clip length, prompt type and
-// frame-rate setting. One of the History view's three named deliverables --
-// shown here as text, not only implied by the players in VideoPair.
+// Figma "Parameters": a wrapping row of neutral tags. One of the History
+// view's three named deliverables (6.6) -- shown here as text, not only
+// implied by the players. The art style is deliberately absent: the card's
+// own title already carries it.
 export function ParamSummary({ params }: ParamSummaryProps) {
   const clipSeconds = params.endSeconds - params.startSeconds;
 
+  const items = [
+    [
+      "Clip",
+      `${clipSeconds.toFixed(2)}s · ${params.startSeconds.toFixed(2)} to ${params.endSeconds.toFixed(2)}`,
+    ],
+    ["Prompt", PROMPT_TYPE_SUMMARY[params.promptType]],
+    ["Frame rate", FPS_SUMMARY[params.fpsResolution]],
+  ] as const;
+
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted-foreground @sm:grid-cols-4">
-      <div>
-        <dt className="sr-only">Art style</dt>
-        <dd className="text-foreground">{params.artStyle}</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Clip length</dt>
-        <dd>{formatDuration(clipSeconds)} clip</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Prompt</dt>
-        <dd>{PROMPT_TYPE_SUMMARY[params.promptType]}</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Frame rate</dt>
-        <dd>{FPS_SUMMARY[params.fpsResolution]}</dd>
-      </div>
+    <dl className="flex flex-wrap items-center gap-2">
+      {items.map(([term, value]) => (
+        <div key={term}>
+          <dt className="sr-only">{term}</dt>
+          <dd>
+            <Badge>{value}</Badge>
+          </dd>
+        </div>
+      ))}
     </dl>
   );
 }

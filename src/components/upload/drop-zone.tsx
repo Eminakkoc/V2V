@@ -1,12 +1,16 @@
 "use client";
 
-import { FolderOpen, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useState, type Ref } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type DropZoneProps = {
-  hint: string;
+  // "MP4 or MOV · up to 100 MB" and "Any length. You will pick a clip of up to
+  // 60 seconds next." -- two lines in the design, so two props rather than one
+  // pre-joined string.
+  formatsHint: string;
+  clipHint: string;
   invalid: boolean;
   describedBy?: string | undefined;
   disabled?: boolean;
@@ -17,8 +21,11 @@ type DropZoneProps = {
   onChoose: () => void;
 };
 
+// Figma "Upload area", State=Idle (55:1529): a dashed accent-300 outline over
+// the translucent dropzone wash, at radius/card.
 export function DropZone({
-  hint,
+  formatsHint,
+  clipHint,
   invalid,
   describedBy,
   disabled = false,
@@ -47,25 +54,30 @@ export function DropZone({
         if (file) onFile(file);
       }}
       className={cn(
-        "flex flex-col items-center gap-4 rounded-xl border-2 border-dashed px-4 py-10 text-center transition-colors",
-        dragging && "border-primary bg-muted",
-        invalid && "border-destructive",
+        "flex flex-col items-center gap-4 rounded-card border-[length:var(--stroke-rule)] border-dashed border-accent-300 bg-dropzone px-6 py-8 text-center transition-colors sm:px-12 sm:py-16",
+        dragging && "border-accent-strong bg-accent-100",
+        invalid && "border-accent-900",
       )}
     >
-      <Upload aria-hidden className="size-8 text-muted-foreground" />
-      <div className="flex flex-col gap-1">
-        <p id="drop-zone-title" ref={titleRef} tabIndex={-1} className="font-medium">
+      <span className="flex size-14 items-center justify-center rounded-pill bg-accent-200 sm:size-[78px]">
+        <Upload aria-hidden strokeWidth={2.75} className="size-7 text-accent-900 sm:size-[34px]" />
+      </span>
+      <div className="flex flex-col gap-1.5">
+        <p id="drop-zone-title" ref={titleRef} tabIndex={-1} className="font-display type-h3">
           Drop a video here
         </p>
-        <p className="text-sm text-muted-foreground">{hint}</p>
+        <p className="type-body text-muted-foreground">{formatsHint}</p>
+        <p className="type-body text-muted-foreground">{clipHint}</p>
       </div>
-      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-        <Button type="button" className="min-h-11" disabled={disabled} onClick={onChoose}>
-          <FolderOpen aria-hidden />
+      <div className="flex w-full flex-col gap-3 pt-1.5 sm:w-auto sm:flex-row">
+        <Button type="button" size="lg" disabled={disabled} onClick={onChoose}>
           <span className="sm:hidden">Camera roll</span>
           <span className="hidden sm:inline">Choose a video</span>
         </Button>
       </div>
+      <p className="type-caption text-muted-foreground">
+        Stored with a hard-to-guess link. History is tied to this browser.
+      </p>
     </div>
   );
 }
