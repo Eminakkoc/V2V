@@ -4,7 +4,7 @@ import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { clampRange, type TrimRange } from "@/lib/trim-range";
+import { clampRange, trimLimit, type TrimRange } from "@/lib/trim-range";
 import { Filmstrip } from "./filmstrip";
 
 // A trim shorter than this reads as a mis-click rather than an intended clip,
@@ -105,6 +105,11 @@ export function Trimmer({
   const endInputId = useId();
   const loopToggleId = useId();
   const bounds = { duration, minGap: MIN_GAP_SECONDS, maxClipSeconds };
+  // The track stops at the last two-decimal second of the source, because
+  // that is the finest value the payload may carry. Reading it here as well
+  // as inside clampRange is what keeps the control from ever *offering* a
+  // position the committed range cannot represent.
+  const limit = trimLimit(duration);
   const seek = useThrottledSeek(onSeek);
   const [looping, setLooping] = useState(true);
   useLoopPlayback(previewRef, value, looping);
@@ -151,7 +156,7 @@ export function Trimmer({
         // Propose the absolute boundary in that direction; clampRange pulls
         // it back to the furthest valid position (short of the other handle
         // by minGap) exactly as it does for an over-long Page/drag proposal.
-        const target = event.key === "Home" ? 0 : duration;
+        const target = event.key === "Home" ? 0 : limit;
         commit(
           which === "start"
             ? { startSeconds: target, endSeconds: value.endSeconds }
@@ -177,15 +182,11 @@ export function Trimmer({
     <div className="flex flex-col gap-4">
       <div className="relative flex h-10 items-center">
         {src ? (
-          <Filmstrip
-            src={src}
-            duration={duration}
-            className="pointer-events-none absolute inset-0"
-          />
+          <Filmstrip src={src} duration={limit} className="pointer-events-none absolute inset-0" />
         ) : null}
         <Slider
           min={0}
-          max={duration}
+          max={limit}
           step={STEP_SECONDS}
           minStepsBetweenThumbs={Math.round(MIN_GAP_SECONDS / STEP_SECONDS)}
           value={[value.startSeconds, value.endSeconds]}
@@ -232,7 +233,7 @@ export function Trimmer({
             type="number"
             inputMode="decimal"
             min={0}
-            max={duration}
+            max={limit}
             step={0.01}
             disabled={disabled}
             value={value.startSeconds}
@@ -246,7 +247,7 @@ export function Trimmer({
             type="number"
             inputMode="decimal"
             min={0}
-            max={duration}
+            max={limit}
             step={0.01}
             disabled={disabled}
             value={value.endSeconds}

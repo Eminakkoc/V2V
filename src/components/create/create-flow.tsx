@@ -15,6 +15,7 @@ import {
   type JobView,
   type TransformParams,
 } from "@/lib/transform-contract";
+import { defaultRange } from "@/lib/trim-range";
 import type { UploadResponse } from "@/lib/upload-contract";
 import { cn } from "@/lib/utils";
 
@@ -73,8 +74,10 @@ const initialState: FlowState = {
 function defaultParams(name: string, duration: number, maxClipSeconds: number): TransformParams {
   return {
     name,
-    startSeconds: 0,
-    endSeconds: Math.max(0.1, Math.min(duration, maxClipSeconds)),
+    // defaultRange, not a local Math.min: a raw source duration has more than
+    // two decimals and transformParamsSchema refuses it, so an untouched
+    // trimmer would otherwise submit a value the server is bound to reject.
+    ...defaultRange(duration, maxClipSeconds),
     fpsResolution: "HALF",
     artStyle: "No Art Style",
     promptType: "default",

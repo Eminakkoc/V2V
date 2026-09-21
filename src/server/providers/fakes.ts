@@ -8,6 +8,7 @@ export const FAKE_UUID_PREFIXES = {
   failsOnce: "f0000000-",
   unreadable: "e0000000-",
   longSource: "d0000000-",
+  oddSource: "c0000000-",
 } as const;
 export const FAKE_FILE_SIZE = 5_242_880;
 export const FAKE_SOURCE_SECONDS = 12.5;
@@ -15,6 +16,12 @@ export const FAKE_SOURCE_SECONDS = 12.5;
 // check in startTransform. Without a source longer than the cap, that branch
 // is unreachable and the cap is untestable through the real route.
 export const FAKE_LONG_SOURCE_SECONDS = 60;
+// More than two decimals, which is what a real source reports and what
+// transformParamsSchema refuses. Both durations above are already two-decimal
+// figures, so under PROVIDER_MODE=fake the trimmer could not produce an
+// out-of-spec value at all and the client half of the two-decimal rule was
+// unreachable by the suite.
+export const FAKE_ODD_SOURCE_SECONDS = 2.69973;
 
 // Opt-ins a caller writes into the job name (params.name) to steer the fake
 // Magic Hour adapter down a branch it would otherwise never take. They exist
@@ -159,7 +166,9 @@ export function createFakeProviders(
           bytes: FAKE_FILE_SIZE,
           duration: uuid.startsWith(FAKE_UUID_PREFIXES.longSource)
             ? FAKE_LONG_SOURCE_SECONDS
-            : FAKE_SOURCE_SECONDS,
+            : uuid.startsWith(FAKE_UUID_PREFIXES.oddSource)
+              ? FAKE_ODD_SOURCE_SECONDS
+              : FAKE_SOURCE_SECONDS,
           width: 1280,
           height: 720,
         };

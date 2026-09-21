@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { clampRange } from "./trim-range";
+import { transformParamsSchema } from "./transform-contract";
+import { clampRange, defaultRange, trimLimit } from "./trim-range";
 
 const bounds = { duration: 60, minGap: 0.1, maxClipSeconds: 30 };
 
@@ -55,5 +56,50 @@ describe("clampRange", () => {
         bounds,
       ),
     ).toEqual({ startSeconds: 12.5, endSeconds: 20.5 });
+  });
+});
+
+describe("trimLimit", () => {
+  it("stops at the last two-decimal second the source actually contains", () => {
+    // Never up: 2.70 is a frame the source does not have.
+    expect(trimLimit(2.69973)).toBe(2.69);
+  });
+
+  it("leaves a duration that is already two decimals alone", () => {
+    expect(trimLimit(12.5)).toBe(12.5);
+    expect(trimLimit(60)).toBe(60);
+  });
+});
+
+describe("defaultRange", () => {
+  // The real .mov from the report: an untouched trimmer submitted 2.69973 and
+  // the server refused it with "must have at most 2 decimals".
+  it("rounds a real source duration into what the schema accepts", () => {
+    const range = defaultRange(2.69973, 30);
+    expect(range).toEqual({ startSeconds: 0, endSeconds: 2.69 });
+    expect(
+      transformParamsSchema.safeParse({
+        name: "clip.mov",
+        ...range,
+        artStyle: "No Art Style",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("caps at maxClipSeconds for a source longer than the cap", () => {
+    expect(defaultRange(60, 30)).toEqual({ startSeconds: 0, endSeconds: 30 });
+  });
+
+  it("selects the whole clip when it is shorter than the cap", () => {
+    expect(defaultRange(12.5, 30)).toEqual({ startSeconds: 0, endSeconds: 12.5 });
+  });
+
+  it("never returns a value the schema would reject, whatever the duration", () => {
+    for (const duration of [0.37, 1.005, 2.69973, 9.999, 12.5, 29.999, 30.5, 60]) {
+      const range = defaultRange(duration, 30);
+      expect(Math.round(range.endSeconds * 100) / 100).toBe(range.endSeconds);
+      expect(range.endSeconds).toBeGreaterThan(range.startSeconds);
+      expect(range.endSeconds).toBeLessThanOrEqual(duration);
+    }
   });
 });

@@ -2,14 +2,33 @@ export type TrimRange = { startSeconds: number; endSeconds: number };
 
 export type TrimBounds = { duration: number; minGap: number; maxClipSeconds: number };
 
-function clampToDuration(value: number, duration: number): number {
-  return Math.min(Math.max(value, 0), duration);
+function clampToLimit(value: number, limit: number): number {
+  return Math.min(Math.max(value, 0), limit);
 }
 
 // z.multipleOf-style rounding: binary floating point makes raw drag/step math
 // land on values like 12.340000000000002, which transformParamsSchema rejects.
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+// The furthest either handle may travel. A real source duration is almost
+// never a two-decimal number -- a .mov reports 2.69973 -- and the payload may
+// not be finer than two decimals, so the track has to end at the last
+// two-decimal second the source actually contains. Rounding up instead would
+// ask the provider for a frame past the last one.
+export function trimLimit(duration: number): number {
+  return Math.floor(duration * 100) / 100;
+}
+
+// The range a source starts with: the whole clip, capped at maxClipSeconds,
+// already in the two-decimal space the payload uses. It lives here rather
+// than in the caller so the initial value and every later clampRange result
+// come from one rounded source of truth -- rounding only on MOVE is what let
+// an untouched trimmer submit the raw duration and be refused server-side.
+export function defaultRange(duration: number, maxClipSeconds: number): TrimRange {
+  const end = Math.max(0.1, Math.min(trimLimit(duration), maxClipSeconds));
+  return { startSeconds: 0, endSeconds: round2(end) };
 }
 
 // Resolves a proposed drag/edit against the last committed range. `previous`
@@ -21,10 +40,11 @@ function round2(value: number): number {
 //     drag the user just made is never reversed under them.
 // A maxClipSeconds violation always shortens from the handle being dragged.
 export function clampRange(next: TrimRange, previous: TrimRange, bounds: TrimBounds): TrimRange {
-  const { duration, minGap, maxClipSeconds } = bounds;
+  const { minGap, maxClipSeconds } = bounds;
+  const limit = trimLimit(bounds.duration);
 
-  let start = clampToDuration(next.startSeconds, duration);
-  let end = clampToDuration(next.endSeconds, duration);
+  let start = clampToLimit(next.startSeconds, limit);
+  let end = clampToLimit(next.endSeconds, limit);
 
   const startDragged = next.startSeconds !== previous.startSeconds;
   const endDragged = next.endSeconds !== previous.endSeconds;
@@ -42,8 +62,8 @@ export function clampRange(next: TrimRange, previous: TrimRange, bounds: TrimBou
     else end = start + maxClipSeconds;
   }
 
-  start = clampToDuration(start, duration);
-  end = clampToDuration(end, duration);
+  start = clampToLimit(start, limit);
+  end = clampToLimit(end, limit);
 
   return { startSeconds: round2(start), endSeconds: round2(end) };
 }
