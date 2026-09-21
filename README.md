@@ -9,11 +9,67 @@ Built with Next.js, TypeScript, Tailwind CSS, MongoDB, Uploadcare, Cloudinary an
 
 ```bash
 pnpm install
-cp .env.example .env.local   # fill in the keys, see comments in the file
+cp .env.example .env.local   # fill in the keys, see the table below
 pnpm dev
 ```
 
 Open http://localhost:3000.
+
+## Environment variables
+
+Every variable below must be present and non-empty, or `pnpm dev` refuses to start with
+`Invalid environment: ...` naming each one it rejected. `.env.example` already contains the
+tuning values, so copying it leaves only the credentials to fill in.
+
+### Credentials you have to obtain
+
+Four dashboards issue everything below (full account setup is under "Provider setup and
+deployment"):
+
+- **Uploadcare** keys — https://app.uploadcare.com/projects/-/api-keys/ — and **signed uploads**
+  must be enabled at https://app.uploadcare.com/projects/-/settings/, or the uploader fails.
+- **Cloudinary** keys — https://console.cloudinary.com/app/settings/api-keys
+- **Magic Hour** key — https://magichour.ai/developer
+- **MongoDB Atlas** connection string — https://cloud.mongodb.com/ (your cluster → Connect →
+  Drivers)
+
+| Variable                            | Where it comes from                                                                                                         |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_UPLOADCARE_PUBLIC_KEY` | Uploadcare → API keys. The only variable that reaches the browser; the uploader needs it. Turn on **signed uploads** too.   |
+| `UPLOADCARE_SECRET_KEY`             | Uploadcare → API keys. Signs each upload and reads back the real file info the server validates against.                    |
+| `CLOUDINARY_CLOUD_NAME`             | Cloudinary → API keys. Appears in every playback and poster URL, so it is public by nature.                                 |
+| `CLOUDINARY_API_KEY`                | Cloudinary → API keys. Authorises the copy of the source and of the finished render.                                        |
+| `CLOUDINARY_API_SECRET`             | Cloudinary → API keys. Same call; keep it server-side.                                                                      |
+| `MAGIC_HOUR_API_KEY`                | Magic Hour → Developer. Submits renders and asks for job status. **Renders spend real credits.**                            |
+| `MAGIC_HOUR_WEBHOOK_SECRET`         | Magic Hour → Developer, issued when a webhook URL is registered. Verifies deliveries — see the note below for local work.   |
+| `MONGODB_URI`                       | Atlas → Connect → Drivers. Must start with `mongodb://` or `mongodb+srv://`. A local `mongodb://127.0.0.1:27017` works too. |
+| `MONGODB_DB_NAME`                   | Your choice; `.env.example` uses `v2v`.                                                                                     |
+| `SESSION_COOKIE_SECRET`             | Generate it yourself: `openssl rand -base64 32`. Must decode to at least 32 bytes. Signs the anonymous identity cookie.     |
+
+**About `MAGIC_HOUR_WEBHOOK_SECRET` locally.** It is required to boot even though Magic Hour
+cannot call `localhost`, so nothing will ever verify against it on your machine. Any non-empty
+placeholder gets you running; use the real secret only when testing the webhook through a tunnel
+(Option B under "Local development").
+
+### Tuning values, already filled in by `.env.example`
+
+| Variable                               | Default                                | What it controls                                                                                                                     |
+| -------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `MAX_UPLOAD_BYTES`                     | `104857600`                            | Largest accepted upload — 100 MB, Cloudinary's plain upload limit.                                                                   |
+| `ALLOWED_VIDEO_FORMATS`                | `video/mp4,video/quicktime,video/webm` | Accepted MIME types, comma-separated and each `video/*`.                                                                             |
+| `MAX_CLIP_SECONDS`                     | `30`                                   | Longest clip sent to Magic Hour, which is what caps credit spend per render.                                                         |
+| `JOB_GRACE_MINUTES`                    | `120`                                  | How long past a job's deadline the app keeps checking before giving up on it.                                                        |
+| `JOB_DEADLINE_BASE_MINUTES`            | `5`                                    | Fixed part of a job's expected duration.                                                                                             |
+| `JOB_DEADLINE_SECONDS_PER_CLIP_SECOND` | `30`                                   | Added per second of clip. Provisional — `pnpm transform:real` measures the truth.                                                    |
+| `JOB_DEADLINE_MAX_MINUTES`             | `30`                                   | Cap on the computed deadline, however long the clip is.                                                                              |
+| `PROVIDER_MODE`                        | `real`                                 | The one optional variable. `fake` swaps in in-memory providers and is set automatically by `pnpm test:e2e`; it is refused on Vercel. |
+
+Leaving `PROVIDER_MODE` unset means **real**: every transform you run locally spends real Magic
+Hour credits, exactly as in production.
+
+One more step the variables alone don't cover: run `pnpm db:indexes` once against whatever
+database `MONGODB_URI` points at. Without it the unique `{userId, idempotencyKey}` index is
+missing and a double submit can become two paid renders.
 
 ## How a job flows
 
