@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useCallback, useReducer, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { SourceUploader, type UploaderSettings } from "@/components/upload/source-uploader";
@@ -16,9 +17,17 @@ import {
 } from "@/lib/transform-contract";
 import type { UploadResponse } from "@/lib/upload-contract";
 import { cn } from "@/lib/utils";
-import { JobCard } from "./job-card";
-import { OptionsForm } from "./options-form";
-import { Trimmer } from "./trimmer";
+
+// Deferred, not statically imported: none of the three can render before the
+// reducer has a source (Trimmer/OptionsForm) or a job (JobCard), yet between
+// them they pull Radix's Slider, Select, Collapsible and Dialog into the
+// first load of a page whose only interactive surface at first paint is the
+// drop zone. `ssr` stays on so the ?sourceId= arrival from History still
+// server-renders the editor; the chunk is simply never requested on the
+// ordinary visit, where the component never renders. (IR-004 / DEP-004.)
+const Trimmer = dynamic(() => import("./trimmer").then((m) => m.Trimmer));
+const OptionsForm = dynamic(() => import("./options-form").then((m) => m.OptionsForm));
+const JobCard = dynamic(() => import("./job-card").then((m) => m.JobCard));
 
 export type CreateFlowSettings = UploaderSettings & { cloudName: string };
 

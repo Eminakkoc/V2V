@@ -102,26 +102,31 @@ describe("CreateFlow", () => {
     expect(screen.queryByRole("combobox", { name: "Art style" })).not.toBeInTheDocument();
   });
 
-  it("shows the preview, trimmer and options form once a source is ready", () => {
+  it("shows the preview, trimmer and options form once a source is ready", async () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
-    expect(screen.getByRole("slider", { name: "Clip start" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Art style" })).toBeInTheDocument();
+    // findBy on both: Trimmer and OptionsForm are separate dynamic imports,
+    // so resolving one says nothing about the other.
+    expect(await screen.findByRole("slider", { name: "Clip start" })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Art style" })).toBeInTheDocument();
   });
 
-  it("takes the trimmer's bounds from the uploaded source's real duration", () => {
+  it("takes the trimmer's bounds from the uploaded source's real duration", async () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady("clip.mp4", {
       ...uploadResult,
       sourceVideo: { ...uploadResult.sourceVideo, duration: 42 },
     });
-    expect(screen.getByRole("spinbutton", { name: "Clip end" })).toHaveAttribute("max", "42");
+    expect(await screen.findByRole("spinbutton", { name: "Clip end" })).toHaveAttribute(
+      "max",
+      "42",
+    );
   });
 
-  it("defaults the job name to the uploaded file's name", () => {
+  it("defaults the job name to the uploaded file's name", async () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady("holiday.mov");
-    expect(screen.getByRole("textbox", { name: "Job name" })).toHaveValue("holiday.mov");
+    expect(await screen.findByRole("textbox", { name: "Job name" })).toHaveValue("holiday.mov");
   });
 
   it("posts once and inserts the returned job optimistically", async () => {
@@ -295,7 +300,7 @@ describe("CreateFlow", () => {
     expect(secondKey).not.toBe(firstKey);
   });
 
-  it("clears the job card and resets the form when the source is replaced", () => {
+  it("clears the job card and resets the form when the source is replaced", async () => {
     useJobPollingMock.mockReturnValue({
       jobs: [job({ status: "complete" })],
       refresh: vi.fn(),
@@ -305,8 +310,8 @@ describe("CreateFlow", () => {
     });
     render(<CreateFlow settings={settings} />);
     selectAndReady();
-    expect(screen.getByText("Complete")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Art style" })).toBeInTheDocument();
+    expect(await screen.findByText("Complete")).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Art style" })).toBeInTheDocument();
 
     act(() => captured.props?.onStateChange?.({ status: "idle" }));
 
@@ -340,7 +345,7 @@ describe("CreateFlow", () => {
     fetchMock.mockResolvedValueOnce({ job: retryJob });
 
     render(<CreateFlow settings={settings} />);
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Retry anyway" }));
       await Promise.resolve();
@@ -361,17 +366,17 @@ describe("CreateFlow", () => {
     expect(insertOptimistic).toHaveBeenCalledWith(retryJob);
   });
 
-  it("shows the preview, trimmer and options form from an initial source, with no upload interaction at all", () => {
+  it("shows the preview, trimmer and options form from an initial source, with no upload interaction at all", async () => {
     // selectAndReady() (which drives SourceUploader's onFileSelected/
     // onStateChange callbacks) is never called here -- this state comes only
     // from the initial-source prop, mirroring how page.tsx preloads a source
     // resolved from a History "Transform" link.
     render(<CreateFlow settings={settings} initialSource={uploadResult} />);
-    expect(screen.getByRole("slider", { name: "Clip start" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Art style" })).toBeInTheDocument();
+    expect(await screen.findByRole("slider", { name: "Clip start" })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Art style" })).toBeInTheDocument();
   });
 
-  it("takes the trimmer's bounds and job name from an initial source's own data, the same as a real upload's", () => {
+  it("takes the trimmer's bounds and job name from an initial source's own data, the same as a real upload's", async () => {
     render(
       <CreateFlow
         settings={settings}
@@ -381,8 +386,11 @@ describe("CreateFlow", () => {
         }}
       />,
     );
-    expect(screen.getByRole("spinbutton", { name: "Clip end" })).toHaveAttribute("max", "42");
-    expect(screen.getByRole("textbox", { name: "Job name" })).toHaveValue("mp4");
+    expect(await screen.findByRole("spinbutton", { name: "Clip end" })).toHaveAttribute(
+      "max",
+      "42",
+    );
+    expect(await screen.findByRole("textbox", { name: "Job name" })).toHaveValue("mp4");
   });
 
   it("without an initial source, still shows neither the trimmer nor the options form until a real upload", () => {

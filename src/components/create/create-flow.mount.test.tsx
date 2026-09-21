@@ -48,7 +48,7 @@ function job(overrides: Partial<JobView> = {}): JobView {
 }
 
 describe("CreateFlow mount, against the real SourceUploader", () => {
-  it("still shows a job already on the account on first render, before any upload", () => {
+  it("still shows a job already on the account on first render, before any upload", async () => {
     useJobPollingMock.mockReturnValue({
       jobs: [job()],
       refresh: vi.fn(),
@@ -62,6 +62,8 @@ describe("CreateFlow mount, against the real SourceUploader", () => {
     // The real uploader mounts as "idle". If anything -- an Effect watching
     // its state, for example -- reported that mount as a state change,
     // CreateFlow would read it as a reset and hide this job.
-    expect(screen.getByText("Complete")).toBeInTheDocument();
+    // findBy, not getBy: JobCard is a dynamic import, so it resolves a tick
+    // after the first render.
+    expect(await screen.findByText("Complete")).toBeInTheDocument();
   });
 });
