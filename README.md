@@ -153,6 +153,11 @@ upload reuses one file across several sources.
   tunnel URL and then let the tunnel exit, leaving the account's one webhook registration
   pointed at a dead address. Falling back to Option A (do nothing, rely on the status check)
   works regardless of what is currently registered.
+- **"You are offline" appears and cards stop updating.** The browser lost its connection.
+  Nothing is lost and nothing is failing: the page stops asking for updates rather than
+  retrying and giving up, and it resumes on its own the moment you are back online. A job
+  that finishes while you are offline is collected on the next check, not missed.
+
 - **`pnpm dev` fails immediately with "Invalid environment: ...".** One or more variables in
   `.env.local` are missing or malformed; the message names each one — check it against the
   matching comment in `.env.example`.
