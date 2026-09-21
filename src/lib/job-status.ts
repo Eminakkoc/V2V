@@ -36,9 +36,9 @@ export const JOB_PHASES = ["submitting", "queued", "rendering"] as const;
 
 export type JobPhase = (typeof JOB_PHASES)[number];
 
-// Same dormancy as the statuses above: `JOB_ABANDONED` and
-// `SUBMISSION_UNCONFIRMED` are only ever set by the deferred reconciliation
-// pass, so nothing in this cycle writes them.
+// `JOB_ABANDONED` and `SUBMISSION_UNCONFIRMED` are written only by the
+// deferred reconciliation pass (src/server/services/reconcile.ts) -- never by
+// the webhook path, and never on the request that created the job.
 export const JOB_ERROR_CODES = [
   "MAGIC_HOUR_JOB_FAILED",
   "MAGIC_HOUR_JOB_CANCELED",

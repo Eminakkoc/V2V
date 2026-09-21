@@ -614,6 +614,7 @@ describe("selectForReconcile", () => {
     staleClaimMs: 5 * 60_000,
     hourlyMs: 60 * 60_000,
     redeliveryMs: 24 * 60 * 60_000,
+    graceMs: 2 * 60 * 60_000,
   };
 
   it("selects a processing job with a magicHourId and no lastCheckedAt, and stamps lastCheckedAt", async () => {
@@ -641,8 +642,36 @@ describe("selectForReconcile", () => {
     expect(selected.map((j) => j.id)).not.toContain(recent.id);
   });
 
-  it("never selects a processing job with no magicHourId -- the SUBMISSION_UNCONFIRMED dormancy", async () => {
-    await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
+  // REC-004's submission arm, and the reason it exists. Until it was added,
+  // every arm required magicHourId to exist, so a job whose submission answer
+  // was lost matched nothing and sat on "Confirming with Magic Hour" forever
+  // (manual test H.8). This test used to assert that dormancy; it now asserts
+  // the transition, and the grace boundary that gates it.
+  it("selects a processing job with no magicHourId once it is past deadline plus grace", async () => {
+    const created = await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
+    // input.deadlineAt is 24h before `now`, so it is well past deadline+grace.
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).toEqual([created.id]);
+    expect(selected[0]?.magicHourId).toBeUndefined();
+    expect(selected[0]?.lastCheckedAt).toEqual(now);
+  });
+
+  it("leaves a no-magicHourId job alone while it is still inside deadline plus grace", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      // One hour past the deadline, but the grace is two -- so not yet due.
+      deadlineAt: new Date(now.getTime() - 60 * 60_000),
+    });
+    expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
+  });
+
+  it("does not re-take a no-magicHourId job it checked within recentMs", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      lastCheckedAt: new Date(now.getTime() - 10_000),
+    });
     expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
   });
 

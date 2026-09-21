@@ -322,6 +322,54 @@ describe("reconcileUserJobs", () => {
     expect(stored?.errorCode).toBe("JOB_ABANDONED");
   });
 
+  // REC-004's submission arm. insert() is called directly rather than through
+  // insertJob() because the whole point is a record with no magicHourId, and
+  // insertJob always attaches one.
+  async function insertUnsubmitted(deadlineAt: Date): Promise<Job> {
+    idCounter += 1;
+    return jobs.insert("user-1", {
+      ...baseInput,
+      phase: "submitting",
+      idempotencyKey: `${baseInput.idempotencyKey}-unsubmitted-${idCounter}`,
+      deadlineAt,
+    });
+  }
+
+  it("abandons a processing job with no magicHourId past deadline plus grace", async () => {
+    const job = await insertUnsubmitted(new Date(NOW.getTime() - (GRACE_MS + HOUR_MS)));
+    const getJobDetails = vi.fn(async () => makeDetails());
+    await reconcileUserJobs("user-1", makeDeps({ getJobDetails }), now);
+
+    // There is no id to ask about, so the provider must never be called --
+    // this is also what kept the old non-null assertion on job.magicHourId
+    // from being a live bug.
+    expect(getJobDetails).not.toHaveBeenCalled();
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("abandoned");
+    expect(stored?.errorCode).toBe("SUBMISSION_UNCONFIRMED");
+    expect(stored?.errorMessage).toBe("We never heard back that this job started.");
+  });
+
+  it("pins the grace edge on the submission path: now === deadlineAt + graceMs exactly is left alone", async () => {
+    const job = await insertUnsubmitted(new Date(NOW.getTime() - GRACE_MS));
+    await reconcileUserJobs("user-1", makeDeps(), now);
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("processing");
+    expect(stored?.errorCode).toBeUndefined();
+  });
+
+  it("leaves a no-magicHourId job on processing while it is still inside grace", async () => {
+    const job = await insertUnsubmitted(new Date(NOW.getTime() - HOUR_MS));
+    await reconcileUserJobs("user-1", makeDeps(), now);
+
+    const stored = await jobs.findByIdUnscoped(job.id);
+    expect(stored?.status).toBe("processing");
+    expect(stored?.phase).toBe("submitting");
+    expect(stored?.errorCode).toBeUndefined();
+  });
+
   it("pins the grace edge on the finalizing path: now === deadlineAt + graceMs exactly still finalizes", async () => {
     const job = await insertJob({
       status: "finalizing",

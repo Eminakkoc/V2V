@@ -83,7 +83,13 @@ export type JobsRepository = {
   selectForReconcile(
     userId: string,
     now: Date,
-    windows: { recentMs: number; staleClaimMs: number; hourlyMs: number; redeliveryMs: number },
+    windows: {
+      recentMs: number;
+      staleClaimMs: number;
+      hourlyMs: number;
+      redeliveryMs: number;
+      graceMs: number;
+    },
     limit: number,
   ): Promise<Job[]>;
   markTimedOut(id: string): Promise<Job | null>;
@@ -545,6 +551,31 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
                 $lt: now,
                 $gte: new Date(now.getTime() - windows.redeliveryMs),
               },
+            },
+            // REC-004's submission arm: a job we asked the provider to start
+            // but never got an id back for. Every arm above requires
+            // magicHourId to exist, which is what left SUBMISSION_UNCONFIRMED
+            // unreachable -- such a job matched nothing, was never stamped and
+            // never changed status, so it read as "Confirming with Magic Hour"
+            // forever (manual test H.8).
+            //
+            // Keyed on the absence of the id, not on phase "submitting": the
+            // missing id is the durable fact that makes the job uncheckable,
+            // whereas the phase is a label that only happens to coincide with
+            // it today. No provider call is possible for these, so this arm
+            // needs no re-check cadence bound -- but it carries
+            // uncheckedBefore anyway so a job whose markAbandoned write is
+            // guarded out (a webhook landing first) cannot be re-taken on
+            // every pass. It is not bounded by the redelivery window either:
+            // unlike the superseded and abandoned arms there is no
+            // re-selection to prevent, because the transition moves the job to
+            // "abandoned", and the abandoned arm above requires the id this
+            // job has never had.
+            {
+              status: "processing",
+              magicHourId: { $exists: false },
+              ...uncheckedBefore(windows.recentMs),
+              deadlineAt: { $lt: new Date(now.getTime() - windows.graceMs) },
             },
           ],
         };

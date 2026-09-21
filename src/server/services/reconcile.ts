@@ -21,6 +21,7 @@ const HOURLY_MS = 60 * 60_000;
 const REDELIVERY_MS = 24 * 60 * 60_000;
 
 const ABANDONED_MESSAGE = "We stopped checking this job.";
+const UNCONFIRMED_MESSAGE = "We never heard back that this job started.";
 
 export type ReconcileDeps = FinalizeDeps;
 
@@ -93,12 +94,26 @@ async function reconcileOne(
     return;
   }
 
-  // Rules (a) and (c): selectForReconcile only ever returns these statuses
-  // with a magicHourId already attached.
+  // REC-004's submission arm. No provider id means there is nothing to ask
+  // about: the submission either never reached Magic Hour or its answer was
+  // lost, and no later pass can learn which. The deadline boundary is
+  // re-checked here rather than trusted from selection time for the same
+  // reason the finalizing branch re-checks it -- and because this branch is
+  // the one thing standing between `job.magicHourId` and the non-null
+  // assertion the provider call below used to need.
+  if (!job.magicHourId) {
+    if (now().getTime() > job.deadlineAt.getTime() + graceMs) {
+      await deps.jobs.markAbandoned(job.id, "SUBMISSION_UNCONFIRMED", UNCONFIRMED_MESSAGE);
+    }
+    return;
+  }
+
+  // Rules (a) and (c): every remaining arm requires a magicHourId, which the
+  // branch above has now narrowed to a string.
   let details: MagicHourJobDetails;
   try {
     details = await withBudget(
-      deps.magicHour.getJobDetails(job.magicHourId!),
+      deps.magicHour.getJobDetails(job.magicHourId),
       PROVIDER_CALL_TIMEOUT_MS,
       deadline,
       now,
@@ -171,6 +186,7 @@ export async function reconcileUserJobs(
       staleClaimMs: STALE_CLAIM_MS,
       hourlyMs: HOURLY_MS,
       redeliveryMs: REDELIVERY_MS,
+      graceMs,
     },
     RECONCILE_LIMIT,
   );
