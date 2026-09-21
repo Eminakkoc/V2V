@@ -19,10 +19,7 @@ type JobOverrides = Partial<Omit<HistoryJobView, "params">> & {
   params?: Partial<HistoryJobView["params"]>;
 };
 
-// Every fixture is deep-frozen: if mergeRefreshed ever wrote to a row it was
-// handed, the write would throw immediately (modules run as strict-mode ESM),
-// rather than silently succeeding and only showing up if a test happened to
-// re-inspect the input afterwards.
+// Deep-frozen, so a write to a row mergeRefreshed was handed throws instead of silently succeeding.
 function job(overrides: JobOverrides = {}): HistoryJobView {
   autoId += 1;
   const base: HistoryJobView = {
@@ -135,9 +132,8 @@ describe("mergeRefreshed: superseded rows fold into their latest job's attempts"
       errorMessage: "final reason",
     });
 
-    // filter: {} matches every status, including superseded -- so if the
-    // superseded special case were dropped, old-1 would fall through to the
-    // generic "not loaded, matches filter" path and be inserted top-level.
+    // filter: {} matches every status, so without the superseded special case old-1 would be
+    // inserted top-level.
     const merged = mergeRefreshed([latest], [refreshedOld], options({ filter: {} }));
 
     expect(merged.map((r) => r.id)).toEqual(["latest"]);
@@ -153,8 +149,6 @@ describe("mergeRefreshed: superseded rows fold into their latest job's attempts"
       createdAt: T3,
       attempts: [attempt({ id: "old-1", createdAt: T1, status: "processing" })],
     });
-    // old-1 was itself loaded as a top-level card (e.g. from a prior fetch,
-    // before the retry that superseded it landed).
     const oldTopLevel = job({ id: "old-1", createdAt: T1, status: "processing" });
     const refreshedOld = job({
       id: "old-1",
@@ -199,8 +193,6 @@ describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's t
 
     expect(merged.map((r) => r.id)).toEqual(["newest", "old-1"]);
     expect(merged.find((r) => r.id === "old-1")?.status).toBe("superseded");
-    // Never folded into some unrelated row's attempts -- there is no other
-    // row loaded here for it to fold into.
     expect(merged.find((r) => r.id === "newest")?.attempts).toEqual([]);
   });
 
@@ -249,15 +241,11 @@ describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's t
     const topLevelOld = merged.find((r) => r.id === "old-1");
     const owner = merged.find((r) => r.id === "latest");
 
-    // Half 1, per HIS-005's "lists the earlier attempts as their own
-    // top-level cards": old-1 is present top-level with fresh content.
     expect(topLevelOld?.status).toBe("superseded");
     expect(topLevelOld?.errorMessage).toBe("final reason");
 
-    // Half 2, per HIS-005's "each latest card keeps its nested section":
-    // the owner still carries a nested entry for old-1, and that entry
-    // carries the same fresh content the top-level card just got -- a
-    // reader should never see the two copies of the same job disagree.
+    // The owner's nested entry must carry the same fresh content as the top-level card -- a reader
+    // should never see the two disagree.
     const nestedOld = owner?.attempts.find((a) => a.id === "old-1");
     expect(nestedOld?.status).toBe("superseded");
     expect(nestedOld?.errorMessage).toBe("final reason");
@@ -289,10 +277,6 @@ describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's t
       .find((r) => r.id === "latest")!
       .attempts.find((a) => a.id === "old-1")!;
 
-    // Pinned directly rather than inferred from two separate assertions
-    // against literals: the top-level card and the nested copy must report
-    // the same status and error for the same job, or a reader can see the
-    // count HIS-005 derives from the nested copy disagree with the card.
     expect({ status: nestedOld.status, errorMessage: nestedOld.errorMessage }).toEqual({
       status: topLevelOld.status,
       errorMessage: topLevelOld.errorMessage,
@@ -320,12 +304,8 @@ describe("mergeRefreshed: superseded rows under includePrevious, per HIS-005's t
       options({ filter: {}, includePrevious: true, hasMore: true }),
     );
 
-    // Windowed out: old-1 sorts after "other" (the last loaded row) and more
-    // pages remain, so the window rule keeps it off the top level this time.
     expect(merged.some((r) => r.id === "old-1")).toBe(false);
 
-    // The fold loop runs unconditionally regardless of the window rule, so
-    // the owner's nested copy is still kept current.
     const nestedOld = merged.find((r) => r.id === "latest")!.attempts.find((a) => a.id === "old-1");
     expect(nestedOld?.status).toBe("superseded");
     expect(nestedOld?.errorMessage).toBe("final reason");
@@ -340,8 +320,7 @@ describe("mergeRefreshed: a superseded attempt reconciled off that status", () =
       status: "failed",
       attempts: [attempt({ id: "old-1", createdAt: T1, status: "superseded" })],
     });
-    // Reconciliation moved old-1 on to "complete" -- the row no longer
-    // reads "superseded", but supersededByJobId is never cleared, so it
+    // Reconciliation moved old-1 on to "complete", but supersededByJobId is never cleared, so it
     // still names its owner.
     const reconciledOld = job({
       id: "old-1",
@@ -390,8 +369,6 @@ describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
     const oldest = job({ id: "oldest", createdAt: T1 });
     const middle = job({ id: "middle", createdAt: T2 });
 
-    // hasMore: true on purpose -- middle sorts before the last loaded row
-    // (oldest), so it belongs inside the window regardless of more pages.
     const merged = mergeRefreshed([newest, oldest], [middle], options({ hasMore: true }));
 
     expect(merged.map((r) => r.id)).toEqual(["newest", "middle", "oldest"]);
@@ -412,10 +389,8 @@ describe("mergeRefreshed: inserting not-yet-loaded rows", () => {
     const b = job({ id: "b", createdAt: T2 });
     const c = job({ id: "c", createdAt: T1, status: "processing" });
 
-    // mergeRefreshed is stateless, so "excluded this time" and "discarded
-    // forever" produce the same output from a single call -- only a second
-    // call, with the row now present in `loaded` as `load more` would
-    // supply it, can show the difference.
+    // mergeRefreshed is stateless, so only a second call -- with the row now in `loaded` -- can
+    // tell "excluded this time" from "discarded forever".
     const afterFirstRefresh = mergeRefreshed([a, b], [c], options({ hasMore: true }));
     expect(afterFirstRefresh.map((r) => r.id)).toEqual(["a", "b"]);
 
@@ -505,8 +480,8 @@ describe("mergeRefreshed: idempotency", () => {
 
 describe("mergeRefreshed: ordering", () => {
   it("orders by clip length rather than creation time under the duration sort", () => {
-    // Clip lengths run opposite to creation order, so a bug that used
-    // createdAt for the duration sort would produce the reverse of this.
+    // Clip lengths run opposite to creation order, so a bug that sorted on createdAt would reverse
+    // this.
     const short = job({ id: "short", createdAt: T3, params: { startSeconds: 0, endSeconds: 2 } });
     const medium = job({ id: "medium", createdAt: T2, params: { startSeconds: 0, endSeconds: 5 } });
     const long = job({ id: "long", createdAt: T1, params: { startSeconds: 0, endSeconds: 9 } });
@@ -550,9 +525,8 @@ describe("mergeRefreshed: deterministic tiebreak when both leading sort componen
     const tiedA = job({ id: "a-tie", createdAt: T1 });
     const tiedB = job({ id: "b-tie", createdAt: T1 });
 
-    // Without the id tiebreak, both rows compare equal under both sorts here,
-    // so a stable sort would just preserve input order regardless of `dir` --
-    // it could never produce the reverse-id result the desc call demands.
+    // Without the id tiebreak both rows compare equal, and a stable sort would preserve input order
+    // regardless of `dir`.
     const asc = mergeRefreshed([], [tiedB, tiedA], options({ sort: "createdAt", dir: "asc" }));
     expect(asc.map((r) => r.id)).toEqual(["a-tie", "b-tie"]);
 
@@ -595,9 +569,8 @@ describe("mergeRefreshed: purity", () => {
   });
 });
 
-// The reason mergeRefreshed keeps identity at all: a poll exists to notice the
-// one job that moved, and handing every card a fresh object on the ticks that
-// found nothing re-rendered the whole list for no reason.
+// A poll exists to notice the one job that moved; a fresh object on every other tick re-rendered
+// the whole list for nothing.
 describe("mergeRefreshed identity", () => {
   it("returns the very same array when the refresh changed nothing", () => {
     const loaded = [job({ id: "a", status: "processing" }), job({ id: "b", status: "complete" })];

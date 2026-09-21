@@ -4,8 +4,6 @@ import * as React from "react"
 import { cn } from "cn"
 import { Label as LabelPrimitive } from "radix-ui"
 
-// Figma "Form field" (57:1584): the visible label is Caption in
-// color/text-label, sitting directly above its control.
 function Label({
   className,
   ...props

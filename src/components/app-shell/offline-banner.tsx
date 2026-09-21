@@ -4,8 +4,8 @@ import { WifiOff } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { isOnline, isOnlineOnServer, subscribeOnlineStatus } from "@/lib/online-status";
 
-// F25: app-wide, so it lives once in the root layout rather than per page --
-// it must show on History and on Create alike while a job polls.
+// App-wide, so it lives once in the root layout rather than per page -- it must show on History and
+// Create alike while a job polls.
 export function OfflineBanner() {
   const online = useSyncExternalStore(subscribeOnlineStatus, isOnline, isOnlineOnServer);
   if (online) return null;

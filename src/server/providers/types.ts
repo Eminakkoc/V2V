@@ -24,25 +24,17 @@ export type StoredVideo = {
   height: number;
 };
 
-// Cloudinary folders the two kinds of asset this app stores. Sources are what
-// the user uploaded; results are what Magic Hour rendered. Keeping them apart
-// is WHK-005, and it is also what makes the assets distinguishable in asset
-// management and scriptable for cleanup.
 export const CLOUDINARY_FOLDERS = { sources: "sources", results: "results" } as const;
 
 export type CloudinaryFolder = (typeof CLOUDINARY_FOLDERS)[keyof typeof CLOUDINARY_FOLDERS];
 
 export type CopyVideoOptions = {
   deadline: number;
-  // Which folder the copy lands in. Required rather than defaulted: the
-  // default WAS "sources" for every caller, which is how finalize came to
-  // file paid renders alongside user uploads.
+  // Required rather than defaulted: a "sources" default is how finalize came to file paid renders
+  // alongside user uploads.
   folder: CloudinaryFolder;
-  // A sanity failure (missing duration/dimensions/format) is a hard failure
-  // for a user upload — it really is a bad file. For a Magic Hour render
-  // result, the render is a paid asset that must not be permanently lost to
-  // a Cloudinary quirk; the caller opts into treating it as retryable so a
-  // redelivery gets another attempt instead of the job dying here.
+  // A sanity failure is terminal for a user upload, but a render is a paid asset, so the caller can
+  // opt into treating it as retryable.
   treatSanityFailureAsRetryable?: boolean;
 };
 
@@ -67,8 +59,6 @@ export type MagicHourJobDetails = {
   error: { code: string; message: string } | null;
 };
 
-// The caller supplies only what it has on hand; the secret and "now" live with
-// the adapter so callers never have to thread config through the webhook route.
 export type VerifyWebhookArgs = {
   rawBody: string;
   signature: string | null;

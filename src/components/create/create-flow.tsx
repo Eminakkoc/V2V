@@ -21,13 +21,9 @@ import { defaultRange } from "@/lib/trim-range";
 import type { UploadResponse } from "@/lib/upload-contract";
 import { cn } from "@/lib/utils";
 
-// Deferred, not statically imported: none of the three can render before the
-// reducer has a source (Trimmer/OptionsForm) or a job (JobCard), yet between
-// them they pull Radix's Slider, Select, Collapsible and Dialog into the
-// first load of a page whose only interactive surface at first paint is the
-// drop zone. `ssr` stays on so the ?sourceId= arrival from History still
-// server-renders the editor; the chunk is simply never requested on the
-// ordinary visit, where the component never renders. (IR-004 / DEP-004.)
+// Deferred so Radix's Slider, Select, Collapsible and Dialog stay out of the first load of a page
+// whose only interactive surface at first paint is the drop zone; `ssr` stays on so a ?sourceId=
+// arrival from History still server-renders the editor.
 const Trimmer = dynamic(() => import("./trimmer").then((m) => m.Trimmer));
 const OptionsForm = dynamic(() => import("./options-form").then((m) => m.OptionsForm));
 const JobCard = dynamic(() => import("./job-card").then((m) => m.JobCard));
@@ -40,12 +36,9 @@ type FlowState = {
   source: UploadResponse | null;
   params: TransformParams | null;
   submitting: boolean;
-  // Kept only while a submission's fate is unknown, so retrying it dedupes
-  // server-side instead of starting (and charging for) a second job. Cleared
-  // on success, on any edit, and on a rejection the provider was definite
-  // about: the job row is written before the provider call, so a definite
-  // rejection leaves a failed job under this key and reusing it would replay
-  // that failure forever instead of starting a new attempt.
+  // Kept only while a submission's fate is unknown, so a retry dedupes server-side; cleared on
+  // success, on any edit, and on a definite rejection, which has already written a failed job under
+  // this key.
   idempotencyKey: string | null;
   submitError: ErrorMessage | null;
   showJob: boolean;
@@ -72,17 +65,16 @@ const initialState: FlowState = {
   submitting: false,
   idempotencyKey: null,
   submitError: null,
-  // True from mount so a job already on the account (from a previous session,
-  // restored on the next poll) still shows before this session uploads anything.
+  // True from mount so a job already on the account still shows before this session uploads
+  // anything.
   showJob: true,
 };
 
 function defaultParams(name: string, duration: number, maxClipSeconds: number): TransformParams {
   return {
     name,
-    // defaultRange, not a local Math.min: a raw source duration has more than
-    // two decimals and transformParamsSchema refuses it, so an untouched
-    // trimmer would otherwise submit a value the server is bound to reject.
+    // defaultRange, not a local Math.min: a raw source duration has more than two decimals, which
+    // transformParamsSchema refuses.
     ...defaultRange(duration, maxClipSeconds),
     fpsResolution: "HALF",
     artStyle: "No Art Style",
@@ -92,25 +84,22 @@ function defaultParams(name: string, duration: number, maxClipSeconds: number): 
   };
 }
 
-// The server sets `definite` when the provider refused the job outright, which
-// is also when it has already written a failed job under the submission's
-// idempotency key. Any other failure -- no answer at all, a 500, a dropped
-// connection -- leaves the outcome unknown, and there the key is exactly what
-// stops a retry from starting a second, separately billed job.
+// `definite` means the provider refused outright, and a failed job is already written under the
+// key; any other failure leaves the outcome unknown, where the key is what stops a retry starting a
+// second billed job.
 function providerRefused(error: unknown): boolean {
   return error instanceof ApiError && error.details?.definite === true;
 }
 
-// The three fields the history projection keeps, picked out of the fuller
-// upload record this session is holding -- not the whole thing, so an
-// optimistic row is shaped exactly like the one the next poll replaces it with.
+// Only the three fields the history projection keeps, so an optimistic row is shaped exactly like
+// the one the next poll replaces it with.
 function sourceProjection(source: UploadResponse): HistoryJobView["source"] {
   const { cloudinaryPublicId, cloudinaryUrl, duration } = source.sourceVideo;
   return { cloudinaryPublicId, cloudinaryUrl, duration };
 }
 
-// A replayed job carries the failure it was marked with rather than an HTTP
-// error, so it has to be shaped into the ErrorLike the message map reads.
+// A replayed job carries the failure it was marked with rather than an HTTP error, so it has to be
+// shaped into the ErrorLike the message map reads.
 function jobErrorLike(job: JobView): ErrorLike {
   return {
     code: job.errorCode ?? "INTERNAL",
@@ -119,11 +108,8 @@ function jobErrorLike(job: JobView): ErrorLike {
   };
 }
 
-// Lazy useReducer init (below), not a new action: an already-uploaded source
-// preloaded from History (page.tsx) needs the exact same derived state a
-// fresh "source-ready" produces, just computed once at mount instead of
-// dispatched, so it skips SourceUploader's upload step without adding a case
-// the reducer -- and its callers -- would otherwise have to account for.
+// Lazy useReducer init rather than a new action: a source preloaded from History needs the same
+// derived state a fresh "source-ready" produces, just computed once at mount.
 function initialFlowState(initialSource: UploadResponse | null, maxClipSeconds: number): FlowState {
   if (!initialSource) return initialState;
   return {
@@ -174,9 +160,8 @@ function reducer(state: FlowState, action: Action): FlowState {
       };
     case "submit-succeeded":
       return { ...state, submitting: false, idempotencyKey: null, showJob: true };
-    // The key handed back a job that had already failed. Nothing new was
-    // submitted, so this reads as a failure -- but the job is shown too, since
-    // it is the honest answer to what the click did.
+    // The key handed back a job that had already failed: nothing new was submitted, but the job is
+    // still shown as the honest answer to the click.
     case "submit-replayed-failure":
       return {
         ...state,
@@ -192,10 +177,8 @@ function reducer(state: FlowState, action: Action): FlowState {
         idempotencyKey: action.keepIdempotencyKey ? state.idempotencyKey : null,
         submitError: action.error,
       };
-    // A retry submits a past job's stored source and params, not the current
-    // draft, so it leaves `idempotencyKey` (the draft's own retry-on-failure
-    // key) alone -- touching it would hand the draft's next real submission a
-    // stale key left over from an unrelated retry.
+    // A retry submits a past job's stored source and params, so it leaves the draft's own
+    // `idempotencyKey` alone rather than handing its next submission a stale key.
     case "retry-started":
       return { ...state, submitting: true, submitError: null };
     case "retry-succeeded":
@@ -211,14 +194,11 @@ export function CreateFlow({
   reuseCard,
 }: {
   settings: CreateFlowSettings;
-  // The aside's "Use an earlier upload" card, rendered on the server and
-  // streamed in: whether there is anything to reuse is a database question,
-  // and this page should not wait on it to show its drop zone.
+  // Rendered on the server and streamed in: whether there is anything to reuse is a database
+  // question, and the drop zone should not wait on it.
   reuseCard?: React.ReactNode;
-  // Set from page.tsx when the caller arrived via a History "Transform" link
-  // (/?sourceId=<id>) with an id that resolved to a source they own. null in
-  // every other case -- unauthenticated, no id, or an id that didn't
-  // resolve -- which is exactly today's fresh-visit behavior.
+  // Set from page.tsx when the caller arrived via a History "Transform" link with an id that
+  // resolved to a source they own; null in every other case.
   initialSource?: UploadResponse | null;
 }) {
   const [state, dispatch] = useReducer(reducer, initialSource, (source) =>
@@ -226,10 +206,8 @@ export function CreateFlow({
   );
   const { jobs, insertOptimistic, refresh, stalled } = useJobPolling();
   const previewRef = useRef<HTMLVideoElement>(null);
-  // React batches the state updates from two synchronous clicks before either
-  // commits, so `state.submitting` alone can't stop a second click in the same
-  // task from also passing the guard. A ref flips immediately, independent of
-  // the render cycle.
+  // React batches the updates from two synchronous clicks before either commits, so
+  // `state.submitting` alone cannot stop the second; a ref flips immediately.
   const submittingRef = useRef(false);
 
   const onStateChange = useCallback(
@@ -262,18 +240,14 @@ export function CreateFlow({
         body: { sourceId: state.source.sourceId, params: state.params, idempotencyKey },
         schema: transformResponseSchema,
       });
-      // The transform route answers with the bare JobView; the card and the
-      // polling list both speak the history projection, and this session is
-      // holding the very source the job runs on.
+      // The transform route answers with the bare JobView, but the card and the polling list both
+      // speak the history projection.
       insertOptimistic({ ...response.job, source: sourceProjection(state.source), attempts: [] });
-      // The polling hook only reschedules itself off its own fetch results, so a
-      // session that mounted with nothing active never starts checking again on
-      // its own -- this new job would sit un-refreshed until a reload. Nudging a
-      // fetch now hands it a live job to see, which is what starts the interval.
+      // The polling hook only reschedules off its own fetch results, so a session that mounted with
+      // nothing active needs this nudge to see the new job.
       refresh();
-      // A 202 is not proof that anything started: the same idempotency key can
-      // hand back a job that already failed. Calling that a success would leave
-      // the page claiming a transformation is under way when none is.
+      // A 202 is not proof that anything started: the same idempotency key can hand back a job that
+      // already failed.
       if (response.job.status === "failed") {
         dispatch({
           type: "submit-replayed-failure",
@@ -293,10 +267,8 @@ export function CreateFlow({
     }
   }
 
-  // A retry is a new submission of a past job's own stored source and params
-  // (never the draft currently on screen), and it must never reuse that past
-  // job's idempotency key -- reusing it would just hand back the original job
-  // and start nothing.
+  // A retry re-submits a past job's own source and params, and must never reuse that job's
+  // idempotency key -- doing so would just hand back the original and start nothing.
   const handleRetry = useCallback(
     async (job: HistoryJobView) => {
       if (submittingRef.current) return;
@@ -312,8 +284,8 @@ export function CreateFlow({
           },
           schema: transformResponseSchema,
         });
-        // A retry re-runs the retried job's own source, so the new card can show
-        // the Source player straight away rather than waiting for a poll.
+        // A retry re-runs the retried job's own source, so the new card can show the Source player
+        // without waiting for a poll.
         insertOptimistic({ ...response.job, source: job.source, attempts: [] });
         refresh();
         dispatch({ type: "retry-succeeded" });
@@ -326,8 +298,8 @@ export function CreateFlow({
     [insertOptimistic, refresh, settings],
   );
 
-  // Stable, so the memoized JobCard is not handed a new handler on every
-  // render of the draft it sits beneath.
+  // Stable, so the memoized JobCard is not handed a new handler on every render of the draft
+  // beneath it.
   const onRetry = useCallback((job: HistoryJobView) => void handleRetry(job), [handleRetry]);
 
   const source = state.source;
@@ -336,13 +308,9 @@ export function CreateFlow({
   const currentJob = state.showJob ? jobs[0] : undefined;
   const clipSeconds = params ? params.endSeconds - params.startSeconds : 0;
 
-  // The submit row. Rendered inside OptionsForm so it sits at the foot of the
-  // form panel from tablet up, as in the design; on phones the same element is
-  // the design's pinned Action bar.
-  //
-  // `fixed`, not `sticky`: this is the last child of the form, so a sticky
-  // element would have almost no range to stick within and would simply scroll
-  // away. The page reserves room for it with pb-28 below.
+  // Rendered inside OptionsForm so it sits at the foot of the form panel from tablet up; `fixed`
+  // rather than `sticky` because as the form's last child it would have almost no range to stick
+  // within.
   const submitRow = (
     <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 border-t border-divider bg-bg px-(--page-margin) py-3 shadow-lg sm:static sm:z-auto sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
       <div className="flex flex-wrap items-center gap-3 sm:flex-col sm:items-stretch">

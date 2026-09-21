@@ -1,9 +1,6 @@
 import * as React from "react"
 import { cn } from "cn"
 
-// Figma "Transformation card" / "Upload card" / "Job card": a surface panel at
-// radius/card with Shadow/sm, padded by 16 on phones and 24 from tablet up
-// (--card-spacing mirrors Figma's jumper-lg-rg).
 function Card({
   className,
   size = "default",

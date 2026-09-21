@@ -4,10 +4,8 @@ import type { JobView } from "@/lib/transform-contract";
 
 const STEPS = ["Uploaded", "Queued", "Rendering", "Saving result", "Complete"] as const;
 
-// Figma "Stepper" (57:2335): Uploaded → Queued → Rendering → Saving result →
-// Complete. Returns null for the statuses the design does not step through --
-// a failed or abandoned job has no position on this line, and showing one
-// would claim progress that is not happening.
+// Returns null for the statuses the design does not step through: a failed or abandoned job has no
+// position on this line.
 function activeStep(job: Pick<JobView, "status" | "phase">): number | null {
   switch (job.status) {
     case "processing":
@@ -25,9 +23,8 @@ export function Stepper({ job }: { job: Pick<JobView, "status" | "phase"> }) {
   const active = activeStep(job);
   if (active === null) return null;
 
-  // A complete job has finished its last step, not merely arrived at it, so
-  // "Complete" takes the same green check as the four before it. Without this
-  // the line ends on a bare current-step disc and reads as still in progress.
+  // A complete job has finished its last step, not merely arrived at it, so "Complete" takes the
+  // same green check as the four before it.
   const finished = job.status === "complete";
 
   return (
@@ -47,10 +44,8 @@ export function Stepper({ job }: { job: Pick<JobView, "status" | "phase"> }) {
               )}
             >
               {done ? (
-                // translate-y: lucide's check spans y 6..17 of a 24 viewBox, so
-                // its ink centre is 11.5, not 12. Centring the icon's box would
-                // leave the glyph sitting high in the disc; this re-centres the
-                // ink, in the icon's own units so it tracks the icon size.
+                // lucide's check spans y 6..17 of a 24 viewBox, so its ink centre is 11.5; this
+                // re-centres the ink, in the icon's own units so it tracks the icon size.
                 <Check className="size-3.5 translate-y-[2.08%]" strokeWidth={2.75} aria-hidden />
               ) : null}
             </span>

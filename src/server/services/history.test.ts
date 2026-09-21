@@ -19,11 +19,8 @@ describe("history service re-exports", () => {
     expect(() => parseHistoryQuery({ tab: "sources", status: "complete" })).toThrow(ZodError);
   });
 
-  // parseHistoryQuery throws a ZodError, never an AppError, so it can live in
-  // src/lib (no server-only import) and still be parsed by the browser. Prove
-  // that ZodError survives src/server/errors/with-error-handling.ts's mapping
-  // to VALIDATION_FAILED exactly the way a schema failure would, the same
-  // pattern that module's own test suite uses for a plain schema failure.
+  // parseHistoryQuery throws a ZodError rather than an AppError so it can live in src/lib; this
+  // pins that withErrorHandling still maps it to VALIDATION_FAILED.
   it("maps a raw-presence rejection to VALIDATION_FAILED with field paths", async () => {
     const handler = withErrorHandling(async () => {
       parseHistoryQuery({ tab: "sources", status: "complete", dir: "asc" });
@@ -174,7 +171,6 @@ describe("listHistory", () => {
       await insertJob(userId, { sourceId: source.id, status: "complete" });
     }
     const original = await insertJob(userId, { sourceId: source.id, status: "superseded" });
-    // Inserted last, so it is the single newest row regardless of limit.
     const retry = await insertJob(userId, {
       sourceId: source.id,
       status: "complete",
@@ -232,8 +228,7 @@ describe("listHistory", () => {
     const result = await jobsResponse();
 
     expect(result.items.map((item) => item.id)).toEqual([head!.id]);
-    // MAX_ATTEMPT_DEPTH batches resolve at most that many ancestor levels;
-    // the chain is longer than that, so it is truncated rather than thrown.
+    // The chain is longer than MAX_ATTEMPT_DEPTH, so it is truncated rather than thrown.
     expect(result.items[0]!.attempts.length).toBeLessThanOrEqual(MAX_ATTEMPT_DEPTH);
     expect(result.items[0]!.attempts.length).toBeGreaterThan(0);
   });
@@ -291,8 +286,6 @@ describe("listHistory", () => {
       timedOut: expect.any(Number),
       superseded: expect.any(Number),
     });
-    // Every changeable row still renders complete: the projection is
-    // present on this path too, not only the default paginated one.
     for (const item of result.items) expect(item.source!.cloudinaryPublicId).toBeDefined();
   });
 

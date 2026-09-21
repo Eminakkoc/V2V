@@ -20,8 +20,8 @@ describe("OfflineBanner", () => {
     act(() => {
       window.dispatchEvent(new Event("offline"));
     });
-    // Assert only after the offline event has been dispatched -- the initial
-    // render (before this) is still reading the online snapshot (L-002).
+    // Assert only after the offline event has been dispatched: the initial render is still reading
+    // the online snapshot.
     expect(screen.getByRole("status")).toHaveTextContent(/offline/i);
 
     Object.defineProperty(navigator, "onLine", { value: true, configurable: true });

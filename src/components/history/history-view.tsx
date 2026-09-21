@@ -22,8 +22,8 @@ import { HistoryTabs } from "./history-tabs";
 import { PreviousAttempts } from "./previous-attempts";
 import { UploadsPanel } from "./uploads-panel";
 
-// Loaded via `load more`, one page at a time -- never through URL navigation,
-// so this is genuinely client-only state (see history-merge.ts, section 6.4).
+// Loaded via `load more`, one page at a time and never through URL navigation, so this is genuinely
+// client-only state.
 function jobsLoadMoreUrl(query: HistoryQueryInput, cursor: string): string {
   const params = new URLSearchParams();
   if (query.status) params.set("status", query.status);
@@ -61,12 +61,9 @@ export type HistoryViewProps =
       cloudName: string;
     };
 
-// The client shell (HIS-003). The page keys this component on the serialized
-// search params, so a filter/sort/tab/include-previous navigation unmounts
-// and remounts it -- that remount *is* the "clears the loaded pages and the
-// cursor and restarts from the first page" requirement (see history-view's
-// own module scope: there is no reset effect here to get wrong, because
-// there is nothing to reset -- a fresh mount starts from `initial` alone).
+// The page keys this component on the serialized search params, so a filter, sort or tab navigation
+// remounts it -- that remount is the "restart from the first page" requirement, which is why there
+// is no reset effect here to get wrong.
 export function HistoryView(props: HistoryViewProps) {
   return (
     <HistoryTabs active={props.tab}>
@@ -97,15 +94,9 @@ function TransformationsPanel({
   hasUploads,
   cloudName,
 }: TransformationsPanelProps) {
-  // Rows fetched by `load more`, beyond the server-rendered first page.
-  // Handed to useHistoryRefresh as `additional` (not merged here) so the
-  // hook's own tracked list includes them: without that, the account-wide
-  // poll would still report a status change for one of these rows, but
-  // mergeRefreshed would treat it as not-yet-loaded and defer it under the
-  // insertion-window rule for as long as more pages remain -- a load-more
-  // row, being strictly older, always sorts after the boundary that rule
-  // checks. Folding it into the hook itself is what makes the "already
-  // loaded -> replace in place" path apply instead.
+  // Handed to useHistoryRefresh as `additional` rather than merged here, so the hook's own tracked
+  // list includes them and a status change replaces the row in place instead of being deferred by
+  // the insertion-window rule.
   const [extraPages, setExtraPages] = useState<readonly HistoryJobView[]>([]);
   const [cursor, setCursor] = useState<string | null>(initial.nextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -133,9 +124,8 @@ function TransformationsPanel({
         setCursor(page.nextCursor);
       })
       .catch(() => {
-        // Left in place for the reader to retry -- the button re-enables
-        // below regardless of outcome, and the cursor/pages stay untouched
-        // on failure so a retry resumes from exactly the same place.
+        // Left in place for the reader to retry: the cursor and pages stay untouched on failure, so
+        // a retry resumes from exactly the same place.
       })
       .finally(() => setLoadingMore(false));
   }, [cursor, loadingMore, query]);
@@ -174,8 +164,8 @@ function TransformationsPanel({
       {isListEmpty ? null : (
         <ul aria-busy={loadingMore} className="flex flex-col gap-4 sm:gap-6">
           {jobs.map((job) => (
-            // The panel lives here, not on HistoryCard: the attempts
-            // disclosure is part of the same card and has to sit inside it.
+            // The panel lives here, not on HistoryCard: the attempts disclosure is part of the same
+            // card and has to sit inside it.
             <li key={job.id} className="flex flex-col rounded-card bg-surface shadow-sm">
               <HistoryCard job={job} cloudName={cloudName} />
               <PreviousAttempts attempts={job.attempts} cloudName={cloudName} />
@@ -222,10 +212,8 @@ type SourcesPanelProps = {
   cloudName: string;
 };
 
-// The Uploads tab has no live-refresh concept of its own (sources are static
-// once created), so this panel only ever needs its own pagination state --
-// unlike TransformationsPanel, there is no separate refresh stream to fold
-// load-more pages into.
+// Sources are static once created, so this panel only ever needs its own pagination state -- there
+// is no refresh stream to fold load-more pages into.
 function SourcesPanel({ query, initial, cloudName }: SourcesPanelProps) {
   const [sources, setSources] = useState<readonly SourceView[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.nextCursor);
@@ -242,9 +230,7 @@ function SourcesPanel({ query, initial, cloudName }: SourcesPanelProps) {
         setSources((prev) => [...prev, ...page.items]);
         setCursor(page.nextCursor);
       })
-      .catch(() => {
-        // Same retry-in-place behaviour as the jobs panel above.
-      })
+      .catch(() => {})
       .finally(() => setLoadingMore(false));
   }, [cursor, loadingMore, query]);
 

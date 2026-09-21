@@ -43,30 +43,24 @@ function waitForEvent(target: EventTarget, event: string, signal: AbortSignal): 
   });
 }
 
-// A filmstrip behind the trim handles is a progressive enhancement, not part
-// of the trimmer's contract: it seeks a hidden, CORS-enabled <video> and
-// draws each frame to a <canvas>, which fails outright on some mobile
-// browsers and whenever the CDN omits CORS headers. Any failure here -- a
-// rejected seek, a missing 2D context, a thrown draw -- just leaves the
-// plain fallback track in place; it never surfaces an error or blocks the
-// trimmer's own seeking or handles.
+// A progressive enhancement, not part of the trimmer's contract: any failure -- a rejected seek, a
+// missing 2D context, a thrown draw -- just leaves the plain fallback track in place.
 export function Filmstrip({ src, duration, className }: FilmstripProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [frames, setFrames] = useState<string[]>([]);
 
   useEffect(() => {
-    // A source/duration change starts a brand new extraction; the previous
-    // clip's frames must not stay on screen while it runs.
+    // A source/duration change starts a new extraction; the previous clip's frames must not stay on
+    // screen.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrames([]);
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    // Cancelled on unmount and on every src/duration change, so a rapid
-    // source replace can't leave a stale seek loop writing frames for a clip
-    // that is no longer on screen.
+    // Cancelled on unmount and on every src/duration change, so a rapid source replace cannot leave
+    // a stale seek loop writing frames.
     const controller = new AbortController();
 
     async function extract() {

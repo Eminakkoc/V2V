@@ -89,8 +89,7 @@ describe("HistoryCard", () => {
   it("announces a copy of the source URL politely rather than only visually", async () => {
     const job = buildJob({ output: undefined });
     const { container } = render(<HistoryCard job={job} cloudName="demo" />);
-    // Scoped to the <p>: JobStatus's own aria-live="polite" <span> (the
-    // status badge) is a second, unrelated live region on the same card.
+    // Scoped to the <p>: the status badge is a second, unrelated live region on the same card.
     const region = container.querySelector('p[aria-live="polite"]');
     expect(region).toBeEmptyDOMElement();
 
@@ -106,8 +105,7 @@ describe("HistoryCard", () => {
     expect(screen.getByText("Source unavailable")).toBeInTheDocument();
     expect(container.querySelector("video")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Copy source URL" })).not.toBeInTheDocument();
-    // Guards specifically against a Cloudinary URL synthesised from sourceId
-    // -- posterUrl/videoUrl would happily build one, and it would 404.
+    // Guards specifically against a Cloudinary URL synthesised from sourceId, which would 404.
     for (const link of screen.queryAllByRole("link")) {
       expect(link.getAttribute("href")).not.toContain(job.sourceId);
     }

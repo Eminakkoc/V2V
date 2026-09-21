@@ -14,8 +14,8 @@ describe("job outcome codes", () => {
   });
 
   it("keeps job outcomes out of the HTTP error table", () => {
-    // They label a stored record and are never an HTTP response, so they must not
-    // appear in a table whose every entry carries a status and a retryability.
+    // They label a stored record and are never an HTTP response, so they must not appear in a table
+    // of statuses.
     for (const code of JOB_ERROR_CODES) {
       expect(ERROR_CODES as readonly string[]).not.toContain(code);
     }

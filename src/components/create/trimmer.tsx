@@ -9,14 +9,11 @@ import { Slider } from "@/components/ui/slider";
 import { clampRange, trimLimit, type TrimRange } from "@/lib/trim-range";
 import { Filmstrip } from "./filmstrip";
 
-// A trim shorter than this reads as a mis-click rather than an intended clip,
-// and it keeps the two handles from ever landing on the same value.
+// A shorter trim reads as a mis-click rather than an intended clip, and this keeps the two handles
+// from ever landing on the same value.
 const MIN_GAP_SECONDS = 0.1;
-// Keyboard granularity for a single Arrow press; Shift+Arrow uses the
-// vendored slider's own multiplier on top of this. PageUp/PageDown and
-// Home/End are overridden below: Radix's Home/End always target thumb 0 and
-// the last thumb respectively, regardless of which one has focus, and its
-// PageUp/PageDown jump is 10 * step rather than the fixed figure below.
+// Keyboard granularity for one Arrow press; Home/End and PageUp/PageDown are overridden below,
+// because Radix hardwires them to thumb 0 / the last thumb and to 10 * step.
 const STEP_SECONDS = 0.1;
 const PAGE_STEP_SECONDS = 5;
 
@@ -27,9 +24,6 @@ export type TrimmerProps = {
   onChange: (next: TrimRange) => void;
   onSeek: (second: number) => void;
   disabled?: boolean;
-  // The preview video's own URL and ref, for the filmstrip thumbnails and
-  // for looping playback inside the trimmed range. Both are optional: a
-  // trimmer with neither still works, just without those two extras.
   src?: string;
   previewRef?: React.RefObject<HTMLVideoElement | null>;
 };
@@ -38,11 +32,9 @@ function valueText(seconds: number): string {
   return `${seconds.toFixed(1)} seconds`;
 }
 
-// The preview <video> lives one level up (in CreateFlow), so looping is done
-// by listening to it directly rather than by owning playback here. The
-// listener is attached once per video element; `useEffectEvent` reads the
-// live `range`/`looping` on every tick without making either a dependency
-// that would tear the listener down and re-add it on every trim change.
+// The preview <video> lives one level up in CreateFlow, so looping listens to it directly;
+// `useEffectEvent` reads the live range without making it a dependency that would tear the listener
+// down on every trim change.
 function useLoopPlayback(
   previewRef: React.RefObject<HTMLVideoElement | null> | undefined,
   range: TrimRange,
@@ -50,10 +42,8 @@ function useLoopPlayback(
 ) {
   const onTimeUpdate = useEffectEvent((video: HTMLVideoElement) => {
     if (!looping) return;
-    // Only while actually playing. Seeking fires timeupdate too, so without
-    // this a drag of the end handle -- which parks the preview on exactly
-    // endSeconds -- reads as "reached the end" and is rewound to the start,
-    // leaving the frame the reader asked for on screen for one tick.
+    // Only while actually playing: seeking fires timeupdate too, so without this a drag of the end
+    // handle reads as "reached the end" and is rewound.
     if (video.paused) return;
     if (video.currentTime >= range.endSeconds) {
       video.currentTime = range.startSeconds;
@@ -69,9 +59,8 @@ function useLoopPlayback(
   }, [previewRef]);
 }
 
-// Dragging fires far more pointermove events than a video element needs
-// currentTime updates for; this keeps only the latest requested second and
-// flushes at most once per animation frame.
+// Dragging fires far more pointermove events than the video needs currentTime updates for, so this
+// keeps only the latest second and flushes once per animation frame.
 function useThrottledSeek(onSeek: (second: number) => void) {
   const frame = useRef<number | null>(null);
   const pending = useRef<number | null>(null);
@@ -98,12 +87,9 @@ function useThrottledSeek(onSeek: (second: number) => void) {
   }, []);
 }
 
-// Deliberately NOT memo()-wrapped. Under React 19.2 a memo component's
-// useEffectEvent is not refreshed when the component re-renders from its own
-// state: the DOM commits the new value (the Loop button's aria-pressed flips)
-// while useLoopPlayback's handler goes on reading the previous `looping`, so
-// turning the loop off silently stops working. The "leaves the preview alone
-// once looping is turned off" test catches exactly that.
+// Deliberately NOT memo()-wrapped: under React 19.2 a memo component's useEffectEvent is not
+// refreshed when it re-renders from its own state, so turning the loop off would silently stop
+// working.
 export function Trimmer({
   duration,
   maxClipSeconds,
@@ -118,9 +104,7 @@ export function Trimmer({
   const endInputId = useId();
   const loopToggleId = useId();
   const bounds = { duration, minGap: MIN_GAP_SECONDS, maxClipSeconds };
-  // The track stops at the last two-decimal second of the source, because
-  // that is the finest value the payload may carry. Reading it here as well
-  // as inside clampRange is what keeps the control from ever *offering* a
+  // The track stops at the last two-decimal second of the source, so the control never offers a
   // position the committed range cannot represent.
   const limit = trimLimit(duration);
   const seek = useThrottledSeek(onSeek);
@@ -128,10 +112,8 @@ export function Trimmer({
   useLoopPlayback(previewRef, value, looping);
   const selectedSeconds = value.endSeconds - value.startSeconds;
 
-  // Which handle the proposal is dragging is read off `next` (compared to the
-  // current, still-uncommitted `value`), before clampRange resolves it -- the
-  // clamped result alone can't always tell the two apart (e.g. a cap moves
-  // the same field `next` moved).
+  // Which handle is being dragged is read off `next` against the still-uncommitted `value`, because
+  // the clamped result alone cannot always tell the two apart.
   function commit(next: TrimRange) {
     const startMoved = next.startSeconds !== value.startSeconds;
     const clamped = clampRange(next, value, bounds);
@@ -145,11 +127,8 @@ export function Trimmer({
     commit({ startSeconds: start, endSeconds: end });
   }
 
-  // PageUp/PageDown and Home/End all need to act on whichever thumb is
-  // actually focused, which Radix's own handling doesn't do (its Home/End are
-  // hardwired to thumb 0 / the last thumb, and its Page step is 10 * step).
-  // Each is intercepted here, on the focused thumb itself, and stopped from
-  // bubbling to the slider's internal handler before it can also fire.
+  // Radix hardwires Home/End to thumb 0 and the last thumb and uses 10 * step for Page, so each key
+  // is intercepted on the focused thumb and stopped from bubbling to the slider's own handler.
   function handleBoundaryKeys(which: "start" | "end") {
     return (event: React.KeyboardEvent) => {
       if (event.key === "PageUp" || event.key === "PageDown") {
@@ -166,9 +145,8 @@ export function Trimmer({
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
         event.stopPropagation();
-        // Propose the absolute boundary in that direction; clampRange pulls
-        // it back to the furthest valid position (short of the other handle
-        // by minGap) exactly as it does for an over-long Page/drag proposal.
+        // Propose the absolute boundary; clampRange pulls it back to the furthest valid position,
+        // short of the other handle by minGap.
         const target = event.key === "Home" ? 0 : limit;
         commit(
           which === "start"
@@ -191,15 +169,12 @@ export function Trimmer({
     };
   }
 
-  // Centres the "selected" pill over the selection. `limit` is never 0 here
-  // (a source with no duration cannot reach the trimmer), but the guard keeps
-  // the division honest.
+  // `limit` is never 0 here -- a source with no duration cannot reach the trimmer -- but the guard
+  // keeps the division honest.
   const selectionCentre =
     limit > 0 ? ((value.startSeconds + value.endSeconds) / 2 / limit) * 100 : 50;
 
   return (
-    // Figma "Trimmer" (57:1952): a surface panel at radius/panel holding the
-    // header, the track and the synced Start/End inputs.
     <div className="flex flex-col gap-3 rounded-panel bg-surface px-4 py-4 sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <p className="type-body font-semibold">Trim</p>

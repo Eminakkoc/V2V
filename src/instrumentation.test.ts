@@ -37,8 +37,6 @@ describe("register", () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
-  // FND-001: a throwing register() only stops next dev on its own; next start
-  // logs the error and keeps serving requests that all 500. Stop it explicitly.
   it("logs and exits the process when the config is invalid and not on Vercel", async () => {
     const error = new Error("Invalid environment: MONGODB_URI must start with mongodb://");
     getConfig.mockImplementation(() => {

@@ -4,14 +4,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { getServerDeps } from "@/server/deps";
 import { IDENTITY_COOKIE, verifyIdentity } from "@/server/services/identity";
 
-// Drives the aside's "Use an earlier upload" card, which the design shows only
-// when there is at least one source to reuse -- an empty account would
-// otherwise be sent to an empty Uploaded videos tab. Scoped to the reader's
-// own identity and asked for a single row: this is a "does anything exist"
-// check, not a listing.
-//
-// Its own async component, suspended by the page, so the one database read the
-// Create page makes on an ordinary visit never delays the drop zone.
+// Its own async component, suspended by the page, so this "does this account have uploads" read
+// never delays the drop zone.
 export async function ReuseCard() {
   const deps = getServerDeps();
   const userId = verifyIdentity(

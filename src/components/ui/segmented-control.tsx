@@ -15,11 +15,8 @@ type SegmentedControlProps<T extends string> = {
   "aria-label"?: string;
 };
 
-// Figma "Segmented control" (53:1097): a clipped pill of options divided by
-// hairlines, the selected one filled with accent-strong. Built on native radio
-// inputs rather than a roving-tabindex widget, so arrow-key navigation, the
-// radiogroup semantics and form participation all come from the platform; the
-// inputs are visually hidden and the label is the whole segment.
+// Built on native radio inputs rather than a roving-tabindex widget, so arrow-key navigation,
+// radiogroup semantics and form participation all come from the platform.
 export function SegmentedControl<T extends string>({
   name,
   value,

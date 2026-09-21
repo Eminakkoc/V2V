@@ -28,8 +28,8 @@ const adapter = (over: { create?: MagicHourCreate; get?: MagicHourGet } = {}) =>
 
 const httpError = (status: number) => Object.assign(new Error("boom"), { status });
 
-// The SDK throws its ApiError with the provider's Response still unread, so a
-// fixture has to keep the body behind text() the way a real one does.
+// The SDK throws with the provider's Response still unread, so a fixture has to keep the body
+// behind text().
 const httpErrorWithBody = (status: number, body: string) =>
   Object.assign(new Error("boom"), { response: { status, text: async () => body } });
 

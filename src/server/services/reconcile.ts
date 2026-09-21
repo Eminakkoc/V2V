@@ -4,18 +4,14 @@ import type { MagicHourJobDetails } from "@/server/providers/types";
 import type { Job } from "@/server/repositories/jobs";
 import { failureMessage, finalizeJob, STALE_CLAIM_MS, type FinalizeDeps } from "./finalize";
 
-// How many of a caller's unfinished jobs one History request pays to check.
 export const RECONCILE_LIMIT = 5;
-// The wait this function allows any single provider call, independent of the
-// SDK's own internal timeout -- the adapter exposes no abort signal, so this
-// is the only timeout this module can actually trust.
+// The adapter exposes no abort signal, so this is the only provider-call timeout this module can
+// actually trust.
 export const PROVIDER_CALL_TIMEOUT_MS = 10_000;
-// The wall-clock budget for the whole batch of RECONCILE_LIMIT jobs.
 export const BATCH_BUDGET_MS = 45_000;
 
-// selectForReconcile's own re-check cadence for the statuses reconciliation
-// still touches, passed in here rather than lived in the repository so the
-// service owns the policy and the repository stays a pure selector.
+// Passed in rather than kept in the repository, so the service owns the cadence policy and the
+// repository stays a pure selector.
 const RECENT_MS = 60_000;
 const HOURLY_MS = 60 * 60_000;
 const REDELIVERY_MS = 24 * 60 * 60_000;
@@ -25,13 +21,8 @@ const UNCONFIRMED_MESSAGE = "We never heard back that this job started.";
 
 export type ReconcileDeps = FinalizeDeps;
 
-// The race this sentinel signals abandons only the *wait* for a provider
-// call, never the call itself: the adapter exposes no abort signal, so a
-// call that loses this race is still running underneath and may still
-// resolve later. Every branch that can throw this must therefore have
-// written nothing yet -- the read has to win before any write is reached,
-// not have its write skipped afterwards -- which is exactly what letting
-// this propagate out of reconcileOne with no write in between guarantees.
+// Abandons only the *wait* for a provider call, never the call itself, so every branch that can
+// throw this must not have written anything yet.
 class BudgetExpired extends Error {
   constructor() {
     super("provider call exceeded its budget");
@@ -39,13 +30,9 @@ class BudgetExpired extends Error {
   }
 }
 
-// Races `promise` against the smaller of `perCallMs` and whatever remains of
-// the batch's own deadline. The timer is always cleared on settle so a
-// pending timer can never keep the process alive past the real result; and
-// `promise` itself is never abandoned uncaught -- losing the race still
-// leaves a handler attached (or, once the budget is already gone, an inert
-// .catch) so its eventual settlement can never surface as an unhandled
-// rejection.
+// Races `promise` against the smaller of `perCallMs` and the batch's remaining deadline, always
+// clearing the timer and always leaving a handler attached so a late settle cannot surface as an
+// unhandled rejection.
 function withBudget<T>(
   promise: Promise<T>,
   perCallMs: number,
@@ -80,11 +67,8 @@ async function reconcileOne(
   deadline: number,
   graceMs: number,
 ): Promise<void> {
-  // Rule (b): a crashed-mid-finalize job. The grace boundary is checked
-  // before finalizeJob runs, not after -- a job already past its deadline
-  // plus grace is abandoned outright rather than finalized, even though a
-  // late result would still be saved if one turned up (finalizeJob still
-  // claims abandoned/timed_out/superseded jobs).
+  // Rule (b): the grace boundary is checked before finalizeJob runs, so a job past deadline plus
+  // grace is abandoned outright.
   if (job.status === "finalizing") {
     if (now().getTime() > job.deadlineAt.getTime() + graceMs) {
       await deps.jobs.markAbandoned(job.id, "JOB_ABANDONED", ABANDONED_MESSAGE);
@@ -94,13 +78,8 @@ async function reconcileOne(
     return;
   }
 
-  // REC-004's submission arm. No provider id means there is nothing to ask
-  // about: the submission either never reached Magic Hour or its answer was
-  // lost, and no later pass can learn which. The deadline boundary is
-  // re-checked here rather than trusted from selection time for the same
-  // reason the finalizing branch re-checks it -- and because this branch is
-  // the one thing standing between `job.magicHourId` and the non-null
-  // assertion the provider call below used to need.
+  // No provider id means there is nothing to ask about, and no later pass can learn whether the
+  // submission ever reached Magic Hour.
   if (!job.magicHourId) {
     if (now().getTime() > job.deadlineAt.getTime() + graceMs) {
       await deps.jobs.markAbandoned(job.id, "SUBMISSION_UNCONFIRMED", UNCONFIRMED_MESSAGE);
@@ -108,8 +87,6 @@ async function reconcileOne(
     return;
   }
 
-  // Rules (a) and (c): every remaining arm requires a magicHourId, which the
-  // branch above has now narrowed to a string.
   let details: MagicHourJobDetails;
   try {
     details = await withBudget(
@@ -120,9 +97,8 @@ async function reconcileOne(
     );
   } catch (error) {
     if (error instanceof BudgetExpired) {
-      // Nothing was claimed on this path and nothing has been written --
-      // the stale-claim/recent-check window reclaims this job on a later
-      // visit, by which point the straggling call has settled or died.
+      // Nothing was claimed and nothing written, so a later visit reclaims this job once the
+      // straggling call has settled.
       console.warn(`[reconcile] job ${job.id} exceeded its check budget; left untouched`);
       return;
     }
@@ -133,7 +109,6 @@ async function reconcileOne(
 
   switch (mapped.kind) {
     case "ignored":
-      // draft: nothing to report beyond the selection-time stamp.
       return;
 
     case "complete":
@@ -141,9 +116,8 @@ async function reconcileOne(
       return;
 
     case "failed":
-      // The deadline/grace boundary only governs the progress arms below --
-      // a confirmed provider failure or cancellation is terminal regardless
-      // of where "now" sits relative to the deadline.
+      // A confirmed provider failure is terminal regardless of where "now" sits relative to the
+      // deadline.
       await deps.jobs.markFailedFromCheck(job.id, {
         errorCode: mapped.errorCode,
         errorMessage: failureMessage(mapped.errorCode, details.error?.message),
@@ -152,10 +126,7 @@ async function reconcileOne(
       return;
 
     case "progress": {
-      // The provider status decides only the phase; the deadline and grace
-      // alone decide the status. setPhase's own status: "processing" guard
-      // makes this call a correct no-op on a job the boundary below (or an
-      // earlier pass) has already moved off "processing".
+      // The provider status decides only the phase; the deadline and grace alone decide the status.
       await deps.jobs.setPhase(job.id, mapped.phase);
       const past = now().getTime();
       if (past > job.deadlineAt.getTime() + graceMs) {
@@ -168,9 +139,7 @@ async function reconcileOne(
   }
 }
 
-// Asks the provider about up to RECONCILE_LIMIT of userId's unfinished jobs
-// and moves each to the right state. Never rejects on a single job's
-// failure: one throwing must not cost the other four their check.
+// Never rejects on a single job's failure: one throwing must not cost the other four their check.
 export async function reconcileUserJobs(
   userId: string,
   deps: ReconcileDeps,
@@ -202,10 +171,7 @@ export async function reconcileUserJobs(
   }
 }
 
-// Fire-and-forget wrapper for an after() callback. after() callbacks are not
-// wrapped by withErrorHandling, so an escape here would surface as an
-// unhandled rejection on the route's own invocation -- this must never
-// reject, only log.
+// after() callbacks are not wrapped by withErrorHandling, so this must never reject, only log.
 export function scheduleReconciliation(
   userId: string,
   deps: ReconcileDeps,

@@ -5,12 +5,8 @@ import { useJobPolling } from "@/components/job/job-polling-provider";
 import type { HistoryJobView } from "@/lib/history-contract";
 import { CreateFlow, type CreateFlowSettings } from "./create-flow";
 
-// This file deliberately does NOT mock SourceUploader (create-flow.test.tsx
-// does, for every other case) -- the bug this guards against lives in the
-// wiring between the real SourceUploader/useSourceUpload mount and
-// CreateFlow's reducer, which a fully mocked uploader cannot exercise. Only
-// the third-party widget leaf is stubbed: it has no test coverage of its own
-// and its dynamic-import/custom-element behavior isn't suited to jsdom.
+// Deliberately does NOT mock SourceUploader: the bug this guards against lives in the wiring
+// between the real uploader mount and CreateFlow's reducer.
 vi.mock("@uploadcare/react-uploader/next", () => ({ FileUploaderRegular: () => null }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/components/job/job-polling-provider", () => ({ useJobPolling: vi.fn() }));
@@ -65,11 +61,8 @@ describe("CreateFlow mount, against the real SourceUploader", () => {
 
     render(<CreateFlow settings={settings} />);
 
-    // The real uploader mounts as "idle". If anything -- an Effect watching
-    // its state, for example -- reported that mount as a state change,
-    // CreateFlow would read it as a reset and hide this job.
-    // findBy, not getBy: JobCard is a dynamic import, so it resolves a tick
-    // after the first render.
+    // The real uploader mounts as "idle", and anything reporting that mount as a state change would
+    // make CreateFlow read it as a reset and hide this job.
     expect(
       await screen.findByText("Complete", { selector: '[data-slot="badge"]' }),
     ).toBeInTheDocument();

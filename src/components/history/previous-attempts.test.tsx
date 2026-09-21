@@ -62,9 +62,8 @@ describe("PreviousAttempts", () => {
   });
 
   it("does not count a merely superseded attempt as finished", () => {
-    // Every previous attempt is superseded by definition -- if this counted,
-    // the header would always read "(1) -- 1 finished" for a single-attempt
-    // chain, which is the exact confusion F11 calls out.
+    // Every previous attempt is superseded by definition, so counting it would make a
+    // single-attempt chain always read "(1) -- 1 finished".
     const attempts = [buildAttempt({ status: "superseded" })];
     render(<PreviousAttempts attempts={attempts} cloudName="demo" />);
 

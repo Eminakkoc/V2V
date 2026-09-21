@@ -4,10 +4,6 @@ import * as React from "react"
 import { cn } from "cn"
 import { Tabs as TabsPrimitive } from "radix-ui"
 
-// Figma "Tabs" (53:1184) — visually the segmented control, semantically a
-// tablist. The list is a clipped pill; each option is divided from the next by
-// a hairline, which is why the rule lives on border-l and the first option
-// clears it.
 function Tabs({
   className,
   orientation = "horizontal",

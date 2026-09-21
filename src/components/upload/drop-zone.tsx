@@ -6,23 +6,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type DropZoneProps = {
-  // "MP4 or MOV · up to 100 MB" and "Any length. You will pick a clip of up to
-  // 60 seconds next." -- two lines in the design, so two props rather than one
-  // pre-joined string.
   formatsHint: string;
   clipHint: string;
   invalid: boolean;
   describedBy?: string | undefined;
   disabled?: boolean;
-  // Focus target after "Upload a different video", so focus lands here instead
-  // of being lost when the source summary it replaces unmounts.
+  // Focus target after "Upload a different video", so focus lands here instead of being lost when
+  // the source summary unmounts.
   titleRef?: Ref<HTMLParagraphElement>;
   onFile: (file: File) => void;
   onChoose: () => void;
 };
 
-// Figma "Upload area", State=Idle (55:1529): a dashed accent-300 outline over
-// the translucent dropzone wash, at radius/card.
 export function DropZone({
   formatsHint,
   clipHint,

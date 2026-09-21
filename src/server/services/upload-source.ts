@@ -33,9 +33,8 @@ export function parseUploadcareCdnUrl(cdnUrl: string): { uuid: string } {
   return { uuid: uuid.toLowerCase() };
 }
 
-// The stored record uses the host Uploadcare itself reports for this uuid
-// (via getFileInfo), not the host the client happened to send: the client's
-// URL only proves it is some recognised Uploadcare host, not the canonical one.
+// The client's URL only proves it is some recognised Uploadcare host, so the record uses the host
+// Uploadcare itself reports for the uuid.
 function canonicalCdnUrl(originalFileUrl: string, uuid: string): string {
   const host = new URL(originalFileUrl).hostname;
   return `https://${host}/${uuid}/`;
@@ -49,9 +48,8 @@ export async function uploadSource(
   deps: UploadSourceDeps,
   now: () => number = Date.now,
 ): Promise<UploadResponse> {
-  // Anchored before any provider call, so a slow getFileInfo eats into the
-  // budget instead of leaving the Cloudinary copy the full COPY_BUDGET_MS
-  // regardless of how long the request has already been running.
+  // Anchored before any provider call, so a slow getFileInfo eats into the budget rather than
+  // leaving the Cloudinary copy its full share.
   const deadline = now() + COPY_BUDGET_MS;
   const { uuid } = parseUploadcareCdnUrl(cdnUrl);
   const file = await deps.uploadcare.getFileInfo(uuid);

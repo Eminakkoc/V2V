@@ -13,8 +13,8 @@ export type ErrorMessage = { title: string; description: string; action: ErrorAc
 
 export type UploadLimits = { maxBytes: number; allowedFormats: readonly string[] };
 
-// Before anything has uploaded (rejected) there is no cdnUrl to retry, and once bytes
-// are stored (failed) a rate limit can offer a timed retry instead of a plain wait.
+// Before anything has uploaded there is no cdnUrl to retry; once bytes are stored a rate limit can
+// offer a timed retry instead.
 export type MessageStage = "rejected" | "failed";
 
 function seconds(value: number): string {

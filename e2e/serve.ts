@@ -6,8 +6,8 @@ let mongo: MongoMemoryServer | null = null;
 let child: ChildProcess | null = null;
 let shutdownPromise: Promise<void> | null = null;
 
-// A signal, a crashed server and a failed build can all trigger this; only
-// the first call tears anything down, later ones just await the same exit.
+// A signal, a crashed server and a failed build all reach here; only the first call tears anything
+// down, later ones await the same exit.
 function shutdown(code: number): Promise<void> {
   shutdownPromise ??= (async () => {
     child?.kill("SIGTERM");
@@ -27,8 +27,7 @@ function run(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
 }
 
 async function main() {
-  // Registered before any process starts, so a signal during MongoMemoryServer.create()
-  // or the build still runs shutdown (mongo/child are stopped if and once they exist).
+  // Registered before any process starts, so a signal during setup still runs shutdown.
   process.on("SIGINT", () => void shutdown(0));
   process.on("SIGTERM", () => void shutdown(0));
 
@@ -37,9 +36,8 @@ async function main() {
   const isCi = Boolean(process.env.CI);
   if (isCi) await run(["next", "build"], env);
 
-  // The in-memory database starts with no indexes, unlike a real deploy (README:
-  // "Deploy, then create the indexes"); without this, unique-constraint behavior
-  // (e.g. the idempotency-key and magicHourId guards) would silently no-op.
+  // The in-memory database starts with no indexes, so without this the unique-constraint guards
+  // would silently no-op.
   await run(["tsx", "--conditions=react-server", "scripts/create-indexes.ts"], env);
 
   child = spawn("pnpm", ["exec", "next", isCi ? "start" : "dev", "--port", String(E2E_PORT)], {

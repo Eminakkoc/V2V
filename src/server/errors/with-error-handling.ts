@@ -24,10 +24,8 @@ export function withErrorHandling(handler: RouteHandler) {
   };
 }
 
-// A provider rejection is logged whatever its status. The client-facing
-// message is deliberately generic ("These transform settings were rejected"),
-// so without this the only record of *why* the provider refused -- the one
-// thing that says which setting to change -- leaves with the response.
+// The client-facing message is deliberately generic, so without this the only record of why the
+// provider refused would leave with the response.
 function logAppError(error: AppError): void {
   const provider = error.providerError;
   if (error.status < 500 && !provider) return;

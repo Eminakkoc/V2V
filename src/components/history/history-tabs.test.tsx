@@ -39,12 +39,9 @@ describe("HistoryTabs", () => {
 
     fireEvent.keyDown(jobsTab, { key: "ArrowRight" });
 
-    // Radix's roving focus group moves focus from a setTimeout(0) queued by
-    // the keydown handler, not synchronously with the keypress.
+    // Radix's roving focus group moves focus from a setTimeout(0) queued by the keydown handler,
+    // not synchronously with the keypress.
     await waitFor(() => expect(document.activeElement).toBe(sourcesTab));
-    // Manual activation: moving focus is not the same as selecting: the
-    // still-focused-elsewhere tab must not have navigated on the arrow
-    // press alone.
     expect(router.push).not.toHaveBeenCalled();
     expect(jobsTab).toHaveAttribute("aria-selected", "true");
   });

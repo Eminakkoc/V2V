@@ -4,9 +4,7 @@ import { Check } from "lucide-react";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Figma "Checkbox" (15:419): a native checkbox painted as a rounded square in
-// border-input (3.21:1). --touch-row-py is what gives the row a 44px target on
-// phones without padding it out on desktop.
+// --touch-row-py is what gives the row a 44px target on phones without padding it out on desktop.
 export function Checkbox({
   className,
   children,

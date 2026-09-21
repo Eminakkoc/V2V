@@ -15,8 +15,6 @@ describe("online-status", () => {
     expect(isOnline()).toBe(true);
   });
 
-  // The server has no `navigator`; assuming online keeps a server-rendered
-  // page from ever showing the offline banner before hydration.
   it("assumes online for the server snapshot", () => {
     expect(isOnlineOnServer()).toBe(true);
   });

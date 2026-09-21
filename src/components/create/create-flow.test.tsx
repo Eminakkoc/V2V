@@ -17,9 +17,8 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
 
 vi.mock("@/components/job/job-polling-provider", () => ({ useJobPolling: vi.fn() }));
 
-// The uploader widget wraps a third-party web component with no test
-// coverage of its own; CreateFlow only depends on the callbacks it invokes,
-// so a stub captures them instead of driving the real Uploadcare widget.
+// CreateFlow only depends on the callbacks the uploader invokes, so a stub captures them instead of
+// driving the real Uploadcare widget.
 const captured = vi.hoisted(() => ({ props: undefined as SourceUploaderProps | undefined }));
 
 vi.mock("@/components/upload/source-uploader", () => ({
@@ -102,10 +101,7 @@ beforeEach(() => {
 });
 
 describe("CreateFlow", () => {
-  // The page h1 belongs to whichever screen is showing: "Restyle a clip" while
-  // nothing has been uploaded, the file's own name once one has (Figma's File
-  // header names it "page h1 on the configure screen"). There is never more
-  // than one.
+  // The page h1 belongs to whichever screen is showing, and there is never more than one.
   it("titles the page 'Restyle a clip' before an upload and the file name after", async () => {
     render(<CreateFlow settings={settings} />);
     expect(screen.getByRole("heading", { level: 1, name: "Restyle a clip" })).toBeInTheDocument();
@@ -128,8 +124,8 @@ describe("CreateFlow", () => {
   it("shows the preview, trimmer and options form once a source is ready", async () => {
     render(<CreateFlow settings={settings} />);
     selectAndReady();
-    // findBy on both: Trimmer and OptionsForm are separate dynamic imports,
-    // so resolving one says nothing about the other.
+    // findBy on both: Trimmer and OptionsForm are separate dynamic imports, so resolving one says
+    // nothing about the other.
     expect(await screen.findByRole("slider", { name: "Clip start" })).toBeInTheDocument();
     expect(await screen.findByRole("combobox", { name: "Art style" })).toBeInTheDocument();
   });
@@ -262,10 +258,8 @@ describe("CreateFlow", () => {
     expect(secondKey).toBe(firstKey);
   });
 
-  // The counterpart to the test above: a key is only worth reusing while the
-  // submission's fate is unknown. A definite rejection has already written a
-  // failed job under it, so reusing it replays that failure and the click
-  // looks like it did nothing.
+  // A key is only worth reusing while the submission's fate is unknown: a definite rejection has
+  // already written a failed job under it.
   it("issues a fresh idempotency key after the provider definitely refused the submission", async () => {
     fetchMock
       .mockRejectedValueOnce(
@@ -330,7 +324,6 @@ describe("CreateFlow", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "These transform settings were rejected. Try different options.",
     );
-    // Still recorded, so the job card can show what the click actually found.
     expect(insertOptimistic).toHaveBeenCalledTimes(1);
     expect(button).toBeEnabled();
   });
@@ -467,9 +460,7 @@ describe("CreateFlow", () => {
   });
 
   it("shows the preview, trimmer and options form from an initial source, with no upload interaction at all", async () => {
-    // selectAndReady() (which drives SourceUploader's onFileSelected/
-    // onStateChange callbacks) is never called here -- this state comes only
-    // from the initial-source prop, mirroring how page.tsx preloads a source
+    // This state comes only from the initial-source prop, mirroring how page.tsx preloads a source
     // resolved from a History "Transform" link.
     render(<CreateFlow settings={settings} initialSource={uploadResult} />);
     expect(await screen.findByRole("slider", { name: "Clip start" })).toBeInTheDocument();

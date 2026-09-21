@@ -25,9 +25,8 @@ export function createRateLimiter(
         { key: `${scope}:user:${userId}`, limit: RATE_LIMITS.perUser },
         { key: `${scope}:ip:${ip}`, limit: RATE_LIMITS.perIp },
       ];
-      // A request passes a counter when the count of every hit visible for its key in the
-      // window (its own insert included) is within the limit; whichever of two racing
-      // requests counts second also sees the other's hit, so both cannot pass.
+      // A request counts its own insert too, so whichever of two racing requests counts second also
+      // sees the other's hit.
       const recorded = await Promise.all(
         counters.map(async (counter) => ({
           ...counter,
@@ -44,8 +43,7 @@ export function createRateLimiter(
       if (exceeded.length === 0) return;
 
       await hits.remove(counted.map((counter) => counter.hitId));
-      // When both the user and IP counters are exceeded at once, Retry-After must be
-      // truthful for both, so report the longer of the two waits, not just the first.
+      // Retry-After must be truthful for both counters, so report the longer of the two waits.
       const waits = await Promise.all(
         exceeded.map(async (counter) => {
           const oldest = await hits.oldestSince(counter.key, since);

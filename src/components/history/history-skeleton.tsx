@@ -1,10 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-// The shape of the panel that is about to replace it -- the tablist, the
-// filter row and two cards, at the heights those actually render at (38/42 and
-// 46/50 on phones) -- so the streamed content lands without shifting what the
-// reader is already looking at. The page header above is never part of this:
-// it needs no data and paints with the shell.
+// The shape of the panel about to replace it, at the heights those elements actually render at, so
+// the streamed content lands without shifting what the reader is looking at.
 export function HistoryPanelSkeleton() {
   return (
     <>

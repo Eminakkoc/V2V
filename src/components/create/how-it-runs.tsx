@@ -13,14 +13,9 @@ const STEPS = [
   },
 ] as const;
 
-// Figma "How it runs" (6:65) and "Reuse card" (55:1773): the Create page's
-// aside, shown only while nothing has been uploaded yet -- once a source is
-// picked, the transformation form takes this column.
-//
-// `reuseCard` arrives already rendered (and still streaming) from the server,
-// rather than as a `hasUploads` boolean: answering that question is a database
-// read, and waiting for it here would hold up the drop zone -- the one thing
-// this page exists for.
+// The Create page's aside, shown only until a source is picked; `reuseCard` arrives already
+// rendered from the server because answering "does this account have uploads" is a database read
+// the drop zone must not wait on.
 export function HowItRuns({ reuseCard }: { reuseCard?: React.ReactNode }) {
   return (
     <aside className="flex flex-col gap-4 sm:pt-3">

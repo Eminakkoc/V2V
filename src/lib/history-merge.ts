@@ -13,19 +13,13 @@ export type MergeRefreshedOptions = {
   hasMore: boolean;
 };
 
-// Comparable position for a row under the active sort. Both elements are
-// immutable (createdAt never changes; the clip length is fixed once a job is
-// created) and neither is status, which is exactly why a row's place in the
-// list is always determined even though a refresh just changed its status.
-// The id tiebreak keeps the tuple a total order so two rows can never compare
-// equal and leave their relative position to sort() to decide arbitrarily.
+// Both elements are immutable, so a row's place stays determined even when a refresh changes its
+// status; the id tiebreak keeps the tuple a total order.
 export function sortKeyOf(row: HistoryJobView, sort: "createdAt" | "duration"): HistorySortKey {
   const createdAtMs = new Date(row.createdAt).getTime();
   if (sort === "duration") {
-    // Duplicated from clipSecondsOf in @/server/services/history-cursor rather
-    // than imported: that module is server-only, and this one is imported by
-    // client components (see AGENTS note on the boundary). Two lines, kept in
-    // step with the original's rounding by inspection.
+    // Duplicated from clipSecondsOf rather than imported: that module is server-only, and this one
+    // is imported by client components.
     const clipSeconds = Math.round((row.params.endSeconds - row.params.startSeconds) * 100) / 100;
     return [clipSeconds, createdAtMs, row.id];
   }
@@ -40,15 +34,11 @@ function compareKeys(a: HistorySortKey, b: HistorySortKey): number {
   return 0;
 }
 
-// True when `key` belongs strictly later in the list (further from the top)
-// than `boundary`, under the given direction.
 function sortsAfter(key: HistorySortKey, boundary: HistorySortKey, dir: "asc" | "desc"): boolean {
   const cmp = compareKeys(key, boundary);
   return dir === "asc" ? cmp > 0 : cmp < 0;
 }
 
-// The AttemptView projection of a HistoryJobView: every JobView field it
-// carries, minus the two history-only additions.
 function toAttemptView(row: HistoryJobView): AttemptView {
   return {
     id: row.id,
@@ -74,32 +64,11 @@ function matchesActiveFilter(row: HistoryJobView, options: MergeRefreshedOptions
   return true;
 }
 
-// Folds a batch of freshly-fetched rows (the "changeable" poll) into an
-// already-rendered page, in place, without ever duplicating or reordering a
-// row a reader is currently looking at.
-//
-//   - Merge is by id. A row already loaded is replaced, never appended --
-//     appending would duplicate a row a later `load more` returns again.
-//   - A refreshed row that carries a `supersededByJobId` link -- whether its
-//     status still reads `superseded` or reconciliation has since moved it
-//     on to `complete`/`failed` -- always updates its entry inside its
-//     latest job's `attempts` chain, if that job is loaded. HIS-005's
-//     "Previous attempts" finished-count is read from those nested entries
-//     and carries no `includePrevious` qualifier, so it must stay current
-//     either way. With `includePrevious: false` that is *all* it does: the
-//     row itself never becomes/stays a top-level card. With
-//     `includePrevious: true` it additionally follows the normal top-level
-//     rules below -- HIS-005 "promotes" the row to a top-level card, it does
-//     not relocate it, so both copies exist and must agree.
-//   - A not-yet-loaded row that matches the active filter is inserted at its
-//     sort position, but only if that position falls inside the loaded
-//     window (at or before the last loaded row). If it would sort after the
-//     last loaded row and more pages remain, it is left for `load more`.
-//   - A loaded row whose refreshed status stops matching the active filter
-//     stays exactly where it is -- eviction would rearrange the list under a
-//     reader mid-read.
-//
-// Pure: builds a new array, never mutates `loaded`, `refreshed` or their rows.
+// Folds a batch of freshly-fetched rows into an already-rendered page, purely and by id: a row
+// carrying supersededByJobId always updates its entry in its owner's nested attempts (and only
+// becomes a top-level card when includePrevious is set), a not-yet-loaded row is inserted only if
+// it sorts inside the loaded window, and a loaded row that stops matching the filter stays put
+// rather than rearranging the list under a reader.
 export function mergeRefreshed(
   loaded: readonly HistoryJobView[],
   refreshed: readonly HistoryJobView[],
@@ -109,40 +78,26 @@ export function mergeRefreshed(
   const boundary = loaded.length > 0 ? sortKeyOf(loaded[loaded.length - 1]!, options.sort) : null;
 
   let inserted = false;
-  // Whether this refresh actually altered anything. Most polls change nothing
-  // -- they exist to notice the one that does -- and a merge that rebuilt the
-  // list regardless handed every card a new object, re-rendering the whole
-  // page on a tick that learned nothing.
+  // Most polls change nothing, and a merge that rebuilt the list regardless handed every card a new
+  // object and re-rendered the page.
   let changed = false;
   const supersededRows: HistoryJobView[] = [];
 
   for (const row of refreshed) {
-    // Keyed on supersededByJobId, not status: that link is written once,
-    // alongside status "superseded" (src/server/repositories/jobs.ts's
-    // supersede write sets both together), and is never cleared afterwards
-    // -- not even by claimForFinalize, which accepts "superseded" (it's in
-    // CHANGEABLE_STATUSES) and can move the row on to "complete" or
-    // "failed". A row that still carries the link belongs in its owner's
-    // chain for as long as the link exists, whatever status it reads now,
-    // so a reconciled-out-of-superseded row must still fold into its
-    // owner's nested attempts and must still stay off the top level here.
+    // Keyed on supersededByJobId, not status: the link is written once and never cleared, so a row
+    // reconciliation moved off "superseded" still belongs in its owner's chain.
     if (row.supersededByJobId !== undefined) {
-      // Recorded for the fold below regardless of includePrevious -- the
-      // nested copy is kept current unconditionally.
       supersededRows.push(row);
       if (!options.includePrevious) {
         if (byId.delete(row.id)) changed = true;
         continue;
       }
-      // includePrevious: true -- also runs the normal top-level rules just
-      // below, so the row can additionally stand as its own card.
     }
 
     const existing = byId.get(row.id);
     if (existing !== undefined) {
-      // The refreshed row is a different object every time, even when the
-      // job has not moved. Keeping the one already on screen is what lets a
-      // memoized card skip the render.
+      // The refreshed row is a different object every time; keeping the one already on screen is
+      // what lets a memoized card skip the render.
       if (!jsonEqual(existing, row)) {
         byId.set(row.id, row);
         changed = true;
@@ -162,11 +117,8 @@ export function mergeRefreshed(
     changed = true;
   }
 
-  // Second pass: every superseded row folds into its owner's nested
-  // `attempts`, whether or not it also stands as its own top-level card. The
-  // owner may only just have been inserted/replaced above (its retry can
-  // arrive in the same refresh batch), so this has to run after every
-  // top-level insertion/replacement is settled.
+  // Second pass, because an owner may only just have been inserted above -- its retry can arrive in
+  // the same refresh batch.
   for (const row of supersededRows) {
     const targetId = row.supersededByJobId;
     if (!targetId) continue;
@@ -187,9 +139,8 @@ export function mergeRefreshed(
     changed = true;
   }
 
-  // The identical array, not a copy of it: React bails out of the update when
-  // the next state is the value it already holds, so a poll that found nothing
-  // new costs no render at all.
+  // The identical array, not a copy: React bails out of the update when the next state is the value
+  // it already holds.
   if (!changed) return loaded;
 
   const merged = [...byId.values()];

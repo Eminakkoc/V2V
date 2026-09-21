@@ -1,8 +1,6 @@
 import * as React from "react"
 import { cn } from "cn"
 
-// Figma "Textarea" (37:1057): the same field treatment as Input, squared off
-// to radius/lg instead of a pill because the box is multi-line.
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea

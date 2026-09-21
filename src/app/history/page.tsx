@@ -14,15 +14,11 @@ type HistoryPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-// Deliberately not async, and it awaits nothing: the page header needs no
-// query, no cookie and no database, so it belongs to the static shell and
-// paints the moment the navigation starts. Everything that does need those
-// waits inside the boundary below, behind a skeleton of its own shape --
-// rather than a loading.tsx, which would hide this header too.
+// Deliberately not async: the header belongs to the static shell and paints the moment a navigation
+// starts, while everything needing the query, cookie or database waits inside the boundary below --
+// a loading.tsx would hide this header too.
 export default function HistoryPage({ searchParams }: HistoryPageProps) {
   return (
-    // Figma "Desktop — transformations · 1280": the page gutter, then the page
-    // header with its primary action aligned to the title's baseline.
     <div className="page-shell flex flex-col gap-4 pt-(--section-pt) pb-(--section-pb) sm:gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1.5">

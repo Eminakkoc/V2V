@@ -17,11 +17,8 @@ import { setupTestDb } from "@/test/mongo";
 import { HistoryPanel } from "./history-panel";
 import HistoryPage from "./page";
 
-// Direct-invocation tests never enter Next's own request pipeline, so
-// after() throws unless it is replaced with a capture (see
-// src/app/api/history/route.test.ts, which this mirrors), and cookies()
-// throws for the same reason unless it is replaced with a stub that reads
-// from a value this file controls.
+// Direct-invocation tests never enter Next's request pipeline, so after() and cookies() are
+// replaced with stubs this file controls.
 const scheduled = vi.hoisted(() => [] as Array<() => unknown>);
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof NextServerModule>();
@@ -35,8 +32,6 @@ vi.mock("next/server", async (importOriginal) => {
 
 const cookieRef = vi.hoisted(() => ({ value: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
-  // "v2v_uid" mirrors IDENTITY_COOKIE (src/server/services/identity.ts);
-  // hardcoded so this mock has no import-order dependency on that module.
   cookies: () =>
     Promise.resolve({
       get: (name: string) =>
@@ -46,17 +41,13 @@ vi.mock("next/headers", () => ({
     }),
 }));
 
-// HistoryView mounts useHistoryRefresh, which fires a fetch on mount. Left
-// hanging so it can never resolve mid-test and race an assertion -- these
-// tests only care about what the server put in the HTML.
+// HistoryView fires a fetch on mount; left hanging so it can never resolve mid-test and race an
+// assertion about server-rendered HTML.
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClientModule>()),
   apiFetch: vi.fn(() => new Promise(() => {})),
 }));
 
-// HistoryTabs and FilterBar call useRouter()/useSearchParams(); there is no
-// mounted Next app router in this direct-render test, so both are stubbed
-// exactly as history-tabs.test.tsx and filter-bar.test.tsx already do.
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
@@ -121,10 +112,8 @@ function searchParams(
   return Promise.resolve(raw);
 }
 
-// The actual key React would use to decide whether to remount <HistoryView>.
-// HistoryPanel returns that element directly, and `.key` is read off it rather
-// than through React.Children (which rewrites explicit keys with a positional
-// prefix), so this is the literal value the panel computed.
+// `.key` is read off the element directly, not through React.Children, which rewrites explicit keys
+// with a positional prefix.
 function historyViewKey(element: ReactElement): unknown {
   if (!isValidElement(element) || element.type !== HistoryView) {
     throw new Error("HistoryPanel did not return a <HistoryView>");
@@ -151,8 +140,8 @@ describe("HistoryPanel", () => {
     const element = await HistoryPanel({ searchParams: searchParams() });
     render(element);
 
-    // apiFetch never resolves (mocked to hang), so this text can only have
-    // come from the server-rendered first page.
+    // apiFetch is mocked to hang, so this text can only have come from the server-rendered first
+    // page.
     expect(screen.getByText("Mine")).toBeInTheDocument();
     expect(screen.queryByText("Not mine")).not.toBeInTheDocument();
   });
@@ -181,9 +170,8 @@ describe("HistoryPanel", () => {
 
   it("uses verifyIdentity, not hasFreshIdentity: a cookie past the 30-day renewal window still shows its owner's history", async () => {
     await insertJob(userId, { params: { ...baseParams, name: "Old cookie, still mine" } });
-    // 40 days old -- past RENEW_AFTER_SECONDS (30 days), but still a validly
-    // signed cookie. hasFreshIdentity would call this stale; verifyIdentity
-    // (what the page must use) still resolves it to the same user.
+    // 40 days old: past the renewal window but still validly signed, so verifyIdentity (what the
+    // page must use) still resolves it.
     setCookie(userId, 40 * 24 * 60 * 60);
 
     const element = await HistoryPanel({ searchParams: searchParams() });
@@ -230,14 +218,8 @@ describe("HistoryPanel", () => {
     expect(screen.queryByRole("link", { name: "Upload your first video" })).not.toBeInTheDocument();
   });
 
-  // A hand-edited or stale shared link can carry a query string
-  // parseHistoryQuery rejects (an out-of-range limit, an unknown status, a
-  // forbidden combination, ...). The API route turns that into a clean 400,
-  // but this is a Server Component render -- an uncaught throw here would
-  // instead be caught by src/app/error.tsx's boundary and show "The service
-  // is unavailable or had a problem", which is the wrong message for a link
-  // that is simply out of date. The page must fall back to the default
-  // query and render normally instead of throwing.
+  // A hand-edited or stale shared link must fall back to the default query and render, not throw
+  // into error.tsx and blame the service.
   it.each([
     ["a limit below the allowed minimum", { limit: "0" }],
     [
@@ -265,10 +247,8 @@ describe("HistoryPanel -- keys the client shell on the serialized search params"
     expect(historyViewKey(first)).toBe(historyViewKey(second));
   });
 
-  // dir and includePrevious are the two shaping params most likely to be
-  // dropped by a well-meaning tidy-up (e.g. narrowing the key to
-  // `query.tab`, which reads plausible on its own and would still pass
-  // every other page test -- see the mutation check in the task report).
+  // dir and includePrevious are the two shaping params most likely to be dropped by a tidy-up that
+  // narrowed the key.
   it.each([
     ["dir", { dir: "asc" }],
     ["includePrevious", { includePrevious: "true" }],
@@ -285,9 +265,8 @@ describe("HistoryPanel -- keys the client shell on the serialized search params"
   });
 });
 
-// The page is now only the static shell: it awaits nothing, so the header
-// paints the instant a navigation starts and the panel streams in behind a
-// skeleton. Rendering it here proves it needs neither a cookie nor a database.
+// The page is only the static shell: rendering it here proves it needs neither a cookie nor a
+// database.
 describe("HistoryPage shell", () => {
   it("renders the header and a loading placeholder without awaiting any data", () => {
     render(HistoryPage({ searchParams: new Promise(() => {}) }));

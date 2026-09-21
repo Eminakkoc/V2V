@@ -31,22 +31,9 @@ function toUploadResponse(source: Source, cloudName: string): UploadResponse {
   };
 }
 
-// sourceId arrives on the URL (the History page's "Transform" link), so it is
-// unproven user input -- never trusted directly. Identity is resolved the
-// same read-only way the History page does (verifyIdentity, not
-// hasFreshIdentity: a cookie past its 30-day renewal still names a real user,
-// and a Server Component render cannot write the renewed cookie itself), and
-// the source is re-read through the owner-scoped sourcesRepository.findById.
-// An id that doesn't resolve -- missing, malformed, unknown or belonging to
-// someone else -- falls back to null here, which every caller below turns
-// into the ordinary empty upload state with no error: a stale or shared link
-// looks like a fresh visit, never a failure that would also leak whether the
-// id exists for another account.
-//
-// This is the page's only blocking read, and it touches the database only
-// when the URL actually carries a sourceId -- on an ordinary visit it settles
-// without a round trip. The aside's "does this account have uploads" read,
-// which has no such escape, streams in separately below.
+// sourceId arrives on the URL, so it is re-read through the owner-scoped findById; an id that is
+// missing, malformed, unknown or someone else's falls back to null, which every caller turns into
+// the ordinary empty upload state rather than leaking whether it exists for another account.
 async function resolveInitialSource(
   rawSourceId: string | string[] | undefined,
   deps: ServerDeps,
@@ -69,9 +56,6 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
   const initialSource = await resolveInitialSource(params.sourceId, deps);
 
   return (
-    // The page gutter and vertical rhythm of the Figma Create frames; the page
-    // title itself belongs to CreateFlow, which shows it only while nothing
-    // has been uploaded (the configure screen's heading is the file name).
     <div className="page-shell pt-(--section-pt) pb-(--section-pb)">
       <CreateFlow
         settings={{
@@ -82,9 +66,8 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
           cloudName: cloudinary.cloudName,
         }}
         initialSource={initialSource}
-        // No skeleton: the card is an optional extra that often resolves to
-        // nothing at all, and reserving space for something that may never
-        // arrive would shift the aside once the answer came back.
+        // No skeleton: the card often resolves to nothing at all, and reserving space would shift
+        // the aside once the answer came back.
         reuseCard={
           <Suspense fallback={null}>
             <ReuseCard />

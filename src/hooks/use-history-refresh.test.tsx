@@ -39,8 +39,6 @@ function job(overrides: Partial<HistoryJobView> = {}): HistoryJobView {
   };
 }
 
-// Trims a job() fixture down to AttemptView's shape -- attempts carry no
-// `source` or nested `attempts` of their own.
 function attempt(overrides: Partial<HistoryJobView> = {}): AttemptView {
   const built = job(overrides);
   return {
@@ -83,10 +81,8 @@ function defaultOptions(
   };
 }
 
-// Several microtask round trips: unlike use-job-polling's single apiFetch
-// per tick, a tick here can chain a changeable poll into an `ids`
-// follow-up, so settling it can need more than one hop. Extra hops on an
-// already-settled promise are free.
+// A tick can chain a changeable poll into an `ids` follow-up, so settling it can need more than one
+// hop.
 async function flush(times = 3) {
   for (let i = 0; i < times; i++) {
     await act(async () => {
@@ -98,10 +94,8 @@ async function flush(times = 3) {
 
 beforeEach(() => {
   autoId = 0;
-  // A block body matters here: `mockReset()` returns the mock itself, and a
-  // concise-body arrow would return that too -- Vitest treats a `beforeEach`
-  // return value that's a function as an implicit post-test cleanup, which
-  // would call `fetchMock()` for real once more after every test.
+  // A block body matters: Vitest treats a function returned from `beforeEach` as cleanup, and
+  // `mockReset()` returns the mock.
   fetchMock.mockReset();
 });
 afterEach(() => {
@@ -128,12 +122,8 @@ describe("useHistoryRefresh", () => {
     const stale = job({ id: "job-a", status: "processing" });
     const finalA = job({ id: "job-a", status: "complete" });
 
-    // The account no longer considers job-a changeable by the time the
-    // first client poll runs -- exactly what reconciliation's after() pass
-    // (scheduled on the same request that rendered `initial`) can produce
-    // before this hook ever gets to run. Without seeding the baseline from
-    // `initial`, job-a's absence here would look like "was never
-    // changeable" rather than "just left", and no ids call would follow.
+    // job-a has already left the changeable set before the first client poll -- what
+    // reconciliation's after() pass produces, and what the `initial` baseline seed exists to catch.
     fetchMock
       .mockResolvedValueOnce(changeableResponse([]))
       .mockResolvedValueOnce(changeableResponse([finalA]));
@@ -163,10 +153,8 @@ describe("useHistoryRefresh", () => {
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    // A wrongly-triggered follow-up would fire synchronously in the same
-    // tick as the first call, not on a later timer -- these extra
-    // microtask round trips give it every chance to show up before the
-    // absence is asserted.
+    // A wrongly-triggered follow-up would fire in this same tick, so the extra round trips give it
+    // every chance to show up.
     await flush();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.current.jobs).toEqual([doneAlready]);
@@ -187,13 +175,9 @@ describe("useHistoryRefresh", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(result.current.jobs).toEqual([live]);
 
-      // job-a was processing, so nextRefreshDelayMs scheduled the 3s rung.
       act(() => vi.advanceTimersByTime(3_000));
       await flush();
 
-      // Exactly 3 calls total: the two changeable polls plus one ids
-      // follow-up -- not, say, a changeable poll repeated or an ids call
-      // skipped/duplicated.
       expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
@@ -233,8 +217,7 @@ describe("useHistoryRefresh", () => {
       act(() => vi.advanceTimersByTime(3_000));
       await flush();
 
-      // The count is the whole point of this test: one changeable poll plus
-      // exactly one ids call, never one ids call per job that left.
+      // One changeable poll plus exactly one ids call, never one ids call per job that left.
       expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(fetchMock).toHaveBeenNthCalledWith(
         3,
@@ -256,10 +239,8 @@ describe("useHistoryRefresh", () => {
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      // Comfortably past every finite cadence nextRefreshDelayMs can ever
-      // return (its longest, abandoned-only rung, is 300_000ms). A hook
-      // that had merely scheduled a slow retry instead of truly stopping
-      // would show a second call here; one that stopped will not.
+      // Past every finite cadence nextRefreshDelayMs can return, so a hook that merely scheduled a
+      // slow retry would still show a second call.
       act(() => vi.advanceTimersByTime(400_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -284,11 +265,8 @@ describe("useHistoryRefresh", () => {
       Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
       act(() => document.dispatchEvent(new Event("visibilitychange")));
 
-      // Well past the 3s cadence the first (processing) response scheduled.
-      // If hiding the tab had not torn the interval down, this alone would
-      // have produced a second call, before the tab is ever made visible
-      // again -- that is what distinguishes "paused" from "just hasn't
-      // ticked yet".
+      // Past the 3s cadence the first response scheduled: a tab that had only "not ticked yet"
+      // would have called again by now.
       act(() => vi.advanceTimersByTime(10_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -321,10 +299,8 @@ describe("useHistoryRefresh", () => {
       Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
       act(() => window.dispatchEvent(new Event("offline")));
 
-      // Well past the 3s cadence the first (processing) response scheduled.
-      // If going offline had not torn the interval down, this alone would
-      // have produced a second call, before the browser is ever back online
-      // -- that is what distinguishes "paused" from "just hasn't ticked yet".
+      // Past the 3s cadence the first response scheduled: a poll that had only "not ticked yet"
+      // would have called again by now.
       act(() => vi.advanceTimersByTime(10_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -355,9 +331,7 @@ describe("useHistoryRefresh", () => {
       Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
       act(() => window.dispatchEvent(new Event("offline")));
 
-      // Comfortably past enough 10s retry cadences to have reached the
-      // 5-failure stalled bound had ticking continued offline -- it must
-      // not have, so the count stays exactly where offline found it.
+      // Past enough retry cadences to have reached the stalled bound had ticking continued offline.
       act(() => vi.advanceTimersByTime(60_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -387,8 +361,6 @@ describe("useHistoryRefresh", () => {
       expect(result.current.stalled).toBe(false);
       expect(result.current.jobs).toEqual([]);
 
-      // The failed attempt schedules a fixed-cadence retry rather than
-      // leaving the schedule null (which would stop polling forever).
       act(() => vi.advanceTimersByTime(10_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -418,8 +390,6 @@ describe("useHistoryRefresh", () => {
       expect(result.current.stalled).toBe(true);
       expect(result.current.error).toBe(true);
 
-      // The schedule was set to null once the bound was hit: advancing well
-      // past another retry interval must not produce a 6th call.
       act(() => vi.advanceTimersByTime(60_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -430,10 +400,8 @@ describe("useHistoryRefresh", () => {
 
   it("does not surface a refreshed superseded row as a top-level card when includePrevious is false", async () => {
     const nestedBeforeRefresh = attempt({ id: "job-old", status: "processing" });
-    // Terminal (not in CHANGEABLE_STATUSES) so it isn't seeded into the
-    // changeable baseline -- this test is about the superseded fold, not
-    // about the owner itself leaving the changeable set, which would need
-    // its own mocked ids follow-up and is exercised elsewhere.
+    // Terminal, so it is never seeded into the changeable baseline: this test is about the
+    // superseded fold, not the owner leaving.
     const owner = job({
       id: "job-latest",
       status: "complete",
@@ -458,19 +426,13 @@ describe("useHistoryRefresh", () => {
       expect(nested?.status).toBe("superseded");
     });
 
-    // The nested copy inside its owner is current (asserted above), but the
-    // row must never also stand on its own as a top-level card.
     expect(result.current.jobs.map((j) => j.id)).toEqual(["job-latest"]);
   });
 
   it("folds a superseded attempt without spuriously looking up its still-changeable owner in the same tick", async () => {
     const nestedBeforeRefresh = attempt({ id: "job-old", status: "processing" });
-    // Changeable (processing), unlike the dedicated fold test above -- so it
-    // IS seeded into the baseline, and also comes back in this tick's own
-    // changeable response (still processing). A reader retried a
-    // transform: the retry (owner) is still running while the superseded
-    // original (job-old) is also still being re-checked. Both are
-    // changeable and both arrive in the same poll.
+    // Changeable, unlike the fold test above, so it IS seeded into the baseline and also comes back
+    // in this tick's own response.
     const owner = job({
       id: "job-latest",
       status: "processing",
@@ -481,11 +443,8 @@ describe("useHistoryRefresh", () => {
       id: "job-latest",
       status: "processing",
       phase: "rendering",
-      // The server's own snapshot of owner still carries its attempts
-      // chain -- unrefreshed here on purpose, so a passing "superseded"
-      // nested status below can only have come from this hook's own fold
-      // step (using the co-arriving supersededRefresh row), not from a
-      // value that merely passed through unchanged.
+      // Unrefreshed on purpose, so a passing "superseded" nested status below can only have come
+      // from this hook's own fold step.
       attempts: [nestedBeforeRefresh],
     });
     const supersededRefresh = job({
@@ -512,17 +471,11 @@ describe("useHistoryRefresh", () => {
       ?.attempts.find((a) => a.id === "job-old");
     expect(nested?.errorMessage).toBe("final reason");
 
-    // owner stays the only top-level card, refreshed with its new phase --
-    // job-old never surfaces top-level (includePrevious is false).
     expect(result.current.jobs.map((j) => j.id)).toEqual(["job-latest"]);
     expect(result.current.jobs[0]?.phase).toBe("rendering");
 
-    // The load-bearing assertion: owner never left the changeable set this
-    // tick (it's still processing, in the same response), so no ids
-    // follow-up should ever fire. Asserted directly on the call log, not
-    // inferred from the merged output above -- a mutant that fired a
-    // spurious lookup for owner here (and happened to get a response that
-    // still merged correctly) would still be caught.
+    // Asserted on the call log rather than inferred from the merged output, so a spurious lookup
+    // that still merged correctly is caught.
     const idsCalls = fetchMock.mock.calls.filter(
       ([path]) => typeof path === "string" && path.includes("ids="),
     );
@@ -537,9 +490,8 @@ describe("useHistoryRefresh", () => {
       status: "complete",
       attempts: [nestedBeforeRefresh],
     });
-    // Reconciliation moved job-old on to "complete" -- its status no
-    // longer reads "superseded", but supersededByJobId is never cleared,
-    // so the fold must still key on that link rather than the status.
+    // Reconciliation moved job-old on to "complete", but supersededByJobId is never cleared, so the
+    // fold must key on the link.
     const reconciledRefresh = job({
       id: "job-old",
       status: "complete",
@@ -558,8 +510,6 @@ describe("useHistoryRefresh", () => {
       expect(nested?.status).toBe("complete");
     });
 
-    // Reconciling off "superseded" must not promote the row to a top-level
-    // card of its own -- includePrevious is false here, same as before.
     expect(result.current.jobs.map((j) => j.id)).toEqual(["job-latest"]);
   });
 
@@ -567,17 +517,13 @@ describe("useHistoryRefresh", () => {
     it("folds a load-more row into its own tracked list, so a later poll updates it in place instead of excluding it under the insertion-window rule", async () => {
       vi.useFakeTimers();
       try {
-        // Newer, kept live so the schedule keeps polling after the fold.
         const stillLive = job({
           id: "keep-alive",
           status: "processing",
           createdAt: "2026-09-20T00:00:00.000Z",
         });
-        // Older than stillLive on purpose: under createdAt/desc (the
-        // default here), an unfolded row this old always sorts after the
-        // boundary mergeRefreshed's insertion-window rule checks, which is
-        // exactly the case Finding 1 describes -- a `load more` row is, by
-        // construction, always older than what was already on screen.
+        // Older on purpose: a `load more` row is always older than what is on screen, so it sorts
+        // after the boundary the insertion-window rule checks.
         const loadedViaLoadMore = job({
           id: "job-old",
           status: "timed_out",
@@ -598,18 +544,13 @@ describe("useHistoryRefresh", () => {
         await flush();
         expect(fetchMock).toHaveBeenCalledTimes(1);
 
-        // Simulates `load more`: job-old (already timed out) is appended to
-        // the rows on screen while more pages still remain (hasMore stays
-        // true) -- exactly what TransformationsPanel hands the hook as
-        // `additional` after a load-more fetch resolves.
+        // Simulates `load more`: job-old is appended while more pages remain, exactly what
+        // TransformationsPanel hands the hook as `additional`.
         rerender(
           defaultOptions({ initial: [stillLive], hasMore: true, additional: [loadedViaLoadMore] }),
         );
         expect(result.current.jobs.map((j) => j.id).sort()).toEqual(["job-old", "keep-alive"]);
 
-        // Next poll: job-old finished and left the changeable set (it's no
-        // longer in the ?changeable=true response), triggering the ids
-        // follow-up; keep-alive is still processing.
         fetchMock
           .mockResolvedValueOnce(changeableResponse([stillLive]))
           .mockResolvedValueOnce(changeableResponse([refreshedViaPoll]));
@@ -641,11 +582,8 @@ describe("useHistoryRefresh", () => {
       );
       await flush();
 
-      // First load-more click.
       rerender(defaultOptions({ hasMore: true, additional: [pageTwoRow] }));
-      // Second load-more click: a brand new array containing BOTH rows, the
-      // same way TransformationsPanel's setExtraPages((prev) => [...prev,
-      // ...page.items]) grows it.
+      // Second load-more click: a brand new array containing both rows, the way the panel grows it.
       rerender(defaultOptions({ hasMore: true, additional: [pageTwoRow, pageThreeRow] }));
 
       expect(result.current.jobs.map((j) => j.id).sort()).toEqual(["page-2", "page-3"]);

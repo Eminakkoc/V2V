@@ -2,11 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
-// jsdom doesn't implement these; the vendored Radix Select and Slider call
-// them unconditionally (pointer capture on drag/open, scrollIntoView on the
-// selected item), so component tests using them would throw without a stub.
-// Only jsdom-environment test files touch `Element`, so guard for the
-// default "node" environment where it doesn't exist.
+// jsdom implements neither, and the vendored Radix Select and Slider call them unconditionally; guarded because only jsdom-environment test files have `Element`.
 if (typeof Element !== "undefined") {
   if (!Element.prototype.hasPointerCapture) {
     const captured = new WeakMap<Element, Set<number>>();
@@ -27,9 +23,7 @@ if (typeof Element !== "undefined") {
   }
 }
 
-// The Slider thumb measures itself with ResizeObserver, which jsdom also
-// doesn't implement. Never firing is fine: it only affects an in-bounds
-// pixel offset, not the value the thumb reports.
+// jsdom has no ResizeObserver either; never firing is fine, since it only affects an in-bounds pixel offset.
 if (typeof ResizeObserver === "undefined") {
   class ResizeObserverStub {
     observe() {}

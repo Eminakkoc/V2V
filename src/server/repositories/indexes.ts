@@ -4,9 +4,6 @@ import { COLLECTIONS } from "./collections";
 
 export const RATE_LIMIT_WINDOW_SECONDS = 600;
 
-// Keyed on the known collection names (not `string`) so `INDEXES.jobs` etc. are
-// exhaustive properties, not an index signature — noUncheckedIndexedAccess would
-// otherwise widen every access to `| undefined`.
 export const INDEXES: Record<(typeof COLLECTIONS)[keyof typeof COLLECTIONS], IndexDescription[]> = {
   [COLLECTIONS.jobs]: [
     { key: { userId: 1, createdAt: -1 }, name: "userId_createdAt" },
@@ -23,9 +20,6 @@ export const INDEXES: Record<(typeof COLLECTIONS)[keyof typeof COLLECTIONS], Ind
       unique: true,
       partialFilterExpression: { idempotencyKey: { $type: "string" } },
     },
-    // Extends the userId_status prefix for the reconciliation selection query,
-    // which filters on status and orders by lastCheckedAt. createIndexes is
-    // idempotent, so this is an index add, not a migration.
     { key: { userId: 1, status: 1, lastCheckedAt: 1 }, name: "userId_status_lastCheckedAt" },
   ],
   [COLLECTIONS.sources]: [{ key: { userId: 1, createdAt: -1 }, name: "userId_createdAt" }],

@@ -2,9 +2,8 @@ import "server-only";
 import type { JobView } from "@/lib/transform-contract";
 import type { Job } from "@/server/repositories/jobs";
 
-// The browser-facing projection. userId, magicHourId, idempotencyKey, claimedAt,
-// lastCheckedAt, lastError and magicHourError are deliberately withheld: they are
-// internal bookkeeping and two of them identify the provider record.
+// The browser-facing projection: internal bookkeeping is withheld, two fields of which identify the
+// provider record.
 export function toJobView(job: Job): JobView {
   return {
     id: job.id,

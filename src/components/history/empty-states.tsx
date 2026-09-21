@@ -2,15 +2,11 @@ import { Play, SlidersHorizontal, Video } from "lucide-react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 
-// F5/F25: shown on both History tabs, always -- not gated on any list being
-// empty. Callers render it once per tab's panel.
+// Shown on both History tabs always, not gated on any list being empty.
 export function BrowserScopedNote() {
   return <p className="type-body text-muted-foreground">History is tied to this browser.</p>;
 }
 
-// Figma "Empty state" (55:1712): a surface panel with a tinted icon disc, the
-// heading, one line of body at the design's 420px measure, and a single
-// large action. The tabs stay visible above it.
 function EmptyStateShell({
   headingId,
   heading,
@@ -45,7 +41,6 @@ export type NoUploadsYetProps = {
   uploadHref: string;
 };
 
-// The Uploaded videos tab with no filter active and no sources at all.
 export function NoUploadsYet({ uploadHref }: NoUploadsYetProps) {
   return (
     <EmptyStateShell
@@ -63,15 +58,13 @@ export function NoUploadsYet({ uploadHref }: NoUploadsYetProps) {
 }
 
 export type NoTransformationsYetProps = {
-  // F15: once the reader already has uploads, the call to action switches
-  // them to the tab that can actually start one, instead of repeating an
-  // upload entry point they have already used.
+  // Once the reader already has uploads, the call to action switches them to the tab that can
+  // actually start one.
   hasUploads: boolean;
   uploadHref: string;
   switchToUploadsHref: string;
 };
 
-// The Transformations tab with no filter active and no jobs at all.
 export function NoTransformationsYet({
   hasUploads,
   uploadHref,
@@ -103,9 +96,8 @@ export type NoMatchesProps = {
   clearFiltersHref: string;
 };
 
-// Either tab, once a filter is active and it matches nothing. Replaces that
-// tab's "nothing yet" state rather than appearing alongside it (a tab is
-// never both empty of everything and empty of matches at once).
+// Replaces that tab's "nothing yet" state rather than appearing alongside it -- a tab is never both
+// empty of everything and empty of matches.
 export function NoMatches({ tab, clearFiltersHref }: NoMatchesProps) {
   const body =
     tab === "uploads" ? "No uploads match your filters." : "No transformations match your filters.";
@@ -140,23 +132,15 @@ type HistoryEmptyStateSlot =
     };
 
 export type HistoryEmptyStateProps = HistoryEmptyStateSlot & {
-  // The merged/current list, taken as a literal prop rather than read from
-  // some other server-held value -- this is what makes the choice below
-  // re-evaluate, and the empty state dissolve, the instant a live refresh
-  // merges in a row that belongs on screen, with no reload.
+  // Taken as a literal prop, which is what makes the empty state dissolve the instant a live
+  // refresh merges in a row that belongs on screen.
   rows: readonly unknown[];
   hasActiveFilter: boolean;
   clearFiltersHref: string;
 };
 
-// Picks among the three "list is empty" states above for one tab. Renders
-// nothing once `rows` is non-empty, so a caller can mount it unconditionally
-// alongside its real list and let it appear and disappear on its own.
-//
-// The two "nothing yet" cases never compete: `tab` is required and each one
-// only ever renders its own tab's copy, so a caller for the Uploads tab can
-// never end up showing the Transformations tab's message even by mistake --
-// this component has no `jobs`/upload data for the other tab to read.
+// Renders nothing once `rows` is non-empty, so a caller can mount it unconditionally beside its
+// real list and let it appear and disappear on its own.
 export function HistoryEmptyState(props: HistoryEmptyStateProps) {
   if (props.rows.length > 0) return null;
 

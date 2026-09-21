@@ -90,11 +90,9 @@ describe("rate limiter", () => {
   });
 
   it("reports the longer wait when both the per-user and per-ip limits are exceeded", async () => {
-    // user-1 fills its own 10-hit budget first, on a private IP, at t=0..9.
     await checks(RATE_LIMITS.perUser, "upload", () => "user-1", "own-ip");
-    // 30 other users then fill the shared IP's budget afterwards, at t=10..39, so the
-    // IP counter's oldest surviving hit (t=10) is newer than the user counter's (t=0)
-    // and therefore has longer left to live in the window: 570s vs 560s.
+    // The IP counter's oldest surviving hit is newer than the user counter's, so it has longer left
+    // in the window: 570s vs 560s.
     await checks(RATE_LIMITS.perIp, "upload", (i) => `user-${i + 2}`, "shared-ip");
     const error = await limiter
       .check("upload", "user-1", "shared-ip")

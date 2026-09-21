@@ -1,8 +1,5 @@
-// Shared online/offline snapshot for `useSyncExternalStore`, used by both
-// polling hooks and the offline banner so they read one source instead of
-// each rolling its own `navigator.onLine` listener. Mirrors the
-// subscribeVisibility / isVisible / isVisibleOnServer shape in
-// use-job-polling.ts.
+// One shared online/offline snapshot for `useSyncExternalStore`, so the polling hooks and the
+// offline banner do not each roll their own listener.
 export function subscribeOnlineStatus(onChange: () => void) {
   window.addEventListener("online", onChange);
   window.addEventListener("offline", onChange);
@@ -16,9 +13,8 @@ export function isOnline() {
   return navigator.onLine;
 }
 
-// Server render has no `navigator`; assume online so neither the offline
-// banner nor a paused poll render into a server-rendered page before
-// hydration can read the real status.
+// Server render has no `navigator`; assume online so nothing renders an offline state before
+// hydration can read the real one.
 export function isOnlineOnServer() {
   return true;
 }

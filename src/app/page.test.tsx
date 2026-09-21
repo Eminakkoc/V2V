@@ -14,26 +14,21 @@ import { testConfig } from "@/test/env";
 import { setupTestDb } from "@/test/mongo";
 import CreatePage from "./page";
 
-// Direct-invocation test, same reasoning as src/app/history/page.test.tsx:
-// cookies() throws outside Next's own request pipeline unless replaced with
-// a stub reading a value this file controls.
+// Direct-invocation test: cookies() throws outside Next's own request pipeline unless stubbed with
+// a value this file controls.
 const cookieRef = vi.hoisted(() => ({ value: undefined as string | undefined }));
 vi.mock("next/headers", () => ({
   cookies: () =>
     Promise.resolve({
       get: (name: string) =>
-        // "v2v_uid" mirrors IDENTITY_COOKIE (src/server/services/identity.ts);
-        // hardcoded so this mock has no import-order dependency on that module.
         name === "v2v_uid" && cookieRef.value !== undefined
           ? { name, value: cookieRef.value }
           : undefined,
     }),
 }));
 
-// CreateFlow pulls in the real Uploadcare widget; page.tsx's own job here is
-// only resolving and passing initialSource, so the child is stubbed to
-// capture exactly what it was handed -- the same technique
-// create-flow.test.tsx uses for SourceUploader.
+// CreateFlow pulls in the real Uploadcare widget, so the child is stubbed to capture exactly what
+// page.tsx handed it.
 const captured = vi.hoisted(() => ({
   props: undefined as
     { settings: CreateFlowSettings; initialSource?: UploadResponse | null } | undefined,
@@ -141,14 +136,8 @@ describe("CreatePage", () => {
     } satisfies UploadResponse);
   });
 
-  // The security property: an unknown id, a malformed id and another user's
-  // id must all be indistinguishable from having no sourceId at all -- not
-  // merely "each of these also falls back", which a lookup that leaked
-  // *which* case it hit (e.g. a different falsy value, or a thrown error for
-  // one but not the others) would still pass. Swapping sourcesRepository's
-  // owner-scoped findById for an unscoped one must fail this test: it would
-  // resolve "another user's id" to a real source while the other three stay
-  // null, breaking the equality below.
+  // All four cases must be indistinguishable: swapping the owner-scoped findById for an unscoped
+  // one would resolve another user's id while the rest stay null, and fail this equality.
   it("falls back to the same empty-upload state (no initial source, no error) whether the id is absent, malformed, unknown, or someone else's", async () => {
     const othersSource = await insertSource(otherUserId);
     setCookie(userId);
@@ -173,9 +162,6 @@ describe("CreatePage", () => {
     expect(initialSource).toBeFalsy();
   });
 
-  // The page title itself belongs to CreateFlow, which shows it only while
-  // nothing has been uploaded -- once a source is picked, the file name is the
-  // page heading. create-flow.test.tsx covers it.
   it("hands CreateFlow no initial source when the URL carries no sourceId", async () => {
     const element = await CreatePage({ searchParams: searchParams({}) });
     render(element);

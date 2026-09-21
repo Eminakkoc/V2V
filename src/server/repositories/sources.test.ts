@@ -40,8 +40,7 @@ describe("sources repository", () => {
   it("refuses an invalid record on write", async () => {
     const attempt = sources.insert("user-1", { ...input, bytes: -1 });
     await expect(attempt).rejects.toThrow(/Invalid sources document on write/);
-    // Not a ZodError: withErrorHandling would otherwise report our own bad
-    // write as a 400 client error instead of a logged 500.
+    // Not a ZodError: our own bad write must become a logged 500, not a 400.
     await expect(attempt).rejects.not.toBeInstanceOf(ZodError);
   });
 
@@ -66,12 +65,8 @@ describe("sources repository", () => {
   });
 });
 describe("listForUser and findByIds", () => {
-  // listForUser (unlike findByIds) reads back every matching document for the
-  // owner, and this file has no beforeEach cleanup -- earlier tests above
-  // deliberately leave malformed "user-1" documents behind (schemaVersion 2,
-  // a raw insert missing required fields) to exercise parseStored's failure
-  // path. A literal "user-1" here would pick those up and throw. A fresh
-  // owner id per test sidesteps that without touching those tests.
+  // A fresh owner id per test: this file has no cleanup, and earlier tests deliberately leave
+  // malformed "user-1" documents behind.
   it("lists a user's sources newest first", async () => {
     const owner = `user-${randomUUID()}`;
     const first = await sources.insert(owner, { ...input, uploadcareUuid: randomUUID() });

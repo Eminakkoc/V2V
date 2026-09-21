@@ -55,10 +55,8 @@ test("a file at the multipart threshold is uploaded over the S3 host", async ({ 
 });
 
 test("an upload logs no blocked-request errors", async ({ page }) => {
-  // The uploader's telemetry host is deliberately absent from connect-src, so
-  // anything it sends is blocked and logged. Asserting silence here is what
-  // keeps that opt-out working: when it regresses, the console fills up on
-  // every page load rather than only on upload.
+  // The uploader's telemetry host is deliberately absent from connect-src, so asserting silence
+  // here is what keeps that opt-out working.
   const blocked: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error" && /Content Security Policy/i.test(message.text())) {

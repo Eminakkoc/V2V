@@ -11,9 +11,6 @@ import { createJobsRepository, type NewJob } from "./jobs";
 const { getDb } = setupTestDb();
 const jobs = createJobsRepository(getDb);
 
-// setupTestDb() is one db for the whole file; without this, every test's
-// inserts (many sharing input's idempotencyKey and "user-1") would pile up
-// and corrupt the count/lookup assertions below.
 beforeEach(async () => {
   await (await getDb()).collection("jobs").deleteMany({});
 });
@@ -84,7 +81,6 @@ describe("attachMagicHourId", () => {
 
   it("refuses to overwrite an existing Magic Hour id", async () => {
     const created = await jobs.insert("user-1", { ...input, magicHourId: "mh-first" });
-    // Two deliveries racing on the name fallback must not both claim the job.
     expect(await jobs.attachMagicHourId(created.id, "mh-second")).toBeNull();
     expect((await jobs.findByIdUnscoped(created.id))?.magicHourId).toBe("mh-first");
   });
@@ -142,7 +138,6 @@ describe("claimForFinalize", () => {
     expect(claimed?.preFinalizeStatus).toBe("timed_out");
     await jobs.releaseClaim(created.id);
     const after = await jobs.findByIdUnscoped(created.id);
-    // A timed-out job must come back timed_out, not processing.
     expect(after?.status).toBe("timed_out");
     expect(after?.claimedAt).toBeUndefined();
     expect(after?.preFinalizeStatus).toBeUndefined();
@@ -156,7 +151,6 @@ describe("claimForFinalize", () => {
       preFinalizeStatus: "abandoned",
     });
     const reclaimed = await jobs.claimForFinalize(created.id, now, staleBefore);
-    // Re-claiming must not record "finalizing" as the thing to restore.
     expect(reclaimed?.preFinalizeStatus).toBe("abandoned");
   });
 });
@@ -164,8 +158,6 @@ describe("claimForFinalize", () => {
 describe("markFailed", () => {
   it("refuses to fail a job that already completed", async () => {
     const created = await jobs.insert("user-1", { ...input, status: "complete" });
-    // Magic Hour redelivers for up to 24h, so a late video.errored for an
-    // already-finalized job is expected — it must not destroy a stored result.
     expect(
       await jobs.markFailed(created.id, {
         errorCode: "MAGIC_HOUR_JOB_FAILED",
@@ -191,8 +183,6 @@ describe("markSuperseded", () => {
     });
     expect(completed?.status).toBe("complete");
 
-    // A retry naming a completed job's id must not be able to hide a render
-    // the user already paid for.
     expect(await jobs.markSuperseded(created.id, "new-job-id")).toBeNull();
     const after = await jobs.findByIdUnscoped(created.id);
     expect(after?.status).toBe("complete");
@@ -219,8 +209,6 @@ describe("setPhase", () => {
 
   it("refuses to move phase backwards", async () => {
     const created = await jobs.insert("user-1", { ...input, phase: "rendering" });
-    // e.g. the create call's own "queued" write losing a race against a
-    // video.started webhook that already advanced the job to "rendering".
     expect(await jobs.setPhase(created.id, "queued")).toBeNull();
     expect((await jobs.findByIdUnscoped(created.id))?.phase).toBe("rendering");
   });
@@ -241,12 +229,8 @@ describe("listForUser", () => {
     expect(await jobs.listForUser("user-1", { ...base, includePrevious: true })).toHaveLength(2);
   });
 
-  // Regression for IR-001 / manual test F.5. "superseded" is in
-  // CHANGEABLE_STATUSES, so reconciliation can finalize a previous attempt
-  // whose render landed late -- markComplete leaves supersededByJobId in
-  // place. An exclusion keyed only on status let that row back onto the top
-  // level while collectAttemptChains still nested it under its successor,
-  // so the attempt was rendered twice.
+  // Regression: reconciliation can move a previous attempt off "superseded", so excluding on status
+  // alone rendered the attempt twice.
   it("keeps excluding a previous attempt that reconciliation moved off superseded", async () => {
     const attempt = await jobs.insert("user-1", { ...input, status: "failed" });
     const latest = await jobs.insert("user-1", {
@@ -256,8 +240,6 @@ describe("listForUser", () => {
     });
     expect((await jobs.markSuperseded(attempt.id, latest.id))?.status).toBe("superseded");
 
-    // The late render arrives: the attempt finalizes, but stays a previous
-    // attempt -- the link is never cleared.
     const finalized = await jobs.markComplete(attempt.id, {
       output: { cloudinaryPublicId: "sources/abc", cloudinaryUrl: "https://example.com/abc.mp4" },
     });
@@ -268,7 +250,6 @@ describe("listForUser", () => {
     const top = await jobs.listForUser("user-1", base);
     expect(top.map((job) => job.id)).toEqual([latest.id]);
 
-    // The toggle still promotes it, exactly as for a still-superseded row.
     const withPrevious = await jobs.listForUser("user-1", { ...base, includePrevious: true });
     expect(withPrevious.map((job) => job.id).sort()).toEqual([attempt.id, latest.id].sort());
   });
@@ -318,8 +299,7 @@ describe("countActive", () => {
       ...input,
       idempotencyKey: "k6",
       status: "superseded",
-      // Well past deadlineAt + graceMs relative to `now`: no further Magic
-      // Hour delivery is plausible, so this must no longer drive polling.
+      // Well past deadlineAt + graceMs, so this must no longer drive polling.
       deadlineAt: new Date("2026-09-20T01:00:00Z"),
     });
     expect(await jobs.countActive("user-1", now, graceMs)).toEqual({
@@ -340,12 +320,8 @@ describe("countActive", () => {
     expect((await jobs.countActive("user-1", now, graceMs)).superseded).toBe(1);
   });
 
-  // REC-004's re-check: reconciliation is the first thing that ever writes
-  // "abandoned", and countActive's facets have no branch for it at all --
-  // pinning here that a job leaving "processing" for "abandoned" drops out
-  // of the active counts entirely, which is what lets nextDelayMs stop the
-  // Create page's polling instead of retrying a job nothing is checking
-  // anymore.
+  // Pins that a job leaving "processing" for "abandoned" drops out of the active counts, which is
+  // what lets nextDelayMs stop the Create page's polling.
   it("drops an abandoned job out of the active counts, and nextDelayMs then stops polling", async () => {
     const created = await jobs.insert("user-1", { ...input, idempotencyKey: "k8" });
 
@@ -423,17 +399,8 @@ describe("listForUser sorting and filtering", () => {
     expect(rest.map((row) => row.id)).toEqual([medium.id, short.id]);
   });
 
-  // The cursor value is computed in JS (clipSecondsOf, the same helper the
-  // history service uses to encode a duration cursor) but the sort and
-  // boundary comparison run in Mongo's $round, so the two must agree on
-  // ordinary two-decimal lengths or a page boundary silently repeats or skips
-  // a row. This does not exercise a genuine JS-vs-Mongo half-rounding tie:
-  // $round(x, 2) only ties when the third decimal is exactly 5, and since
-  // both startSeconds and endSeconds are constrained to two decimals, their
-  // difference is always two decimals too, so a third-decimal tie cannot
-  // arise here by construction. Paging one row at a time is what would make
-  // any agreement gap visible regardless: a mismatch either re-returns the
-  // previous row or jumps past the next one.
+  // The cursor is computed in JS but the sort and boundary comparison run in Mongo's $round, so
+  // paging one row at a time makes any disagreement visible.
   it("keeps a JS-computed duration cursor in step with Mongo's $round when paging one row at a time", async () => {
     const hi = await jobs.insert("user-1", {
       ...input,
@@ -471,7 +438,6 @@ describe("listForUser sorting and filtering", () => {
     expect(seen).toEqual(expectedOrder);
     expect(new Set(seen).size).toBe(expectedOrder.length);
 
-    // Paging once more past the last row must come back empty, not repeat it.
     const trailing = await jobs.listForUser("user-1", {
       includePrevious: false,
       sort: "duration",
@@ -642,14 +608,10 @@ describe("selectForReconcile", () => {
     expect(selected.map((j) => j.id)).not.toContain(recent.id);
   });
 
-  // REC-004's submission arm, and the reason it exists. Until it was added,
-  // every arm required magicHourId to exist, so a job whose submission answer
-  // was lost matched nothing and sat on "Confirming with Magic Hour" forever
-  // (manual test H.8). This test used to assert that dormancy; it now asserts
-  // the transition, and the grace boundary that gates it.
+  // Before this arm existed, a job whose submission answer was lost matched nothing and read as
+  // "Confirming with Magic Hour" forever.
   it("selects a processing job with no magicHourId once it is past deadline plus grace", async () => {
     const created = await jobs.insert("user-1", { ...input, idempotencyKey: randomUUID() });
-    // input.deadlineAt is 24h before `now`, so it is well past deadline+grace.
     const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
     expect(selected.map((j) => j.id)).toEqual([created.id]);
     expect(selected[0]?.magicHourId).toBeUndefined();
@@ -693,12 +655,8 @@ describe("selectForReconcile", () => {
     expect(selected.map((j) => j.id)).not.toContain(recentlyClaimed.id);
   });
 
-  // Rule (b) must gate on recentMs (lastCheckedAt), not on staleClaimMs a
-  // second time: a finalizing job's claim can be stale while it was still
-  // checked moments ago by an earlier pass. Swapping windows.recentMs and
-  // windows.staleClaimMs on this rule would let a stale-claimed-but-just-
-  // checked job through, since 10s is well within staleClaimMs (5 min) --
-  // only comparing it against recentMs (60s) catches that swap.
+  // Rule (b) gates on recentMs, not staleClaimMs: a finalizing job's claim can be stale while it
+  // was checked moments ago.
   it("does not select a finalizing job whose claim is stale but was checked 10s ago", async () => {
     const staleClaimRecentlyChecked = await jobs.insert("user-1", {
       ...input,
@@ -905,10 +863,8 @@ describe("reconciliation writes", () => {
     });
   });
 
-  // IR-005. Scenario F.4: reconciliation abandons a never-confirmed
-  // submission, then a correctly signed late video.completed attaches the
-  // provider id and finalizes the job. The rescue itself is right and
-  // valuable; what was wrong is that the earlier error survived it.
+  // A correctly signed late video.completed can rescue an abandoned submission; the earlier error
+  // must not survive it.
   describe("markComplete on a job that had already failed", () => {
     it.each([
       ["SUBMISSION_UNCONFIRMED", "We could not confirm this submission."] as const,
@@ -923,9 +879,8 @@ describe("reconciliation writes", () => {
         creditsCharged: 1,
       });
 
-      // errorCode and errorMessage are both projected into jobViewSchema, so
-      // a consumer reading either without also checking status would see a
-      // completed job reporting a failure.
+      // Both error fields are projected into jobViewSchema, so a consumer reading either would see
+      // a completed job reporting a failure.
       expect(completed?.status).toBe("complete");
       expect(completed?.errorCode).toBeUndefined();
       expect(completed?.errorMessage).toBeUndefined();

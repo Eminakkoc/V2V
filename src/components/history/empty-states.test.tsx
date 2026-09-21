@@ -168,9 +168,8 @@ describe("HistoryEmptyState", () => {
     );
     expect(screen.getByRole("heading", { name: "No matches" })).toBeInTheDocument();
 
-    // Simulates a live refresh merging in a row that now matches -- the
-    // caller passes the same, larger `rows` array on its next render; no
-    // remount, no server round trip.
+    // Simulates a live refresh merging in a row that now matches: the same, larger `rows` array on
+    // the next render, with no remount.
     rerender(
       <HistoryEmptyState
         tab="uploads"

@@ -12,11 +12,8 @@ import { apiGetRequest, identityCookie } from "@/test/requests";
 import type * as NextServerModule from "next/server";
 import { GET } from "./route";
 
-// GET calls the real after() (only satisfied inside Next's own request
-// pipeline, which these direct-invocation tests never enter), so it is
-// replaced with a capture: pushing the callback proves the route scheduled
-// reconciliation without ever running it, which is what lets a test assert
-// the response returned without waiting on it.
+// Direct-invocation tests never enter Next's request pipeline, so after() is replaced with a
+// capture: the callback proves the route scheduled reconciliation without ever running it.
 const scheduled = vi.hoisted(() => [] as Array<() => unknown>);
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof NextServerModule>();
@@ -32,8 +29,8 @@ const { getDb } = setupTestDb();
 const userId = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const otherUserId = "9c1d2e3a-4b5c-4d6e-8f70-112233445566";
 
-// Parsed (not a literal) so the result carries the schema's resolved defaults
-// (fpsResolution, promptType, model, version), matching what jobs.insert expects.
+// Parsed, not a literal, so the result carries the schema's resolved defaults, matching what
+// jobs.insert expects.
 const baseParams = transformParamsSchema.parse({
   name: "beach clip",
   startSeconds: 0,
@@ -41,7 +38,6 @@ const baseParams = transformParamsSchema.parse({
   artStyle: "Watercolor",
 });
 
-// The history route never touches any provider; these stubs only satisfy the type.
 const unusedUploadcare = { getFileInfo: () => Promise.reject(new Error("unused")) };
 const unusedCloudinary = { copyVideoFromUrl: () => Promise.reject(new Error("unused")) };
 const unusedMagicHour: MagicHourAdapter = {
@@ -227,8 +223,7 @@ describe("GET /api/history", () => {
     await insertJob(userId, { params: { ...baseParams, endSeconds: 3 } });
 
     const body = await bodyOf(await history("?sort=duration"));
-    // dir defaults to desc, and baseParams.startSeconds is 0, so each clip's
-    // duration equals its endSeconds.
+    // baseParams.startSeconds is 0, so each clip's duration equals its endSeconds.
     expect(body.items.map((item) => item.params.endSeconds)).toEqual([8, 5, 3]);
   });
 
@@ -241,8 +236,8 @@ describe("GET /api/history", () => {
     const json = await response.json();
     expect(json).not.toHaveProperty("active");
 
-    // Pins sourceViewSchema's shape: a future field change on the sources tab
-    // fails this parse loudly rather than sliding through as an extra key.
+    // Pins sourceViewSchema's shape: a future field change fails this parse loudly rather than
+    // sliding through as an extra key.
     const body = historySourcesResponseSchema.parse(json);
     expect(body.items).toHaveLength(1);
     expect(body.items[0]).toMatchObject({
@@ -343,9 +338,8 @@ describe("GET /api/history -- reconciliation via after()", () => {
     const response = await history();
 
     expect(response.status).toBe(200);
-    // The scheduled callback is left unrun on purpose: reconcileUserJobs
-    // would hang forever calling this provider, and GET already returned
-    // without it -- proving the response never waited on the provider.
+    // Left unrun on purpose: reconcileUserJobs would hang forever calling this provider, so GET
+    // returning proves the response never waited on it.
     expect(scheduled).toHaveLength(1);
   });
 });

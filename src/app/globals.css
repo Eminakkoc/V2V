@@ -2,28 +2,16 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Dark mode is not part of the design (the Figma Primitives collection has a
-   single Light mode), and the `.dark` palette that shipped with the starter has
-   been removed. This variant is kept on purpose: Tailwind v4's built-in `dark`
-   variant falls back to `prefers-color-scheme`, so dropping this line would let
-   the `dark:` utilities still present in six vendored components fire for
-   OS-dark readers against light-mode variables. Gated on a class nothing adds,
-   those utilities stay inert. */
+/* Kept on purpose: Tailwind v4's built-in `dark` variant falls back to
+   `prefers-color-scheme`, so dropping this would let the `dark:` utilities still
+   present in vendored components fire against light-mode variables. */
 @custom-variant dark (&:is(.dark *));
 
-/* ---------------------------------------------------------------------------
-   Figma → Tailwind: the Primitives collection, transcribed.
-
-   Every value below is a Figma variable, named the way Figma names it, so a
-   token can be traced back to the file without a lookup table. The semantic
-   shadcn layer further down is derived from these and never carries a colour
-   of its own.
-   --------------------------------------------------------------------------- */
+/* Figma → Tailwind: the Primitives collection, transcribed under Figma's own
+   variable names, so a token can be traced back without a lookup table. */
 @theme {
-  /* Tailwind ships a cool-grey `neutral` ramp; the design has a warm one with
-     different stops. Clearing the namespace first means a shade the design
-     never defined (neutral-500, neutral-950) fails to compile instead of
-     silently rendering a grey that belongs to no palette. */
+  /* Clearing the namespace means a shade the design never defined fails to
+     compile instead of silently rendering one of Tailwind's cool greys. */
   --color-neutral-*: initial;
 
   --color-bg: #f5ead8;
@@ -63,12 +51,10 @@
   --color-border-input: #82796a;
   --color-focus: #8c491a;
 
-  /* Caprasimo sets every heading, button and the wordmark; Figtree sets
-     everything else. The design uses no monospace face. */
+  /* Caprasimo sets every heading, button and the wordmark; Figtree the rest. */
   --font-display: var(--font-caprasimo);
   --font-sans: var(--font-figtree);
 
-  /* The design's three elevations, replacing Tailwind's own scale. */
   --shadow-sm: 0 1px 2px 0 #2e2b2524;
   --shadow-md: 0 3px 10px 0 #2e2b2529;
   --shadow-lg: 0 12px 32px 0 #2e2b2538;
@@ -114,10 +100,8 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* --radius is 20px (Figma radius/lg), which makes the derived scale land on
-     the design's own stops: sm → 12 (radius/sm), lg → 20, xl → 28
-     (radius/panel and radius/media-lg). Vendored components that ask for
-     `rounded-lg` or `rounded-xl` therefore need no edit. */
+  /* --radius is 20px (Figma radius/lg), which lands the derived scale on the
+     design's own stops, so vendored `rounded-lg`/`rounded-xl` need no edit. */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -127,8 +111,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* The semantic layer every vendored shadcn component reads. Each line points
-   at a primitive above; nothing here introduces a colour of its own. */
+/* The semantic layer every vendored shadcn component reads; each line points at
+   a primitive above and nothing here introduces a colour of its own. */
 :root {
   --background: var(--color-bg);
   --foreground: var(--color-ink);
@@ -144,10 +128,8 @@
   --muted-foreground: var(--color-ink-muted);
   --accent: var(--color-accent-100);
   --accent-foreground: var(--color-accent-900);
-  /* The design has no red: errors are carried by the terracotta accent ramp
-     (accent-900 for ink, accent-100/200/300 for fills and borders). Repointed
-     here rather than at each call site so Tailwind's own aria-invalid: rules
-     pick it up unchanged. */
+  /* The design has no red: repointed here rather than at each call site, so
+     Tailwind's own aria-invalid: rules pick up the accent ramp unchanged. */
   --destructive: var(--color-accent-900);
   --border: var(--color-divider);
   --input: var(--color-border-input);
@@ -167,19 +149,9 @@
   --sidebar-border: var(--color-divider);
   --sidebar-ring: var(--color-focus);
 
-  /* ---- Type scale -------------------------------------------------------
-     Figma's own variable names. These are deliberately NOT Tailwind theme
-     keys: a `--text-*` theme key generates a `text-<name>` utility, and
-     tailwind-merge (the `cn` package) cannot distinguish `text-caption`
-     (a size) from `text-accent-strong` (a colour) -- it puts both in one
-     group and keeps only the last, silently dropping the colour. The
-     `type-*` utilities defined below read these instead, so a size class
-     and a colour class can never collide.
-
-     The display sizes and the input size are the Figma Mobile mode's; the
-     two media queries below step them up. Everything else is one size in
-     all three modes. Figma letterSpacing is a percentage: -1.5 → -0.015em,
-     10 → 0.1em, and every Caprasimo style shares the same -1.5. */
+  /* Type scale. Deliberately NOT Tailwind theme keys: a `--text-*` key would
+     generate a `text-<name>` utility, and tailwind-merge cannot tell a size
+     class from a colour class, so it would keep only the last of the two. */
   --tracking-display: -0.015em;
   --text-brand: 23px;
   --leading-brand: 28px;
@@ -212,14 +184,8 @@
   --text-input: 16px;
   --leading-input: 24px;
 
-  /* Layout and control metrics from Figma. The design carries one mobile and
-     one desktop value for each of these, which is why they are variables
-     rather than literals: the media queries below are the only place the
-     phone/desktop split is written down.
-
-     --btn-py, --seg-py and --touch-row-py are what hold interactive rows to a
-     44px tap target on phones (13.5 + 17 + 13.5 = 44, 12 + 20 + 12 = 44)
-     while keeping desktop controls compact. */
+  /* --btn-py, --seg-py and --touch-row-py are what hold interactive rows to a
+     44px tap target on phones while keeping desktop controls compact. */
   --page-margin: 18px;
   --header-py: 14px;
   --section-pt: 8px;
@@ -254,8 +220,7 @@
   --aside-w: 340px;
 }
 
-/* Tablet -- the Figma "Tablet · 1024" frames' mode. These sit outside
-   @layer, so they override the same names declared in @theme above. */
+/* Tablet. Outside @layer, so these override the names declared in @theme. */
 @media (width >= 40rem) {
   :root {
     --text-h1: 36px;
@@ -313,24 +278,19 @@
   }
   html {
     @apply font-sans type-body;
-    /* Reserve the scrollbar's space whether or not the page currently
-       overflows. Without it, filtering /history down to no matches takes the
-       document from 1838px to 720px, the scrollbar goes away, and on any
-       browser using classic (space-taking) scrollbars the viewport widens by
-       ~15px -- which shifts every centred container, the header included.
-       That is the flicker; the header is not sizing to its content. */
+    /* Reserved whether or not the page overflows: filtering /history down to
+       no matches otherwise takes the scrollbar away and widens the viewport,
+       shifting every centred container, the header included. */
     scrollbar-gutter: stable;
   }
-  /* Caprasimo has one weight. Asking for bold anywhere would synthesise a
-     smeared faux-bold, so headings opt out explicitly. */
+  /* Caprasimo has one weight; asking for bold would synthesise a faux-bold. */
   :where(h1, h2, h3, h4, h5, h6) {
     @apply font-display font-normal;
   }
 }
 
-/* The design's type styles. Named `type-*` rather than `text-*` so a size
-   class and a colour class can never be merged into one group -- see the
-   note on the scale above. */
+/* Named `type-*` rather than `text-*` so a size class and a colour class can
+   never be merged into one group -- see the note on the scale above. */
 @utility type-brand {
   font-size: var(--text-brand);
   line-height: var(--leading-brand);
@@ -409,8 +369,7 @@
   line-height: var(--leading-input);
 }
 
-/* The page gutter, as one class: 18 / 30 / 44 to match the Figma frames, with
-   the content column capped at the 1280px artboard. */
+/* The page gutter, with the content column capped at the 1280px artboard. */
 @utility page-shell {
   margin-inline: auto;
   width: 100%;
@@ -418,9 +377,8 @@
   padding-inline: var(--page-margin);
 }
 
-/* The design's focus treatment. Buttons, chips and checkboxes take a detached
-   2px ring in color/focus; fields take the same ring flush against a border
-   that also turns to color/focus (Figma "keyboard focus" state sheet). */
+/* Buttons, chips and checkboxes take a detached ring; fields take the same ring
+   flush against a border that also turns to color/focus. */
 @utility focus-ring {
   &:focus-visible {
     outline: var(--stroke-rule) solid var(--color-focus);
@@ -436,10 +394,8 @@
   }
 }
 
-/* Indeterminate progress. The segment runs back and forth for as long as the
-   work is in flight; `alternate` is what makes it ease back rather than jump
-   to the start. Callers apply it under `motion-safe:`, so a reader who asks
-   for reduced motion gets a static bar (WCAG 2.2.2). */
+/* Indeterminate progress; `alternate` is what makes the segment ease back
+   rather than jump to the start, and callers apply it under `motion-safe:`. */
 @keyframes activity-slide {
   from {
     transform: translateX(0);

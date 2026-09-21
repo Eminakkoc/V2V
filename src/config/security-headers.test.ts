@@ -13,8 +13,6 @@ describe("security headers", () => {
 
   it("denies the camera, the microphone and every other feature the app does not use", () => {
     const policy = header("Permissions-Policy") ?? "";
-    // The app only ever reads an already-recorded file, so neither capture
-    // device is ever requested -- see the uploader's sourceList="local".
     expect(policy).toContain("camera=()");
     expect(policy).toContain("microphone=()");
     expect(policy).toContain("geolocation=()");
@@ -52,11 +50,6 @@ describe("security headers", () => {
     expect(contentSecurityPolicy(true)).toContain("'unsafe-eval'");
   });
 
-  // src/app/layout.tsx's <SpeedInsights /> loads its script from this host
-  // and reports vitals back to it -- without both directives the script
-  // itself is blocked outright (e2e/upload.spec.ts's "an upload logs no
-  // blocked-request errors" catches this on every page load, not just one
-  // that uses Speed Insights directly).
   it("allows the Speed Insights script host to load and report", () => {
     const csp = contentSecurityPolicy(false);
     expect(csp).toMatch(/script-src [^;]*https:\/\/va\.vercel-scripts\.com/);

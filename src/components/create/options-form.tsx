@@ -24,14 +24,11 @@ type OptionsFormProps = {
   onChange: (next: TransformParams) => void;
   disabled?: boolean;
   errors?: FieldErrors;
-  // The summary and submit row. Owned by CreateFlow (it holds the submission
-  // state) but rendered here so it sits inside the form panel on desktop, as
-  // in the design, and can pin itself to the bottom on phones.
+  // Owned by CreateFlow, which holds the submission state, but rendered here so it sits inside the
+  // form panel on desktop and can pin itself on phones.
   footer?: React.ReactNode;
 };
 
-// Short labels for the segmented control, per the design. The full sentences
-// live in the option's own helper text rather than inside a 13px segment.
 const PROMPT_TYPE_LABELS: Record<(typeof PROMPT_TYPES)[number], string> = {
   default: "Default",
   custom: "Custom",
@@ -65,9 +62,8 @@ function Help({ id, children }: { id?: string; children: React.ReactNode }) {
   );
 }
 
-// Figma "Transformation form" (59:2641). From tablet up it is a surface panel
-// at radius/card beside the preview; on phones the fields sit directly on the
-// page, which is why the panel styling is behind `sm:`.
+// A surface panel beside the preview from tablet up; on phones the fields sit directly on the page,
+// which is why the panel styling is behind `sm:`.
 export function OptionsForm({
   value,
   onChange,
@@ -89,9 +85,8 @@ export function OptionsForm({
   const fpsHelpId = `${fpsId}-help`;
   const promptTypeHelpId = `${promptTypeId}-help`;
 
-  // The SDK requires a non-empty prompt for append_default as well as custom
-  // (transformParamsSchema enforces the same rule), so the box isn't gated on
-  // "custom" alone.
+  // The SDK requires a non-empty prompt for append_default as well as custom, so the box is not
+  // gated on "custom" alone.
   const showPrompt = value.promptType === "custom" || value.promptType === "append_default";
 
   function set<K extends keyof TransformParams>(key: K, next: TransformParams[K]) {

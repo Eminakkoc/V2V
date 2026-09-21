@@ -10,17 +10,10 @@ const POSTER_WIDTH = 480;
 type VideoPairProps = {
   name: string;
   cloudName: string;
-  // `undefined` skips the Source column entirely -- used when this pair
-  // belongs to a nested "Previous attempts" card, which shares its source
-  // with the owning job and has no source data of its own (AttemptView
-  // carries no `source` field). Repeating the owner's player there, or
-  // worse claiming the source is unavailable, would misstate the data.
-  // `null` is the real "gone" case: `job.source` came back null from the
-  // API because the source record itself no longer exists.
+  // `undefined` skips the Source column entirely -- a nested attempt shares the owning job's source
+  // and carries none of its own -- while `null` is the real "gone" case.
   source: MediaProjection | null | undefined;
   output: MediaProjection | undefined;
-  // Sizing for each frame. History cards use a fixed 200 x 124 thumbnail;
-  // the create-page job card uses a pair of tall, equal-width players.
   frameClassName?: string;
 };
 

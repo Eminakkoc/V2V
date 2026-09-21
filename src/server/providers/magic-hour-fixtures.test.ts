@@ -30,10 +30,8 @@ const eventFixtures = {
   errored: eventErroredFixture,
 };
 
-// Skipped until DEP-003 runs: these fixtures are shaped from the SDK's type
-// declarations, not recorded from a real Magic Hour response. Passing against
-// invented shapes would assert nothing. The operator replaces the JSON with real
-// payloads and removes the .skip — see docs/superpowers/plans/ Task 14.
+// Skipped: these fixtures are shaped from the SDK's type declarations rather than recorded from
+// real responses, so passing would assert nothing.
 describe("magic hour fixture conformance", () => {
   it.skip("parses the recorded real create response", async () => {
     const adapter = createMagicHourAdapter(testConfig.magicHour, {

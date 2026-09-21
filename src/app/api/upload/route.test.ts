@@ -44,7 +44,6 @@ const stored = {
 let getFileInfo: ReturnType<typeof vi.fn<UploadcareAdapter["getFileInfo"]>>;
 let cloudinaryUpload: ReturnType<typeof vi.fn<CloudinaryUpload>>;
 
-// The upload route never touches Magic Hour; this stub only satisfies the type.
 const unusedMagicHour: MagicHourAdapter = {
   createJob: () => Promise.reject(new Error("unused")),
   getJobDetails: () => Promise.reject(new Error("unused")),
@@ -217,9 +216,8 @@ describe("POST /api/upload", () => {
   });
 
   it("reports our own bad write as a logged 500, not a client-facing 400", async () => {
-    // Defence in depth for the repository-write fix: a source our own server
-    // built badly (never a request the caller sent) must never surface as
-    // VALIDATION_FAILED, which would blame the request and skip the log.
+    // A source our own server built badly must never surface as VALIDATION_FAILED, which would
+    // blame the request and skip the log.
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const db = await getDb();
     setServerDepsForTests({

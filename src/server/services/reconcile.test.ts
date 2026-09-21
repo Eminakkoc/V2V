@@ -109,9 +109,7 @@ function makeDeps(
   };
 }
 
-// Every field but lastCheckedAt, which selectForReconcile always stamps the
-// moment a job is picked up -- the one write a budget-exhausted or otherwise
-// inert check is still allowed to have produced.
+// Every field but lastCheckedAt, which selectForReconcile stamps the moment a job is picked up.
 function withoutLastCheckedAt(job: Job | null): Job | null {
   if (!job) return job;
   return { ...job, lastCheckedAt: undefined };
@@ -218,9 +216,7 @@ describe("reconcileUserJobs", () => {
     expect(stored?.errorCode).toBe("JOB_ABANDONED");
   });
 
-  // The tests above use margins of 30 minutes to 5 hours, which pass whether
-  // the boundary is a strict `>` or a `>=` -- they would not notice a wrong
-  // comparison operator. These pin the exact boundary instead.
+  // The wide margins above pass whether the boundary is `>` or `>=`; these pin the exact edge.
   it("pins the deadline edge: now === deadlineAt exactly stays processing", async () => {
     const job = await insertJob({ deadlineAt: new Date(NOW.getTime()) });
     const getJobDetails = vi.fn(async () => makeDetails({ status: "rendering" }));
@@ -312,8 +308,6 @@ describe("reconcileUserJobs", () => {
     const copyVideoFromUrl = vi.fn(async () => makeVideo());
     await reconcileUserJobs("user-1", makeDeps({ getJobDetails, copyVideoFromUrl }), now);
 
-    // finalizeJob was never given the chance to run: neither of its own
-    // provider/Cloudinary calls happened.
     expect(getJobDetails).not.toHaveBeenCalled();
     expect(copyVideoFromUrl).not.toHaveBeenCalled();
 
@@ -322,9 +316,7 @@ describe("reconcileUserJobs", () => {
     expect(stored?.errorCode).toBe("JOB_ABANDONED");
   });
 
-  // REC-004's submission arm. insert() is called directly rather than through
-  // insertJob() because the whole point is a record with no magicHourId, and
-  // insertJob always attaches one.
+  // insert() directly rather than insertJob(), which always attaches a magicHourId.
   async function insertUnsubmitted(deadlineAt: Date): Promise<Job> {
     idCounter += 1;
     return jobs.insert("user-1", {
@@ -340,9 +332,7 @@ describe("reconcileUserJobs", () => {
     const getJobDetails = vi.fn(async () => makeDetails());
     await reconcileUserJobs("user-1", makeDeps({ getJobDetails }), now);
 
-    // There is no id to ask about, so the provider must never be called --
-    // this is also what kept the old non-null assertion on job.magicHourId
-    // from being a live bug.
+    // There is no id to ask about, so the provider must never be called.
     expect(getJobDetails).not.toHaveBeenCalled();
 
     const stored = await jobs.findByIdUnscoped(job.id);
@@ -398,7 +388,6 @@ describe("reconcileUserJobs", () => {
     const copyVideoFromUrl = vi.fn(async () => makeVideo());
     await reconcileUserJobs("user-1", makeDeps({ getJobDetails, copyVideoFromUrl }), now);
 
-    // finalizeJob was never given the chance to run.
     expect(getJobDetails).not.toHaveBeenCalled();
     expect(copyVideoFromUrl).not.toHaveBeenCalled();
     const stored = await jobs.findByIdUnscoped(job.id);
@@ -407,16 +396,8 @@ describe("reconcileUserJobs", () => {
   });
 
   it("the finalizing grace check reads the clock itself, not the batch's start time", async () => {
-    // The clock's first value is consumed by reconcileUserJobs' own
-    // startedAt, so this can only come out abandoned if the grace check
-    // reads the clock again afterwards -- by then it has moved past
-    // deadlineAt + graceMs. Reusing the batch's start time instead (e.g. the
-    // grace check comparing against `deadline - BATCH_BUDGET_MS` rather than
-    // calling now() itself) would still see NOW, which is not past
-    // deadlineAt(NOW) + graceMs, and would wrongly finalize a job that
-    // should be abandoned -- a real hazard, since that stale value can be up
-    // to BATCH_BUDGET_MS (45s) old by the time a later job in the batch is
-    // checked, long enough to straddle a grace boundary.
+    // The clock's first value goes to reconcileUserJobs' own startedAt, so this can only come out
+    // abandoned if the grace check reads the clock again instead of reusing the batch's start time.
     const job = await insertJob({
       status: "finalizing",
       claimedAt: new Date(NOW.getTime() - 10 * 60_000),
@@ -426,9 +407,6 @@ describe("reconcileUserJobs", () => {
     const getJobDetails = vi.fn(async () => makeDetails({ status: "complete" }));
     const copyVideoFromUrl = vi.fn(async () => makeVideo());
 
-    // First call is reconcileUserJobs' own startedAt/selection stamp; every
-    // call after that -- reconcileOne's own grace check among them -- reports
-    // a time already past deadlineAt + graceMs.
     const clock = vi
       .fn<() => Date>()
       .mockReturnValueOnce(NOW)
@@ -447,19 +425,13 @@ describe("reconcileUserJobs", () => {
     const job = await insertJob();
     const before = withoutLastCheckedAt(job);
     const releaseClaim = vi.spyOn(jobs, "releaseClaim");
-    // Never settles: the provider adapter exposes no abort signal, so a call
-    // that loses the race is still "running" from this module's point of
-    // view for the rest of the test.
+    // Never settles: the adapter exposes no abort signal, so a call that loses the race is still
+    // running.
     const getJobDetails = vi.fn(() => new Promise<MagicHourJobDetails>(() => {}));
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    // Real timers throughout -- only the clock is rigged, giving the
-    // per-job budget check ~20ms of real, positive budget (still the
-    // PROVIDER_CALL_TIMEOUT_MS-vs-remaining race in withBudget, just with a
-    // short enough remaining time that the test does not have to wait out
-    // the real 10s constant). Mixing mongodb-memory-server's real socket I/O
-    // with vi's fake timers is what actually hangs here, not the assertion
-    // this test cares about.
+    // Real timers with only the clock rigged -- mixing mongodb-memory-server's socket I/O with fake
+    // timers is what hangs here.
     const clock = vi
       .fn<() => Date>()
       .mockReturnValueOnce(NOW)
@@ -506,10 +478,8 @@ describe("reconcileUserJobs", () => {
     const beforeA = withoutLastCheckedAt(jobA);
     const beforeB = withoutLastCheckedAt(jobB);
 
-    // First call is reconcileUserJobs' own startedAt; every later call (one
-    // per selected job's own budget check) reports a time already past the
-    // batch deadline, so each job's remaining budget is <= 0 by the time its
-    // own check begins.
+    // First call is the batch's own startedAt; every later call reports a time already past the
+    // batch deadline.
     const clock = vi
       .fn<() => Date>()
       .mockReturnValueOnce(NOW)

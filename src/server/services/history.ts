@@ -18,9 +18,8 @@ import { toJobView } from "@/server/services/job-view";
 
 export { historyQuerySchema, parseHistoryQuery } from "@/lib/history-contract";
 
-// The depth at which a backwards retryOfJobId walk gives up rather than keep
-// issuing batches. Typical chains are one or two deep; ten is headroom, not a
-// realistic ceiling, so hitting it is worth a log line.
+// Where a backwards retryOfJobId walk gives up; typical chains are one or two deep, so reaching
+// this is worth a log line.
 export const MAX_ATTEMPT_DEPTH = 10;
 
 type Deps = Pick<ServerDeps, "jobs" | "sources" | "config">;
@@ -52,10 +51,8 @@ export async function listHistory(
     dir: query.dir,
     limit: query.limit + 1,
   };
-  // HistoryQuery on the repository is a discriminated union keyed on `sort`
-  // so a duration cursor can never silently pair with the date branch (or
-  // vice versa); query.sort is HistorySort, not a literal, so the branch has
-  // to be spelled out rather than passed through.
+  // query.sort is HistorySort rather than a literal, so the repository's discriminated union has to
+  // be spelled out per branch.
   const rows =
     query.sort === "duration"
       ? await deps.jobs.listForUser(userId, {
@@ -94,7 +91,6 @@ async function listSources(
   const last = items.at(-1);
   const nextCursor = hasMore && last ? encodeDateCursor(last) : null;
 
-  // One grouped count over the page's source ids, never one query per row.
   const counts = await deps.jobs.countBySourceIds(
     userId,
     items.map((source) => source.id),
@@ -116,17 +112,13 @@ async function listSources(
   };
 }
 
-// The only place the two per-row projections (source, attempts) are
-// assembled, so every job-returning path -- first page, load more,
-// changeable and ids -- goes through it and renders complete.
+// The only place the per-row source and attempts projections are assembled, so every job-returning
+// path renders complete.
 async function decorate(rows: Job[], userId: string, deps: Deps): Promise<HistoryJobView[]> {
   if (rows.length === 0) return [];
 
   const ancestorsById = await collectAttemptChains(rows, userId, deps.jobs);
 
-  // Attempts share their parent's sourceId, so this is normally a no-op over
-  // the rows' own ids -- collected anyway per the spec, in case a chain ever
-  // does not share one.
   const sourceIds = new Set<string>();
   for (const row of rows) sourceIds.add(row.sourceId);
   for (const attempt of ancestorsById.values()) sourceIds.add(attempt.sourceId);
@@ -143,11 +135,8 @@ async function decorate(rows: Job[], userId: string, deps: Deps): Promise<Histor
         duration: source.duration,
       };
     }
-    // The job record carries no Cloudinary data of its own for its source --
-    // there is nothing truthful to derive a projection from. The source URL
-    // is shown to the user as a real, copyable link (HIS-004), so a
-    // synthesised one would hand them a link to nothing plus a broken player
-    // and poster. null lets the row still render everything else.
+    // There is nothing truthful to derive a projection from, and a synthesised URL would hand the
+    // user a link to nothing; null still renders the rest of the row.
     if (!warnedMissingSourceIds.has(row.sourceId)) {
       warnedMissingSourceIds.add(row.sourceId);
       console.warn(`[history] source ${row.sourceId} not found; returning source: null`);
@@ -176,11 +165,8 @@ async function decorate(rows: Job[], userId: string, deps: Deps): Promise<Histor
   }));
 }
 
-// Walks retryOfJobId backwards in batches: one findByIds per depth level,
-// collecting that level's retryOfJobId values for the next. Backwards
-// because those ids are already in hand and `_id: {$in}` uses the primary
-// index -- a forward walk on supersededByJobId would need an index that does
-// not exist. Capped so a corrupt or cyclical chain cannot loop forever.
+// Walks retryOfJobId backwards, one findByIds per depth level, because those ids already hit the
+// primary index; capped so a cyclical chain cannot loop forever.
 async function collectAttemptChains(
   rows: Job[],
   userId: string,

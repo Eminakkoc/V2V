@@ -40,8 +40,6 @@ const validParams = {
   artStyle: "Watercolor" as const,
 };
 
-// The transform route never touches Uploadcare or Cloudinary; these stubs
-// only satisfy the type.
 const unusedUploadcare = { getFileInfo: () => Promise.reject(new Error("unused")) };
 const unusedCloudinary = { copyVideoFromUrl: () => Promise.reject(new Error("unused")) };
 
@@ -68,8 +66,8 @@ async function insertSource(uid: string, overrides: Partial<typeof sourceInput> 
   return sources.insert(uid, { ...sourceInput, ...overrides });
 }
 
-// z.input, not the schema's output type: this builds the wire payload a
-// client sends, before Zod fills in defaults like fpsResolution.
+// z.input, not the schema's output type: this builds the wire payload a client sends, before Zod
+// fills in defaults.
 type TransformRequestInput = z.input<typeof transformRequestSchema>;
 
 function makeBody(
@@ -96,10 +94,8 @@ async function jobDoc(id: string) {
   return db.collection("jobs").findOne({ _id: new ObjectId(id) });
 }
 
-// The unique {userId, idempotencyKey} index is what the concurrent-request
-// test below relies on to reproduce the duplicate-key race; it is only
-// created out-of-band in production (scripts/create-indexes.ts), so the test
-// database needs it set up explicitly.
+// The unique {userId, idempotencyKey} index the duplicate-key race below relies on is only created
+// out-of-band in production, so the test database needs it explicitly.
 beforeAll(async () => ensureIndexes(await getDb()));
 
 beforeEach(async () => {
@@ -135,9 +131,8 @@ describe("POST /api/transform", () => {
       sources: createSourcesRepository(() => Promise.resolve(db)),
       jobs: {
         ...createJobsRepository(() => Promise.resolve(db)),
-        // Simulates a database blip landing right after a successful create:
-        // the job is already live at Magic Hour, so this must not be treated
-        // as a failed submission.
+        // A database blip landing right after a successful create: the job is already live at Magic
+        // Hour, so this must not be treated as a failed submission.
         attachMagicHourId: () => Promise.reject(new AppError("DATABASE_UNAVAILABLE")),
       },
       rateLimiter: createRateLimiter(createRateLimitHitsRepository(() => Promise.resolve(db))),
@@ -197,10 +192,8 @@ describe("POST /api/transform", () => {
   it("returns 202 for both requests when two genuinely concurrent submissions share an idempotencyKey", async () => {
     const source = await insertSource(userId);
     const body = makeBody(source.id);
-    // Both requests race past the idempotency read above before either has
-    // inserted; the unique {userId, idempotencyKey} index then rejects the
-    // loser's insert, which must be turned back into the winner's 202, not
-    // a 500.
+    // Both requests race past the idempotency read before either inserts, and the loser's rejected
+    // insert must come back as the winner's 202, not a 500.
     const [first, second] = await Promise.all([transform(body), transform(body)]);
     expect(first.status).toBe(202);
     expect(second.status).toBe(202);
@@ -272,8 +265,6 @@ describe("POST /api/transform", () => {
   );
 
   it("stores the provider's own reason on the failed job without returning it to the caller", async () => {
-    // A 422 now logs, because a provider rejection is worth a server-side
-    // record whatever its status.
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const source = await insertSource(userId);
     createJob.mockRejectedValueOnce(
@@ -323,8 +314,8 @@ describe("POST /api/transform", () => {
 
   it("marks the old job superseded and links both jobs when retryOfJobId names a failed job", async () => {
     const source = await insertSource(userId);
-    // A retry is only ever offered in the UI for a job in a retryable state;
-    // drive the original there for real via a definite provider rejection.
+    // A retry is only offered for a job in a retryable state, so drive the original there with a
+    // definite provider rejection.
     createJob.mockRejectedValueOnce(
       new AppError("MAGIC_HOUR_INVALID_PARAMS", { details: { definite: true } }),
     );
@@ -349,8 +340,6 @@ describe("POST /api/transform", () => {
     ).job;
     expect(original.status).toBe("processing");
 
-    // Naming a still-live (or complete) job's id must not be able to make a
-    // render the user paid for permanently invisible.
     const retryResponse = await transform(makeBody(source.id, { retryOfJobId: original.id }));
     expect(retryResponse.status).toBe(202);
     const retryJob = transformResponseSchema.parse(await retryResponse.json()).job;
@@ -375,7 +364,6 @@ describe("POST /api/transform", () => {
     const otherJobId = otherJobDocBefore!._id.toHexString();
     expect(otherJobDocBefore?.status).toBe("failed");
 
-    // Retrying another user's job is accepted when the caller's own source is used.
     const ownSource = await insertSource(userId);
     const retryResponse = await transform(makeBody(ownSource.id, { retryOfJobId: otherJobId }));
     expect(retryResponse.status).toBe(202);
@@ -384,7 +372,6 @@ describe("POST /api/transform", () => {
     const otherJobDoc = await jobDoc(otherJobId);
     expect(otherJobDoc).toMatchObject({ status: "superseded", supersededByJobId: retryJob.id });
 
-    // But a source the caller does not own is still refused, retryOfJobId or not.
     const refused = await transform(makeBody(otherSource.id, { retryOfJobId: otherJobId }));
     expect(refused.status).toBe(404);
     expect((await errorOf(refused)).code).toBe("SOURCE_NOT_FOUND");

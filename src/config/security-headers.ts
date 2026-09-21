@@ -4,14 +4,11 @@ const UPLOADCARE = [
   "https://*.ucarecdn.com",
   "https://*.ucarecd.net",
 ];
-// Files at or above the multipart threshold (26214400 bytes) are chunked and PUT
-// directly to this presigned S3 host; see @uploadcare/upload-client's multipartStart.
+// Files at or above the multipart threshold are chunked and PUT directly to this presigned S3 host.
 const UPLOADCARE_MULTIPART = "https://uploadcare.s3-accelerate.amazonaws.com";
 const CLOUDINARY = "https://res.cloudinary.com";
-// @vercel/speed-insights (src/app/layout.tsx's <SpeedInsights />) loads its
-// script from this host and reports vitals back to it -- both directives are
-// needed, or the script itself is blocked (script-src) even before it would
-// get the chance to report anything (connect-src).
+// <SpeedInsights /> loads its script from this host and reports vitals back to it, so both
+// directives are needed.
 const VERCEL_SPEED_INSIGHTS = "https://va.vercel-scripts.com";
 
 export function contentSecurityPolicy(isDevelopment: boolean): string {

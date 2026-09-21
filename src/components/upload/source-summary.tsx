@@ -6,16 +6,12 @@ import type { UploadResponse } from "@/lib/upload-contract";
 
 type SourceSummaryProps = {
   result: UploadResponse;
-  // The picked file's own name. Absent when the source was restored from
-  // History rather than uploaded in this session, in which case the format
-  // stands in for it.
+  // Absent when the source was restored from History rather than uploaded in this session, in which
+  // case the format stands in for it.
   fileName?: string | null;
   onReplace: () => void;
 };
 
-// Figma "File header" (55:1822): the selected source's name is the page's own
-// heading on the configure screen, with its metadata beneath and Replace video
-// aligned to the right.
 export function SourceSummary({ result, fileName, onReplace }: SourceSummaryProps) {
   const { sourceVideo } = result;
   const meta = [

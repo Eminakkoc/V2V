@@ -6,10 +6,6 @@ import { Slider as SliderPrimitive } from "radix-ui"
 
 type ThumbProps = React.ComponentProps<typeof SliderPrimitive.Thumb>
 
-// Styled for the Figma "Trimmer" (57:1952), this control's only caller: the
-// track is the filmstrip bed, the range is the selection (a 3px accent-strong
-// frame over a translucent wash) and each thumb is a tall pill that overhangs
-// the track by 3px top and bottom, with a 44px hit area behind it.
 function Slider({
   className,
   defaultValue,
@@ -19,10 +15,8 @@ function Slider({
   thumbProps,
   ...props
 }: React.ComponentProps<typeof SliderPrimitive.Root> & {
-  // Per-thumb overrides (aria-label, aria-valuetext, onKeyDown, ...), indexed
-  // to match `value`/`defaultValue`. A generic multi-thumb slider has no way
-  // to know what each handle means, so callers with named handles (start/end)
-  // supply that here instead of forking the primitive.
+  // Per-thumb overrides indexed to match `value`, so callers with named handles can say what each
+  // one means without forking the primitive.
   thumbProps?: ThumbProps[]
 }) {
   const _values = React.useMemo(
@@ -65,10 +59,9 @@ function Slider({
             key={index}
             {...thumbOverrides}
             className={cn(
-              // Height comes from the track token, not 100%: Radix wraps each
-              // thumb in an absolutely positioned, auto-height span, so a
-              // percentage here resolves against that wrapper rather than the
-              // track and collapses the pill to its own 2px borders (4px tall).
+              // Height comes from the track token, not 100%: Radix wraps each thumb in an
+              // absolutely positioned, auto-height span, against which a percentage collapses the
+              // pill to its own borders.
               "focus-ring relative block h-[calc(var(--trim-track-height)+6px)] w-[18px] shrink-0 rounded-pill border-[length:var(--stroke-rule)] border-bg bg-accent-strong shadow-sm select-none after:absolute after:-inset-x-[13px] after:-inset-y-1.5 disabled:pointer-events-none",
               thumbClassName
             )}

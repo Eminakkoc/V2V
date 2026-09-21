@@ -6,16 +6,9 @@ import type { JobStatus } from "@/lib/job-status";
 import { cn } from "@/lib/utils";
 import { HistoryCard } from "./history-card";
 
-// Statuses this DISPLAY predicate treats as "finished", for the attempts
-// header count only -- an attempt that has stopped progressing on the
-// normal processing/finalizing cadence. This is NOT the same as a
-// lifecycle-terminal set: a `timed_out` or `abandoned` attempt is still
-// re-checked by reconciliation, and this count simply follows whatever it
-// becomes on the next refresh -- it can rise, fall, or a `timed_out` row
-// can later become `complete` without ever leaving "finished". `superseded`
-// is deliberately excluded: every previous attempt is superseded by
-// definition (that is what makes it a previous attempt), so counting it
-// here would count every row, every time, telling the reader nothing.
+// A display-only notion of "finished" for the header count, not a lifecycle-terminal set -- the
+// count can rise or fall on a later refresh, and `superseded` is excluded because every previous
+// attempt is superseded by definition.
 const FINISHED_STATUSES: ReadonlySet<JobStatus> = new Set([
   "complete",
   "failed",
@@ -27,11 +20,7 @@ function isFinished(attempt: AttemptView): boolean {
   return FINISHED_STATUSES.has(attempt.status);
 }
 
-// The AttemptView -> HistoryJobView shape HistoryCard's `job` prop expects.
-// `source` and `attempts` are inert filler: HistoryCard never reads either
-// for variant="attempt" (an attempt shares its source with the owning job,
-// which already shows it, and a chain is never nested more than one level
-// deep), so their exact value doesn't matter.
+// `source` and `attempts` are inert filler: HistoryCard never reads either for variant="attempt".
 function toHistoryJobView(attempt: AttemptView): HistoryJobView {
   return { ...attempt, source: null, attempts: [] };
 }
@@ -41,9 +30,8 @@ type PreviousAttemptsProps = {
   cloudName: string;
 };
 
-// F11: a collapsed-by-default disclosure listing a job's earlier attempts
-// oldest-to-newest, reusing HistoryCard (HIS-005) so the nested view can
-// never drift from the top-level one.
+// A collapsed-by-default disclosure listing a job's earlier attempts oldest-to-newest, reusing
+// HistoryCard so the nested view can never drift from the top-level one.
 export function PreviousAttempts({ attempts, cloudName }: PreviousAttemptsProps) {
   if (attempts.length === 0) return null;
 
@@ -53,8 +41,6 @@ export function PreviousAttempts({ attempts, cloudName }: PreviousAttemptsProps)
   const finishedCount = ordered.filter(isFinished).length;
 
   return (
-    // Figma "Disclosure", Kind=Attempts (53:1347): a hairline rule, the
-    // chevron, the count, and the finished tally as quiet meta beside it.
     <Collapsible className="flex flex-col gap-3 px-4 pb-4 sm:px-6 sm:pb-6">
       {/* F11: surfaced next to the header, not only inside the expanded
           content, so a reader never has to open the disclosure to learn a

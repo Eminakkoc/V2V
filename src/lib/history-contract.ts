@@ -7,9 +7,8 @@ import { jobViewSchema } from "./transform-contract";
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 const MAX_IDS = 50;
 
-// Job-shaping parameters. tab=sources, changeable and ids each refuse the
-// subset of these that would be meaningless for them, rather than accepting
-// and ignoring one -- a silently ignored filter reads as a filter that ran.
+// Job-shaping parameters; a mode that cannot honour one refuses it rather than accepting and
+// ignoring it, since a silently ignored filter reads as a filter that ran.
 const JOB_ONLY = ["status", "statusBucket", "style", "includePrevious", "sort", "dir"] as const;
 
 export const historyQuerySchema = z
@@ -42,14 +41,8 @@ export const historyQuerySchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    // Only checks that a *parsed* value can legitimately make: neither
-    // combination below can be produced by a schema default (status,
-    // statusBucket, changeable and ids all default to undefined/false), so
-    // seeing both set here means the caller actually sent both. Every other
-    // combination (tab=sources, changeable, ids vs. the job-only filters) is
-    // rejected on the raw record instead, in parseHistoryQuery below, because
-    // after parsing a defaulted dir/sort/etc. is indistinguishable from one
-    // the caller actually sent.
+    // Only the checks a parsed value can legitimately make -- every other combination is rejected
+    // on the raw record, where a defaulted value is still distinguishable from one the caller sent.
     if (value.status && value.statusBucket) {
       ctx.addIssue({
         code: "custom",
@@ -68,12 +61,8 @@ export const historyQuerySchema = z
 
 export type HistoryQueryInput = z.infer<typeof historyQuerySchema>;
 
-// Raw-presence guard, run before historyQuerySchema.parse. It throws a
-// ZodError (never an AppError): this module carries no server-only import so
-// the browser can parse responses with these same schemas, and AppError is
-// server-only. src/server/errors/with-error-handling.ts already maps a
-// ZodError to VALIDATION_FAILED with { path, message } fields, so a ZodError
-// thrown here survives that mapping unchanged.
+// Raw-presence guard run before historyQuerySchema.parse; it throws a ZodError rather than the
+// server-only AppError, which with-error-handling.ts already maps to VALIDATION_FAILED.
 export function parseHistoryQuery(raw: Record<string, string>): HistoryQueryInput {
   const present = new Set(Object.keys(raw));
   const issues: z.core.$ZodIssue[] = [];

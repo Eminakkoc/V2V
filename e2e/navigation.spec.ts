@@ -17,8 +17,6 @@ test("a first visit receives the identity cookie", async ({ page, context }) => 
     .toBe(true);
 });
 
-// IR-009. Seeds nothing and calls neither /api/upload nor /api/transform, so
-// it costs nothing against the shared rate-limit tally in history.spec.ts.
 test("every page's content column shares its edges with the header", async ({ page }) => {
   for (const path of ["/", "/history"]) {
     await page.goto(path);
@@ -35,11 +33,8 @@ test("every page's content column shares its edges with the header", async ({ pa
       };
     });
 
-    // The Create page was the only one on max-w-6xl, so its content overhung
-    // the nav above it by exactly 64px each side (64..1216 against the
-    // header's 128..1152) while /history lined up with it perfectly. The
-    // requirement is that they agree, whatever the shared value turns out to
-    // be -- so this compares them to each other rather than to a number.
+    // The requirement is that the header and the content column agree, whatever the shared value
+    // turns out to be, so they are compared to each other rather than to a number.
     expect(edges.header, `${path} header`).not.toBeNull();
     expect(edges.main, `${path} main`).not.toBeNull();
     expect(edges.main, `${path} content column vs header`).toEqual(edges.header);

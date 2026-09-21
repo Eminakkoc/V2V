@@ -32,9 +32,8 @@ describe("jsonEqual", () => {
     expect(jsonEqual([1, 2], { 0: 1, 1: 2 })).toBe(false);
   });
 
-  // A row that gained an optional field (a job that just completed gains
-  // `output`) must never read as unchanged just because the other side has
-  // one fewer key.
+  // A row that gained an optional field must never read as unchanged just because the other side
+  // has one fewer key.
   it("separates a missing key from an explicit undefined", () => {
     expect(jsonEqual({ a: 1 }, { a: 1, b: undefined })).toBe(false);
     expect(jsonEqual({ a: 1, b: undefined }, { a: 1 })).toBe(false);

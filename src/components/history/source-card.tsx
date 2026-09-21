@@ -7,9 +7,8 @@ import { posterAtWidth, posterUrl } from "@/lib/cloudinary-urls";
 import { formatBytes, formatDuration, formatTimestamp } from "@/lib/format";
 import type { SourceView } from "@/lib/history-contract";
 
-// Same pattern as source-summary.tsx: a custom loader hands the request to
-// Cloudinary's own resize transformation instead of Next's image optimizer,
-// so no remotePatterns entry is needed for the Cloudinary delivery domain.
+// A custom loader hands the request to Cloudinary's own resize transformation instead of Next's
+// image optimizer, so no remotePatterns entry is needed.
 const posterLoader = ({ src, width }: ImageLoaderProps) => posterAtWidth(src, width);
 
 function transformCountLabel(count: number): string {
@@ -22,14 +21,8 @@ export type SourceCardProps = {
   cloudName: string;
 };
 
-// Figma "Upload card" (57:2496): one tile of the Uploaded videos grid --
-// poster with its duration pill, title, metadata, transformation count and
-// Transform. The design also shows a delete button; deletion is out of scope
-// this cycle, so it is not built here.
-//
-// The design titles each card with the original file name. Sources do not
-// store one (only the container format), so the format stands in -- the same
-// fallback the create page's file header uses.
+// Sources store no original file name, only the container format, so the format stands in as the
+// card title -- the same fallback the create page's file header uses.
 export function SourceCard({ source, cloudName }: SourceCardProps) {
   const poster = posterUrl(cloudName, source.cloudinaryPublicId);
   const uploaded = formatTimestamp(source.createdAt);
@@ -43,9 +36,6 @@ export function SourceCard({ source, cloudName }: SourceCardProps) {
           fill
           sizes="(min-width: 1024px) 380px, (min-width: 640px) 470px, 100vw"
           className="object-cover"
-          // Derived from the upload itself (1.1.1): duration and date are
-          // repeated as text below, so this isn't purely decorative, but it
-          // also isn't the reader's only way to reach that information.
           alt={`Video uploaded ${uploaded}, ${formatDuration(source.duration)} long`}
         />
       </VideoFrame>

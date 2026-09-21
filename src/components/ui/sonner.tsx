@@ -3,14 +3,8 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleAlertIcon, CircleCheckIcon, InfoIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react"
 
-// Figma "Toast" (16:448): one dark surface for every tone -- cream on
-// neutral-900 is 13:1, and the accent-300 action is 9.5:1 -- so the tone is
-// carried by the icon rather than by the background.
-//
-// Pinned to "light" rather than read from next-themes: the design has a single
-// light palette, so there is no theme to follow. Left unset, sonner's own
-// default is "system", which would restyle toasts for OS-dark readers against
-// an app that never goes dark.
+// Pinned to "light" rather than read from next-themes: the design has a single light palette, and
+// sonner's own "system" default would restyle toasts for OS-dark readers.
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner

@@ -38,16 +38,14 @@ export function encodeDurationCursor(row: {
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
 
-// Two decimals each, so the subtraction cannot produce a binary-float tail that
-// would miss an equality comparison against the same value recomputed in Mongo.
+// Two decimals each, so the subtraction cannot produce a binary-float tail that would miss the same
+// value recomputed in Mongo.
 export function clipSecondsOf(params: { startSeconds: number; endSeconds: number }): number {
   return Math.round((params.endSeconds - params.startSeconds) * 100) / 100;
 }
 
-// The schemas are .strict(), so a payload carrying the other sort's fields is
-// rejected rather than partially matched. That rejection is the point: a cursor
-// silently accepted against the wrong ordering repeats or skips rows instead of
-// failing, which is the failure mode this guards against.
+// The schemas are .strict(): a cursor accepted against the wrong ordering would silently repeat or
+// skip rows instead of failing.
 export function decodeCursor(raw: string, sort: HistorySort): HistoryCursor {
   let parsed: unknown;
   try {

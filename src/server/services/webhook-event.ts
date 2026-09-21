@@ -14,8 +14,8 @@ const payloadSchema = z.object({
 
 type Payload = z.infer<typeof payloadSchema>;
 
-// Magic Hour's prose examples show `object` where every per-event schema shows
-// `payload`. Accept both so a stale-shaped delivery cannot silently miss.
+// Magic Hour's prose examples show `object` where every per-event schema shows `payload`, so accept
+// both.
 export const webhookEventSchema = z
   .object({
     type: z.string().min(1),
@@ -39,11 +39,8 @@ function parseJson(raw: string): unknown {
   }
 }
 
-// Resolves the job a delivery refers to, including the name-fallback recovery
-// path for a job whose magicHourId never made it into the database (e.g. the
-// transform route's own write failing after Magic Hour already accepted the
-// job). Returns null when nothing can be matched, which the caller always
-// turns into a logged 200: none of these cases become true on redelivery.
+// Returns null when nothing can be matched, which the caller turns into a logged 200 -- none of
+// these cases become true on redelivery.
 async function resolveJob(payload: Payload, jobs: JobsRepository): Promise<Job | null> {
   const byId = await jobs.findByMagicHourId(payload.id);
   if (byId) return byId;
@@ -57,11 +54,8 @@ async function resolveJob(payload: Payload, jobs: JobsRepository): Promise<Job |
   const attached = await jobs.attachMagicHourId(candidate.id, payload.id);
   if (attached) return attached;
 
-  // attachMagicHourId only returns null when the job already carries a
-  // magicHourId: either a concurrent delivery just won this same attach (the
-  // re-read below finds it), or the job already has a *different* id, in
-  // which case the re-read correctly finds nothing and this delivery is
-  // acknowledged without touching that job.
+  // attachMagicHourId returns null only when the job already carries an id, so the re-read either
+  // finds the concurrent winner or correctly finds nothing.
   return jobs.findByMagicHourId(payload.id);
 }
 
@@ -73,8 +67,8 @@ export async function handleWebhookEvent(
   deps: WebhookDeps,
   now: () => Date = () => new Date(),
 ): Promise<WebhookResult> {
-  // Verification happens before the body is even parsed: an unverified
-  // delivery must never be acted on, not even to look at its shape.
+  // Verification happens before the body is even parsed: an unverified delivery must never be acted
+  // on.
   const verification = deps.magicHour.verifyWebhook({
     rawBody: raw,
     signature: headers.signature,
@@ -85,8 +79,7 @@ export async function handleWebhookEvent(
 
   const parsed = webhookEventSchema.safeParse(parseJson(raw));
   if (!parsed.success) {
-    // A malformed body will never parse on redelivery either, so there is
-    // nothing to gain by asking Magic Hour to retry it.
+    // A malformed body will never parse on redelivery either.
     console.warn("[webhook] body did not parse; acknowledged without action");
     return acknowledged;
   }
@@ -104,8 +97,8 @@ export async function handleWebhookEvent(
       return acknowledged;
 
     case "video.errored":
-      // A null return means the job already finalized as complete; that
-      // stored result must not be disturbed by a late failure delivery.
+      // A null return means the job already finalized as complete, and that stored result must not
+      // be disturbed.
       await deps.jobs.markFailed(job.id, {
         errorCode: "MAGIC_HOUR_JOB_FAILED",
         errorMessage: payload.error?.message ?? "Magic Hour reported the transform failed.",

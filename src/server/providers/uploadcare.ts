@@ -12,9 +12,8 @@ export function createUploadcareAdapter(
   const authSchema = new UploadcareSimpleAuthSchema({ publicKey, secretKey });
   return {
     async getFileInfo(uuid) {
-      // The rest-client retries throttled and network errors on its own; bounded
-      // to one retry each so a single call cannot eat into the route's own
-      // Cloudinary copy budget (COPY_BUDGET_MS) before we ever see it fail.
+      // Bounded to one retry each, so a single call cannot eat into the route's Cloudinary copy
+      // budget before we ever see it fail.
       const info = await fetchFileInfo(
         { uuid },
         { authSchema, retryThrottledRequestMaxTimes: 1, retryNetworkErrorMaxTimes: 1 },
@@ -29,11 +28,8 @@ export function createUploadcareAdapter(
       }
       return {
         uuid: info.uuid,
-        // Uploadcare reports the type twice: `mimeType` echoes the Content-Type
-        // the uploading client sent — "application/octet-stream" whenever it
-        // sent none — while contentInfo.mime.mime is sniffed from the bytes.
-        // Prefer the sniffed one; the filename is the last resort, applied by
-        // the shared video rules.
+        // mimeType only echoes the Content-Type the uploading client sent, so prefer the sniffed
+        // contentInfo type; the filename is the last resort.
         mimeType: info.contentInfo?.mime?.mime || info.mimeType,
         size: info.size,
         originalFileUrl: info.originalFileUrl,

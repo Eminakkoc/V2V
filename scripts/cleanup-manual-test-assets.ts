@@ -1,10 +1,6 @@
-// Removes the sources a live manual-test run left behind, in the live providers and in
-// MongoDB: pnpm cleanup:manual [--since <ISO date>] [--delete]
-//
-// Deleting a source is a product non-goal, so nothing in the app can clear these; without
-// this script every live run adds permanently to the Uploadcare and Cloudinary projects.
-//
-// Dry run by default — it only prints. Pass --delete to actually remove anything.
+// Removes the sources a live manual-test run left behind, in both providers and in MongoDB; dry run
+// by default, so pass --delete to remove anything: pnpm cleanup:manual [--since <ISO date>]
+// [--delete]
 import { deleteFile, UploadcareSimpleAuthSchema } from "@uploadcare/rest-client";
 import { v2 as cloudinary } from "cloudinary";
 import type { ObjectId } from "mongodb";
@@ -43,8 +39,8 @@ async function main() {
   const config = getConfig();
 
   if (config.providerMode !== "real") {
-    // Only a real run creates assets worth deleting, and the credentials in a fake-mode
-    // environment may well point somewhere else entirely.
+    // Only a real run creates assets worth deleting, and a fake-mode environment's credentials may
+    // point somewhere else entirely.
     throw new Error(`PROVIDER_MODE is "${config.providerMode}"; run this against a real one.`);
   }
 
@@ -80,17 +76,13 @@ async function main() {
   }
 
   const authSchema = new UploadcareSimpleAuthSchema(config.uploadcare);
-  // The adapter passes credentials per call to keep the server runtime free of global
-  // state; a one-shot script has no such concern, and destroy() takes no credentials.
   cloudinary.config({
     cloud_name: config.cloudinary.cloudName,
     api_key: config.cloudinary.apiKey,
     api_secret: config.cloudinary.apiSecret,
   });
-  // Re-sending the same upload reuses one Uploadcare file across several sources (the
-  // behaviour F.2 covers), so its uuid is not ours to delete while any source we are
-  // keeping still points at it. Cloudinary public ids are one per source, so they need no
-  // such check.
+  // One Uploadcare file can back several sources, so its uuid is not ours to delete while a source
+  // we are keeping still points at it.
   const shared = await db.collection(COLLECTIONS.sources).distinct("uploadcareUuid", {
     uploadcareUuid: { $in: [...new Set(candidates.map((c) => c.uploadcareUuid))] },
     _id: { $nin: candidates.map((c) => c._id) },
@@ -100,9 +92,8 @@ async function main() {
 
   let removed = 0;
   for (const candidate of candidates) {
-    // Providers first, database row last: a failure part-way leaves the row behind as the
-    // only remaining record of what still needs clearing. Dropping the row first would
-    // strand the provider assets with nothing pointing at them.
+    // Providers first, database row last: a failure part-way leaves the row behind as the only
+    // remaining record of what still needs clearing.
     try {
       await cloudinary.uploader.destroy(candidate.cloudinaryPublicId, {
         resource_type: "video",
@@ -126,8 +117,8 @@ async function main() {
   console.log(`\nRemoved ${removed} of ${candidates.length} source(s).`);
 }
 
-// Guarded so the argument parser above can be imported by a test without the script
-// connecting to the database and talking to both providers on import.
+// Guarded so the argument parser above can be imported by a test without the script connecting to
+// anything on import.
 if (process.argv[1] === import.meta.filename) {
   main()
     .catch((error: unknown) => {

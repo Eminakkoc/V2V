@@ -30,9 +30,8 @@ describe("formatTimestamp", () => {
   });
 
   it("labels the timezone, so the string is never mistaken for the reader's own local time", () => {
-    // The regression this guards: a future "tidy up the format" edit that
-    // drops `timeZoneName` would still pass the two assertions above only
-    // by coincidence of matching prefix -- this pins the label itself.
+    // The assertions above would still pass by prefix coincidence if `timeZoneName` were dropped;
+    // this pins the label itself.
     expect(formatTimestamp("2026-01-01T00:05:00.000Z")).toMatch(/\bUTC$/);
   });
 });

@@ -8,12 +8,8 @@ export const FAKE_UUID_PREFIXES = {
   longSource: "d0000000-",
 } as const;
 
-// Must match FAKE_JOB_NAME_TRIGGERS in src/server/providers/fakes.ts. Put one
-// of these in the job name to steer the fake provider down a branch it would
-// otherwise never reach: an uncertain create (no magicHourId, so the webhook's
-// v2v:<jobId> name fallback is the only way back to the job), a Cloudinary
-// copy that fails once / permanently inside finalize, or a getJobDetails
-// status other than the default "complete".
+// Must match FAKE_JOB_NAME_TRIGGERS in src/server/providers/fakes.ts; one of these in the job name
+// steers the fake provider down a branch it would otherwise never reach.
 export const FAKE_JOB_NAME_TRIGGERS = {
   createUncertain: "fake:create-uncertain",
   copyFailsOnce: "fake:copy-fails-once",
@@ -28,26 +24,22 @@ export function fakeUuid(prefix = ""): string {
   return `${prefix}${uuid.slice(prefix.length)}`;
 }
 
-// Must match fakeMagicHourId in src/server/providers/fakes.ts. Pass the same
-// FAKE_UUID_PREFIXES value the job name asked for, because createJob encodes
-// the copy trigger into the id it hands back. statusTag (one of "rendering" /
-// "error" / "canceled") trails the id rather than leading it, because the
-// copy prefix has to stay the first path segment of the download URL.
+// Must match fakeMagicHourId in src/server/providers/fakes.ts: createJob encodes the copy trigger
+// into the id, and the status tag trails it so the copy prefix stays the first path segment of the
+// download URL.
 export function fakeMagicHourId(jobId: string, copyPrefix = "", statusTag = ""): string {
   const tail = statusTag ? `~s=${statusTag}` : "";
   return `fake-mh-${copyPrefix}${jobId}${tail}`;
 }
 
-// The job name Magic Hour reports back, which the webhook's resolveJob parses
-// with parseJobName when findByMagicHourId misses. Must match buildJobName in
-// src/server/providers/magic-hour-mapping.ts.
+// Must match buildJobName in src/server/providers/magic-hour-mapping.ts, which the webhook's
+// resolveJob parses when findByMagicHourId misses.
 export function fakeJobName(jobId: string, userName: string): string {
   return `v2v:${jobId} ${userName}`.slice(0, 120);
 }
 
-// Reimplements the HMAC scheme src/server/providers/magic-hour-signature.ts verifies,
-// so a simulated webhook delivery is authenticated the same way a real one is -- there
-// is deliberately no test-only bypass of that check.
+// Reimplements the HMAC scheme src/server/providers/magic-hour-signature.ts verifies, so there is
+// deliberately no test-only bypass of that check.
 export function signWebhook(
   rawBody: string,
   secret: string,
@@ -158,22 +150,9 @@ export async function dropFile(
   await target.dispatchEvent("drop", { dataTransfer });
 }
 
-// Axe samples computed colours, so it must not run while one is still being
-// interpolated. Waiting for a locator is not enough on its own: `toBeEnabled()`
-// resolves the moment the `disabled` attribute is gone, but the Button base
-// class pairs `transition-all` with `disabled:opacity-50`, so a button that has
-// just been enabled spends the transition somewhere between opacity .5 and 1 --
-// and it is no longer disabled, so WCAG 1.4.3's inactive-component exemption no
-// longer covers it and axe reports that intermediate colour as a real
-// contrast violation.
-//
-// `document.getAnimations()` reports CSS transitions as well as animations, so
-// awaiting their `finished` promises settles the page exactly rather than
-// sleeping for a guessed duration -- and it closes the whole class of
-// sampled-mid-transition races, not just the one on the drop-zone buttons.
-// Infinite animations (a spinner) are skipped because they never settle and are
-// not what the race is about; `finished` rejects on cancel, which is a settled
-// outcome too.
+// Axe samples computed colours, and `toBeEnabled()` resolves while a just-enabled button is still
+// mid-opacity-transition, so awaiting `document.getAnimations()` settles the page exactly rather
+// than sleeping for a guessed duration.
 export async function settleForAxe(page: Page) {
   await page.evaluate(async () => {
     await document.fonts.ready;

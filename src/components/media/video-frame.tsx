@@ -1,10 +1,7 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Figma "Poster" (5:31) and "Inline player" (16:458). Both are the same frame:
-// radius/lg, a neutral-300 bed while the poster loads, and pills pinned over
-// it. User media is deliberately shown unfiltered so colours can be judged
-// (F23).
+// User media is deliberately shown unfiltered so colours can be judged.
 
 function Pill({ className, ...props }: React.ComponentProps<"span">) {
   return (
@@ -20,9 +17,7 @@ function Pill({ className, ...props }: React.ComponentProps<"span">) {
 
 type VideoFrameProps = {
   className?: string;
-  // Shown top-left; names which video this is ("Source", "Result").
   label?: string;
-  // Shown bottom-right as m:ss.
   duration?: string;
   children: React.ReactNode;
 };

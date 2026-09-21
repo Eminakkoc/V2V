@@ -55,8 +55,6 @@ describe("uploadSource", () => {
       width: 640,
       height: 360,
     };
-    // A slow getFileInfo (the first provider call) must not push the deadline
-    // out: it is computed once, before any provider call.
     const getFileInfo = vi.fn(async (): Promise<UploadcareFileInfo> => {
       now += 20_000;
       return fileInfo;
@@ -93,9 +91,6 @@ describe("uploadSource", () => {
   });
 
   it("stores the CDN URL on the host of Uploadcare's own file info, not the host the client sent", async () => {
-    // The client can address the file through any recognised Uploadcare host
-    // (ucarecdn.com or a ucarecd.net subdomain); the canonical record uses
-    // whichever host Uploadcare itself reports for that uuid.
     const fileInfo: UploadcareFileInfo = {
       uuid,
       mimeType: "video/mp4",
@@ -137,10 +132,8 @@ describe("uploadSource", () => {
   });
 
   it("accepts a file whose recorded type is generic by falling back to its filename", async () => {
-    // Uploadcare records "application/octet-stream" whenever the uploading
-    // client declared no content type, and sniffs nothing for this file. The
-    // browser accepted it on File.name; the server must reach the same verdict
-    // rather than rejecting it with UNSUPPORTED_FORMAT.
+    // Uploadcare records "application/octet-stream" when the uploading client declared no content
+    // type; the server must still accept it on the file name.
     const fileInfo: UploadcareFileInfo = {
       uuid,
       mimeType: "application/octet-stream",

@@ -6,8 +6,8 @@ export type JobTone = "pending" | "active" | "done" | "error";
 export type JobLabel = {
   label: string;
   tone: JobTone;
-  // Only true for `superseded`: the current-status badge suppresses it, but the
-  // label text is still real data for a "Previous attempts" list to show.
+  // Only true for `superseded`: the current-status badge suppresses it, but "Previous attempts"
+  // still shows the label text.
   hidden?: boolean;
 };
 
@@ -40,10 +40,8 @@ export function labelFor(job: LabelInput): JobLabel {
     case "superseded":
       return { label: "Superseded", tone: "pending", hidden: true };
     case "abandoned":
-      // Wording here comes from the architecture doc (§13), not Figma. Figma's copy
-      // says an abandoned job "won't be saved here" — that is wrong: a late result
-      // from Magic Hour is still saved against the job. Do not "fix" this back to
-      // the Figma copy.
+      // Wording comes from the architecture doc, not Figma, whose copy wrongly says an abandoned
+      // job is not saved: a late result from Magic Hour still is.
       if (job.errorCode === "SUBMISSION_UNCONFIRMED") {
         return { label: "Lost contact with Magic Hour. Still added if it finishes", tone: "error" };
       }

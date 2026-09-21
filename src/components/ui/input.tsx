@@ -1,9 +1,6 @@
 import * as React from "react"
 import { cn } from "cn"
 
-// Figma "Text field" (37:1048): a surface-filled pill with a border-input
-// hairline. Focus turns the border to color/focus and adds a flush 2px ring
-// (outline-offset 0) rather than the detached ring buttons use.
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input

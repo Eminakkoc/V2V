@@ -50,8 +50,8 @@ function DialogOverlay({
 function DialogContent({
   className,
   children,
-  // The design's dialogs are confirmations whose own buttons (plus Escape)
-  // dismiss them, so there is no corner X to duplicate.
+  // The design's dialogs are confirmations dismissed by their own buttons and Escape, so there is
+  // no corner X to duplicate.
   showCloseButton = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {

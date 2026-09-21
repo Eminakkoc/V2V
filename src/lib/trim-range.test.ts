@@ -19,7 +19,6 @@ describe("clampRange", () => {
   });
 
   it("clamps to the clip cap by moving the handle being dragged", () => {
-    // Dragging end far right with start at 0 must stop at the cap, not move start.
     expect(
       clampRange({ startSeconds: 0, endSeconds: 59 }, { startSeconds: 0, endSeconds: 10 }, bounds),
     ).toEqual({ startSeconds: 0, endSeconds: 30 });
@@ -72,8 +71,8 @@ describe("trimLimit", () => {
 });
 
 describe("defaultRange", () => {
-  // The real .mov from the report: an untouched trimmer submitted 2.69973 and
-  // the server refused it with "must have at most 2 decimals".
+  // The real .mov from the report: an untouched trimmer submitted 2.69973 and the server refused
+  // it.
   it("rounds a real source duration into what the schema accepts", () => {
     const range = defaultRange(2.69973, 30);
     expect(range).toEqual({ startSeconds: 0, endSeconds: 2.69 });
@@ -105,10 +104,8 @@ describe("defaultRange", () => {
 });
 
 describe("clampRange at the track extremes", () => {
-  // The source is 12.5s, so the track runs 0 .. 12.5 and both thumbs can
-  // reach an edge. IR-003: a keyboard user could drive them onto the same
-  // value, which a pointer drag cannot do (Radix's minStepsBetweenThumbs),
-  // and the control then let an invalid clip be submitted.
+  // The source is 12.5s, so both thumbs can reach an edge -- a keyboard user could drive them onto
+  // the same value, which a pointer drag cannot.
   const short = { duration: 12.5, minGap: 0.1, maxClipSeconds: 30 };
 
   it("keeps the gap when End drives the start thumb onto the end thumb", () => {

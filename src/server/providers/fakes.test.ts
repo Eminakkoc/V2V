@@ -1,7 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-// Not "@/..." -- this file's whole point is pinning e2e/helpers.ts's copy of
-// this vocabulary against the server's, so it has to import the real thing.
+// Not "@/...": the point is pinning e2e/helpers.ts's copy of this vocabulary against the server's.
 import { fakeMagicHourId as e2eFakeMagicHourId } from "../../../e2e/helpers";
 import type { TransformParams } from "@/lib/transform-contract";
 import {
@@ -84,8 +83,8 @@ describe("fake providers", () => {
       cloudinary.copyVideoFromUrl(plainInfo.originalFileUrl, options),
     ).resolves.toMatchObject({ duration: FAKE_SOURCE_SECONDS });
 
-    // Without a source longer than MAX_CLIP_SECONDS, the clip-length cap in
-    // startTransform is unreachable: the source-duration check always binds first.
+    // Without a source longer than MAX_CLIP_SECONDS the clip-length cap is unreachable -- the
+    // source-duration check binds first.
     const longInfo = await uploadcare.getFileInfo(longSource);
     await expect(
       cloudinary.copyVideoFromUrl(longInfo.originalFileUrl, options),
@@ -102,8 +101,6 @@ describe("fake providers", () => {
       }),
     ).rejects.toMatchObject({
       code: "MAGIC_HOUR_REQUEST_FAILED",
-      // definite: false is what keeps startTransform from marking the job
-      // failed, leaving it recoverable by the webhook's name fallback.
       details: { definite: false },
     });
   });
@@ -123,8 +120,8 @@ describe("fake providers", () => {
       const details = await magicHour.getJobDetails(magicHourId);
       const url = details.downloads[0]?.url ?? "";
 
-      // The fake Cloudinary reads its failure mode from the first path segment,
-      // so the trigger prefix has to lead it -- not sit behind "fake-mh-".
+      // The fake Cloudinary reads its failure mode from the first path segment, so the trigger
+      // prefix has to lead it.
       expect(new URL(url).pathname.split("/")[1]?.startsWith(prefix)).toBe(true);
       await expect(cloudinary.copyVideoFromUrl(url, options)).rejects.toMatchObject({
         code: "CLOUDINARY_UPLOAD_FAILED",
@@ -166,8 +163,6 @@ describe("fake providers", () => {
       if (status === "rendering") {
         expect(details.error).toBeNull();
       } else {
-        // error and canceled are the branches mapProviderStatus reports as
-        // "failed", and both carry a reason -- so the fake must populate one.
         expect(details.error).toMatchObject({
           code: expect.any(String),
           message: expect.any(String),
@@ -188,11 +183,8 @@ describe("fake providers", () => {
     expect(details.error).toBeNull();
   });
 
-  // L-006: a fake-provider trigger must resolve at every call site that
-  // consumes it, not just the first. A name carrying both the copy-failure
-  // and the status trigger has to keep routing the download URL through the
-  // copy-failure branch -- the trailing status tag must not displace the
-  // leading copy prefix that the fake Cloudinary adapter reads.
+  // A name carrying both triggers must keep the copy prefix leading the download URL; the trailing
+  // status tag must not displace it.
   it("keeps the copy-fails-once prefix leading the download URL even when a status trigger is also present", async () => {
     const { magicHour, cloudinary } = createFakeProviders("test-cloud");
     const { magicHourId } = await magicHour.createJob({
@@ -230,10 +222,8 @@ describe("fake providers", () => {
     );
   });
 
-  // This is the one guard standing between PROVIDER_MODE=fake and a webhook
-  // route that accepts anything: if the fake's verifyWebhook were ever
-  // simplified to `return true`, every webhook security test would still
-  // pass in the e2e suite while the real protection was gone.
+  // If the fake's verifyWebhook were ever simplified to `return true`, every webhook security test
+  // would still pass while the real protection was gone.
   it("verifyWebhook rejects a bad signature and accepts one signed with its own secret", () => {
     const secret = "a-specific-fake-secret";
     const { magicHour } = createFakeProviders("test-cloud", secret);

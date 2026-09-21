@@ -12,8 +12,8 @@ import { getConfig } from "@/config/env";
 import { hasFreshIdentity, IDENTITY_COOKIE } from "@/server/services/identity";
 import "./globals.css";
 
-// Caprasimo ships a single weight, so `weight` is required and headings must
-// never ask for bold -- see the :where(h1..h6) rule in globals.css.
+// Caprasimo ships a single weight, so headings must never ask for bold -- see the :where(h1..h6)
+// rule in globals.css.
 const caprasimo = Caprasimo({
   variable: "--font-caprasimo",
   weight: "400",

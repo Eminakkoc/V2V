@@ -5,16 +5,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 type CopyableUrlProps = {
-  // Lowercase noun naming what the URL points to ("source", "result"). Builds
-  // the visible label, the copy button's accessible name (F1: "Copy result
-  // URL") and the status announcement, so none of the three can disagree.
+  // Lowercase noun naming what the URL points to; it builds the visible label, the copy button's
+  // accessible name and the status announcement, so none of the three can disagree.
   kind: string;
   url: string;
 };
 
-// Figma "Media link" (16:466). Per F1: a real, visible link that opens in a
-// new tab, plus a 44px copy button that confirms the copy (or its failure)
-// through a polite status message rather than a visual-only change.
 export function CopyableUrl({ kind, url }: CopyableUrlProps) {
   const [announcement, setAnnouncement] = useState("");
 

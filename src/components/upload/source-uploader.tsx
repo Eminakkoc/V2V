@@ -38,31 +38,19 @@ function announcementFor(state: UploadState): string {
   }
 }
 
-// The React wrapper writes qualityInsights in a layout effect, which runs after
-// <uc-config> has upgraded and its telemetry manager has already read the
-// built-in default (on). Three events go out in that window and CSP blocks each
-// one, so every page load logged blocked-request errors. Passing the uploader's
-// own dashed attribute form as well puts the value in the initial render, so the
-// element upgrades with telemetry already off.
+// The React wrapper writes qualityInsights in a layout effect, after the element has already read
+// the built-in default and sent three CSP-blocked events; the dashed attribute form puts the value
+// in the initial render instead.
 const TELEMETRY_OFF = { "quality-insights": "false" } as const;
 
 export type SourceUploaderProps = {
   settings: UploaderSettings;
-  // A source that was already uploaded in an earlier session and handed back
-  // by the History "Transform" link (/?sourceId=<id>). There is no upload to
-  // run for it, so this component's own state machine stays idle -- without
-  // this it would show the drop zone under a page that is already showing
-  // that source's preview and trimmer. Cleared by Replace video, which puts
-  // the drop zone back.
+  // A source already uploaded in an earlier session and handed back by the History "Transform"
+  // link: there is no upload to run, so this component's own state machine stays idle.
   initialResult?: UploadResponse | null;
-  // The container (create-flow.tsx) needs the source id, duration and original
-  // file name once upload settles, none of which it can otherwise observe from
-  // this component's own reducer state. Both are optional and no-op by default,
-  // so every existing behavior here is unchanged. `onStateChange` is forwarded
-  // straight to `useSourceUpload`, which calls it from the same places it
-  // dispatches -- never from an Effect watching `state`, which would also fire
-  // once on mount with the initial `idle` value and be indistinguishable from
-  // a real reset.
+  // `onStateChange` is forwarded straight to `useSourceUpload`, which calls it from the same places
+  // it dispatches -- never from an Effect watching `state`, which would also fire once on mount
+  // with the initial `idle` value.
   onStateChange?: (state: UploadState) => void;
   onFileSelected?: (name: string) => void;
 };
@@ -76,9 +64,8 @@ export function SourceUploader({
   const uploaderRef = useRef<UploadCtxProvider>(null);
   const pendingFileRef = useRef<File | null>(null);
   const [ready, setReady] = useState(false);
-  // The picker reports the file's own name and size; neither is part of the
-  // upload state machine (which only tracks progress), but the design shows
-  // both -- on the uploading row and again as the configure screen's heading.
+  // The picker reports the file's own name and size; neither is part of the upload state machine,
+  // but the design shows both.
   const [selectedFile, setSelectedFile] = useState<{ name: string; size: number } | null>(null);
   const [restored, setRestored] = useState<UploadResponse | null>(initialResult);
   const limits = useMemo(
@@ -107,9 +94,8 @@ export function SourceUploader({
 
   const api = () => uploaderRef.current?.getAPI();
 
-  // FileUploaderRegular loads its web component via a dynamic import, so the
-  // widget isn't ready the instant this component mounts. A drop that lands
-  // first is queued and replayed once the ref attaches, instead of being lost.
+  // The widget loads its web component via a dynamic import, so a drop that lands before the ref
+  // attaches is queued and replayed rather than lost.
   const setUploaderRef = useCallback((instance: UploadCtxProvider | null) => {
     uploaderRef.current = instance;
     setReady(instance !== null);

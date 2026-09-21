@@ -32,8 +32,8 @@ let deps: ServerDeps | undefined;
 
 function createProviders(config: AppConfig): Providers {
   if (config.providerMode === "fake") {
-    // Passing the real configured secret keeps fake-mode webhook verification
-    // meaningful: e2e signs deliveries with this same secret.
+    // The real configured secret keeps fake-mode webhook verification meaningful: e2e signs
+    // deliveries with it.
     return createFakeProviders(config.cloudinary.cloudName, config.magicHour.webhookSecret);
   }
   return {

@@ -12,38 +12,26 @@ export const FAKE_UUID_PREFIXES = {
 } as const;
 export const FAKE_FILE_SIZE = 5_242_880;
 export const FAKE_SOURCE_SECONDS = 12.5;
-// Long enough that MAX_CLIP_SECONDS (30) binds before the source-duration
-// check in startTransform. Without a source longer than the cap, that branch
-// is unreachable and the cap is untestable through the real route.
+// Longer than MAX_CLIP_SECONDS (30), so the clip-length cap binds before the source-duration check.
 export const FAKE_LONG_SOURCE_SECONDS = 60;
-// More than two decimals, which is what a real source reports and what
-// transformParamsSchema refuses. Both durations above are already two-decimal
-// figures, so under PROVIDER_MODE=fake the trimmer could not produce an
-// out-of-spec value at all and the client half of the two-decimal rule was
-// unreachable by the suite.
+// More than two decimals, so the client half of the two-decimal rule is reachable under
+// PROVIDER_MODE=fake.
 export const FAKE_ODD_SOURCE_SECONDS = 2.69973;
 
-// Opt-ins a caller writes into the job name (params.name) to steer the fake
-// Magic Hour adapter down a branch it would otherwise never take. They exist
-// because several real-world outcomes have no other trigger under
-// PROVIDER_MODE=fake: the fake createJob always succeeds, and the download URL
-// it hands finalize is keyed on the Magic Hour id, never on anything the
-// caller controls. Matching is substring-based so a trigger can sit inside an
-// otherwise ordinary name. Read only here; PROVIDER_MODE=real never sees them.
+// Substring opt-ins a caller writes into the job name to steer the fake adapter down branches that
+// have no other trigger under PROVIDER_MODE=fake.
 export const FAKE_JOB_NAME_TRIGGERS = {
-  // createJob reports an *uncertain* failure: the job stays processing/
-  // submitting with no magicHourId, which is the only state the webhook's
-  // v2v:<jobId> name fallback can recover from.
+  // An *uncertain* failure: no magicHourId, which is the only state the webhook's name fallback can
+  // recover from.
   createUncertain: "fake:create-uncertain",
-  // finalize's Cloudinary copy fails retryably once, then succeeds — the
-  // transient branch that releases the claim, answers 500 and keeps the paid
-  // render recoverable on redelivery.
+  // The Cloudinary copy fails retryably once, then succeeds -- the transient branch that keeps a
+  // paid render recoverable on redelivery.
   copyFailsOnce: "fake:copy-fails-once",
-  // finalize's Cloudinary copy fails permanently — the branch that markFailed's
-  // the job rather than inviting another delivery.
+  // The copy fails permanently -- the branch that marks the job failed rather than inviting another
+  // delivery.
   copyUnreadable: "fake:copy-unreadable",
-  // Reconciliation calls getJobDetails with nothing but the id, so a status
-  // the caller wants reported has to be encoded into that id at create time.
+  // Reconciliation calls getJobDetails with nothing but the id, so a wanted status has to be
+  // encoded into it at create time.
   statusRendering: "fake:status-rendering",
   statusError: "fake:status-error",
   statusCanceled: "fake:status-canceled",
@@ -51,16 +39,14 @@ export const FAKE_JOB_NAME_TRIGGERS = {
 
 const FAKE_MH_PREFIX = "fake-mh-";
 const STATUS_TAG = "~s=";
-// Used only when the caller has no real webhook secret to hand in (e.g. plain unit
-// tests). Deps wiring passes config.magicHour.webhookSecret so PROVIDER_MODE=fake
-// e2e runs still exercise fail-closed verification against the configured secret.
+// Only for callers with no real webhook secret; deps wiring passes the configured one so fake-mode
+// e2e still verifies fail-closed.
 const DEFAULT_FAKE_WEBHOOK_SECRET = "fake-webhook-secret";
 
 function uuidFrom(url: string): string {
   return new URL(url).pathname.split("/")[1] ?? "";
 }
 
-// The Cloudinary trigger, if any, that a job name asks finalize's copy to hit.
 function copyPrefixFor(jobName: string): string {
   if (jobName.includes(FAKE_JOB_NAME_TRIGGERS.copyUnreadable)) {
     return FAKE_UUID_PREFIXES.unreadable;
@@ -71,7 +57,6 @@ function copyPrefixFor(jobName: string): string {
   return "";
 }
 
-// The status trigger, if any, that a job name asks getJobDetails to report.
 function statusTagFor(jobName: string): string {
   if (jobName.includes(FAKE_JOB_NAME_TRIGGERS.statusRendering)) return "rendering";
   if (jobName.includes(FAKE_JOB_NAME_TRIGGERS.statusError)) return "error";
@@ -79,31 +64,22 @@ function statusTagFor(jobName: string): string {
   return "";
 }
 
-// The fake Magic Hour id is the carrier for both triggers: getJobDetails is
-// handed nothing but the id, so createJob encodes the caller's choices into it
-// rather than keeping per-process state that a server restart would lose.
-// The status tag trails the id rather than leading it, because the copy
-// prefix has to stay the FIRST path segment of the download URL, which is
-// where the fake Cloudinary adapter reads its failure mode.
+// Both triggers ride on the id because getJobDetails is handed nothing else; the status tag trails
+// it so the copy prefix stays the first path segment of the download URL.
 export function fakeMagicHourId(jobId: string, copyPrefix = "", statusTag = ""): string {
   const tail = statusTag ? `${STATUS_TAG}${statusTag}` : "";
   return `${FAKE_MH_PREFIX}${copyPrefix}${jobId}${tail}`;
 }
 
-// The first path segment of the download URL is exactly what the fake
-// Cloudinary adapter reads its failure mode from, so the trigger prefix has to
-// lead it. Stripping FAKE_MH_PREFIX is what puts it there; the remainder stays
-// unique per job, which keeps the fails-once bookkeeping per-job. The trailing
-// status tag (if any) rides along harmlessly -- nothing downstream parses this
-// URL as anything but an opaque path.
+// Stripping FAKE_MH_PREFIX puts the trigger prefix first, where the fake Cloudinary adapter reads
+// its failure mode; the remainder stays unique per job.
 function downloadSegment(magicHourId: string): string {
   return magicHourId.startsWith(FAKE_MH_PREFIX)
     ? magicHourId.slice(FAKE_MH_PREFIX.length)
     : magicHourId;
 }
 
-// With no trigger this must report "complete" -- every shipped e2e spec
-// depends on that default.
+// With no trigger this must report "complete" -- every shipped e2e spec depends on that default.
 function statusFromId(magicHourId: string): ProviderStatus {
   const index = magicHourId.indexOf(STATUS_TAG);
   if (index === -1) return "complete";
@@ -111,10 +87,8 @@ function statusFromId(magicHourId: string): ProviderStatus {
   return tag === "rendering" || tag === "error" || tag === "canceled" ? tag : "complete";
 }
 
-// A populated error object for the two statuses whose mapping carries a
-// reason (mapProviderStatus's "failed" branches) -- otherwise those
-// reason-carrying branches (failureMessage's provider-message fallback,
-// markFailedFromCheck's magicHourError) would be unreachable through the fake.
+// The two statuses mapProviderStatus reports as "failed" carry a reason, so the fake must populate
+// one or those branches are unreachable.
 function errorFor(status: ProviderStatus): { code: string; message: string } | null {
   if (status === "error") {
     return { code: "fake_render_error", message: "The fake provider reported a render error." };
@@ -158,8 +132,6 @@ export function createFakeProviders(
           failedOnce.add(uuid);
           throw new AppError("CLOUDINARY_UPLOAD_FAILED", { retryable: true });
         }
-        // Mirrors the real adapter's `<folder>/<id>`: a fake that always said
-        // "sources" is what let the misfiled results through D.1's green path.
         const publicId = `${folder}/fake-${uuid}`;
         return {
           publicId,
@@ -179,8 +151,8 @@ export function createFakeProviders(
     magicHour: {
       async createJob({ jobId, params }) {
         if (params.name.includes(FAKE_JOB_NAME_TRIGGERS.createUncertain)) {
-          // definite: false is the whole point — startTransform must leave the
-          // job processing/submitting with no magicHourId, not mark it failed.
+          // definite: false is the whole point: startTransform must leave the job submitting with
+          // no magicHourId, not mark it failed.
           throw new AppError("MAGIC_HOUR_REQUEST_FAILED", { details: { definite: false } });
         }
         return {
@@ -207,8 +179,7 @@ export function createFakeProviders(
           error: errorFor(status),
         };
       },
-      // Delegates to the real crypto so PROVIDER_MODE=fake still fails closed on a
-      // bad signature instead of rubber-stamping every webhook delivery.
+      // Delegates to the real crypto so PROVIDER_MODE=fake still fails closed on a bad signature.
       verifyWebhook(args) {
         return verifyWebhookSignature({
           rawBody: args.rawBody,

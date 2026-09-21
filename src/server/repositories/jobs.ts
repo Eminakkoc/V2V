@@ -24,16 +24,8 @@ export type CompletionPatch = {
 export type JobsDateCursor = { createdAt: Date; id: string };
 export type JobsDurationCursor = { clipSeconds: number; createdAt: Date; id: string };
 
-// `sort` is optional rather than required so the pre-existing date-sort
-// callers (and their tests, which predate this field) keep compiling with
-// undefined behaving exactly like "createdAt". But `sort` and `cursor` must
-// still agree: a duration cursor paired with `sort` omitted would silently
-// take the date branch below, drop `clipSeconds`, and page on createdAt/_id
-// against a caller who believes they are paging by length. The intersected
-// `{ clipSeconds?: never }` on the date arm is required, not decorative — a
-// plain discriminated union lets a duration cursor's `clipSeconds` through
-// under union excess-property checking because it is a known key on the
-// other arm.
+// `sort` stays optional so date-sort callers keep compiling; the `{ clipSeconds?: never }` on the
+// date arm is what stops a duration cursor slipping through union excess-property checking.
 export type HistoryQuery = {
   statuses?: JobStatus[];
   artStyle?: string;
@@ -101,16 +93,12 @@ export type JobsRepository = {
   markFailedFromCheck(id: string, patch: FailurePatch): Promise<Job | null>;
 };
 
-// The rank of each phase in its declared order, so a write can be guarded to
-// only ever move a job's phase forward.
+// The rank of each phase in its declared order, so a write can only ever move a job's phase
+// forward.
 const PHASE_RANK: Record<JobPhase, number> = Object.fromEntries(
   JOB_PHASES.map((phase, index) => [phase, index]),
 ) as Record<JobPhase, number>;
 
-// Re-exported rather than redefined here -- see the definition in
-// @/lib/job-status for why it lives there (the client-side History refresh
-// hook needs the same set). Kept exported from this module too so existing
-// importers of it from the repository keep compiling.
 export { CHANGEABLE_STATUSES };
 
 export function createJobsRepository(getDb: DbGetter): JobsRepository {
@@ -156,8 +144,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
-    // Guarded on magicHourId being absent so two deliveries racing the name
-    // fallback cannot both attach. Returns null when someone else won.
+    // Guarded on magicHourId being absent so two deliveries racing the name fallback cannot both
+    // attach.
     attachMagicHourId: (id, magicHourId) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -172,8 +160,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
-    // One atomic transition. A job already finalizing is only reclaimable when its
-    // claim predates staleBefore — that is the crashed-mid-finalize recovery.
+    // A job already finalizing is only reclaimable when its claim predates staleBefore -- the
+    // crashed-mid-finalize recovery.
     claimForFinalize: (id, now, staleBefore) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -186,13 +174,11 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
               { status: "finalizing", claimedAt: { $lt: staleBefore } },
             ],
           },
-          // A pipeline update so the status being replaced is captured in the same
-          // write. Reading it beforehand would restore a stale value on release.
           [
             {
               $set: {
-                // Re-claiming a stale finalizing job must not overwrite the original
-                // pre-claim status with "finalizing".
+                // Re-claiming a stale finalizing job must not overwrite the original pre-claim
+                // status with "finalizing".
                 preFinalizeStatus: {
                   $cond: [
                     { $eq: ["$status", "finalizing"] },
@@ -211,8 +197,6 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
-    // No status argument: restores whatever claimForFinalize recorded as the
-    // pre-claim status, atomically, in the same write that clears the claim.
     releaseClaim: (id) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -228,11 +212,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         ]);
       }),
 
-    // Guarded on status: "processing" so a late video.started (or any other phase
-    // update) cannot drag a job that already moved on backwards. Also guarded on
-    // phase rank so, independent of status, a phase update can only advance —
-    // e.g. the create call's own "queued" write must not overwrite "rendering"
-    // when a video.started webhook won the race.
+    // Guarded on status and on phase rank, so neither a late webhook nor the create call's own
+    // write can drag a job backwards.
     setPhase: (id, phase) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -255,8 +236,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         const _id = toObjectId(id);
         if (!_id) return null;
         const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
-          // Magic Hour redelivers for up to 24h: a late video.errored must not
-          // overwrite a job that already finalized and paid out a result.
+          // Magic Hour redelivers for up to 24h: a late video.errored must not overwrite a job that
+          // already finalized.
           { _id, status: { $ne: "complete" } },
           {
             $set: {
@@ -266,8 +247,6 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
               updatedAt: new Date(),
               ...(patch.magicHourError ? { magicHourError: patch.magicHourError } : {}),
             },
-            // Failure is terminal: any claim bookkeeping left over from a finalize
-            // attempt no longer means anything.
             $unset: { claimedAt: "", preFinalizeStatus: "" },
           },
           { returnDocument: "after" },
@@ -292,16 +271,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
                 ? { creditsCharged: patch.creditsCharged }
                 : {}),
             },
-            // errorCode/errorMessage go too. A job can reach here carrying an
-            // earlier failure: reconciliation abandons a never-confirmed
-            // submission with SUBMISSION_UNCONFIRMED, and a correctly signed
-            // late webhook then rescues it. That recovery is right, but
-            // leaving the error behind left rows reading
-            // {status: "complete", errorCode: "SUBMISSION_UNCONFIRMED"}, and
-            // errorCode is projected into the public job view -- so a consumer
-            // reading it without also checking status sees a completed job
-            // reporting a submission failure. lastError is deliberately left:
-            // it is a diagnostic breadcrumb, not part of the view. (IR-005.)
+            // The error fields go too: a late webhook can rescue a job reconciliation already
+            // failed, and errorCode is projected into the public job view.
             $unset: {
               claimedAt: "",
               preFinalizeStatus: "",
@@ -314,10 +285,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
-    // Guarded to only retryable states: a job that already completed (and was
-    // paid for) or is mid-flight must never be hidden by a same-named retry.
-    // A guarded-out call returns null; the caller proceeds with the new job
-    // regardless — only the link between the two is refused.
+    // Guarded to retryable states so a same-named retry can never hide a completed render; a
+    // guarded-out call returns null and only the link is refused.
     markSuperseded: (id, bySupersedingJobId) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -348,17 +317,9 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
     listForUser: (userId, query) =>
       withDb(getDb, async (db) => {
         const conditions: Document[] = [{ userId }];
-        // Two exclusions, not one. The status test alone is not enough:
-        // "superseded" is in CHANGEABLE_STATUSES, so reconciliation can move
-        // a previous attempt on to "complete" or "failed" (claimForFinalize
-        // accepts "superseded" as a source status) while supersededByJobId
-        // stays -- markSuperseded writes the link once and nothing clears it.
-        // Such a row escapes a status-keyed exclusion and returns to the top
-        // level while collectAttemptChains still nests it under its successor,
-        // so the same attempt is rendered twice. The link is the durable fact
-        // that a row is a previous attempt, which is why it is tested first;
-        // the status test is kept beside it so a row carrying the status
-        // without the link is still excluded.
+        // Two exclusions, because reconciliation can move a previous attempt off "superseded" while
+        // supersededByJobId stays -- a status-only test would let such a row onto the top level and
+        // render it twice.
         if (!query.includePrevious) {
           conditions.push({ supersededByJobId: { $exists: false } });
           conditions.push({ status: { $ne: "superseded" } });
@@ -370,13 +331,9 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         const sortDir = query.dir === "asc" ? 1 : -1;
 
         if (query.sort === "duration") {
-          // No cast: the union on HistoryQuery narrows query.cursor to
-          // JobsDurationCursor | undefined once query.sort is known to be
-          // "duration".
           const cursor = query.cursor;
-          // $addFields has to run before the cursor comparison, because the
-          // boundary is expressed against the computed length. The owner and
-          // filter conditions stay ahead of it so they can still use an index.
+          // $addFields has to run before the cursor comparison; the owner and filter conditions
+          // stay ahead of it so they can still use an index.
           const pipeline: Document[] = [
             { $match: conditions.length === 1 ? conditions[0]! : { $and: conditions } },
             {
@@ -417,9 +374,6 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
         }
 
-        // No cast: query.sort narrowed to "createdAt" | undefined above, so
-        // query.cursor here is JobsDateCursor (with clipSeconds excluded) |
-        // undefined.
         const cursor = query.cursor;
         if (cursor) {
           const cursorId = toObjectId(cursor.id);
@@ -441,11 +395,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
       }),
 
-    // timed_out and superseded jobs are still reachable by claimForFinalize (a
-    // late result is genuinely still saved), but that window is not forever:
-    // past deadlineAt + graceMs no further delivery is plausible, and counting
-    // them past that point would drive polling forever with nothing left to
-    // check (nothing else ever clears these statuses this cycle).
+    // timed_out and superseded jobs stay claimable, but counting them past deadlineAt + graceMs
+    // would drive polling forever with nothing left to check.
     countActive: (userId, now, graceMs) =>
       withDb(getDb, async (db) => {
         const graceFloor = new Date(now.getTime() - graceMs);
@@ -487,10 +438,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return docs.map((doc) => parseStored(COLLECTIONS.jobs, jobRecordSchema, doc));
       }),
 
-    // Owner-scoped by the same { userId } every read here uses, so an id that is
-    // unknown or belongs to someone else is simply absent from the result rather
-    // than reported -- the caller cannot tell those two cases apart, which is
-    // what stops the parameter revealing that another user's job exists.
+    // Owner-scoped, so an id that is unknown or belongs to someone else is simply absent rather
+    // than reported -- the caller cannot tell those cases apart.
     findByIds: (userId, ids) =>
       withDb(getDb, async (db) => {
         const objectIds = ids.map(toObjectId).filter((id): id is ObjectId => id !== null);
@@ -515,11 +464,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return new Map(rows.map((row) => [row._id, row.count]));
       }),
 
-    // Five sequential findOneAndUpdate calls rather than a find-then-updateMany
-    // pair: updateMany does not report which documents it matched, so the caller
-    // could not know which jobs it actually won. Stamping lastCheckedAt inside
-    // the same write that matches on it IS the no-double-selection guarantee --
-    // two overlapping requests interleave safely with no lock.
+    // Sequential findOneAndUpdate calls, not updateMany: stamping lastCheckedAt inside the write
+    // that matches on it is what stops two overlapping requests selecting the same job.
     selectForReconcile: (userId, now, windows, limit) =>
       withDb(getDb, async (db) => {
         const uncheckedBefore = (ms: number) => ({
@@ -536,14 +482,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
               magicHourId: { $exists: true },
               ...uncheckedBefore(windows.recentMs),
             },
-            // superseded gets its own arm, bounded by the same 24h redelivery
-            // window as abandoned below. Without this bound a superseded
-            // attempt whose provider job never reports terminal would be
-            // re-checked every recentMs forever: nothing moves "superseded"
-            // to a terminal state (markTimedOut only takes processing,
-            // markAbandoned only takes processing/timed_out/finalizing), so
-            // the (a) arm above would otherwise keep matching it
-            // indefinitely.
+            // superseded needs its own arm bounded by the redelivery window, because nothing else
+            // ever moves it to a terminal state.
             {
               status: "superseded",
               magicHourId: { $exists: true },
@@ -567,25 +507,9 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
                 $gte: new Date(now.getTime() - windows.redeliveryMs),
               },
             },
-            // REC-004's submission arm: a job we asked the provider to start
-            // but never got an id back for. Every arm above requires
-            // magicHourId to exist, which is what left SUBMISSION_UNCONFIRMED
-            // unreachable -- such a job matched nothing, was never stamped and
-            // never changed status, so it read as "Confirming with Magic Hour"
-            // forever (manual test H.8).
-            //
-            // Keyed on the absence of the id, not on phase "submitting": the
-            // missing id is the durable fact that makes the job uncheckable,
-            // whereas the phase is a label that only happens to coincide with
-            // it today. No provider call is possible for these, so this arm
-            // needs no re-check cadence bound -- but it carries
-            // uncheckedBefore anyway so a job whose markAbandoned write is
-            // guarded out (a webhook landing first) cannot be re-taken on
-            // every pass. It is not bounded by the redelivery window either:
-            // unlike the superseded and abandoned arms there is no
-            // re-selection to prevent, because the transition moves the job to
-            // "abandoned", and the abandoned arm above requires the id this
-            // job has never had.
+            // A job we asked the provider to start but never got an id back for: keyed on the
+            // absence of the id, since no provider call is possible and every other arm requires
+            // it.
             {
               status: "processing",
               magicHourId: { $exists: false },
@@ -600,8 +524,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           const doc = await db.collection(COLLECTIONS.jobs).findOneAndUpdate(
             filter,
             { $set: { lastCheckedAt: now } },
-            // A missing lastCheckedAt sorts before any date, so a job that has
-            // never been checked is always taken first.
+            // A missing lastCheckedAt sorts before any date, so a never-checked job is always taken
+            // first.
             { sort: { lastCheckedAt: 1 }, returnDocument: "after" },
           );
           if (!doc) break;
@@ -610,9 +534,7 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return selected;
       }),
 
-    // Guarded to processing only, so the deadline boundary fires exactly once:
-    // a job already timed_out and still rendering simply keeps its status and
-    // the refreshed lastCheckedAt the selection already stamped.
+    // Guarded to processing only, so the deadline boundary fires exactly once.
     markTimedOut: (id) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -632,9 +554,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
-    // The grace boundary, also once. complete and failed are excluded: abandoned
-    // means "we stopped checking", which must never eclipse a delivered result
-    // or a confirmed provider failure.
+    // The grace boundary, also once; abandoned must never eclipse a delivered result or a confirmed
+    // failure.
     markAbandoned: (id, errorCode, errorMessage) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);
@@ -650,10 +571,8 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
         return doc ? parseStored(COLLECTIONS.jobs, jobRecordSchema, doc) : null;
       }),
 
-    // Narrower than markFailed, which only excludes complete. A status check can
-    // be reporting a view of the job that is older than a webhook write that has
-    // already landed, so it must not overwrite an existing terminal record's
-    // error code, message or provider error -- the stale reader loses.
+    // Narrower than markFailed: a status check can be reporting a view older than a webhook write
+    // that already landed, so the stale reader loses.
     markFailedFromCheck: (id, patch) =>
       withDb(getDb, async (db) => {
         const _id = toObjectId(id);

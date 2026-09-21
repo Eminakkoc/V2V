@@ -38,8 +38,7 @@ export type MagicHourCreate = (
 
 type MagicHourGetResponse = {
   id: string;
-  // Widened to string: the SDK's own type is the same closed union as
-  // ProviderStatus, but hand-written test fixtures infer a plain string.
+  // Widened to string: hand-written test fixtures infer a plain string, not the SDK's closed union.
   status: string;
   name?: string | null;
   downloads?: MagicHourDownload[];
@@ -139,10 +138,8 @@ function hasCode(error: unknown, codes: string[]): boolean {
   return codes.includes(String((error as { code: unknown }).code));
 }
 
-// "Definite" means Magic Hour did not take the job, so it is safe to mark the
-// job failed. "Uncertain" means the job may be running, so it must stay
-// submitting and be reconciled later. Getting this backwards either strands a
-// live job or bills the user twice.
+// "Definite" means Magic Hour did not take the job; getting this backwards either strands a live
+// job or bills the user twice.
 function classify(error: unknown): { code: ErrorCode; definite: boolean } {
   const status = httpStatus(error);
   if (status === 402) return { code: "MAGIC_HOUR_INSUFFICIENT_CREDITS", definite: true };
@@ -155,10 +152,8 @@ function classify(error: unknown): { code: ErrorCode; definite: boolean } {
   return { code: "MAGIC_HOUR_REQUEST_FAILED", definite: refused };
 }
 
-// The SDK throws with the provider's HTTP response still unread, so the one
-// sentence that says *which* setting was refused ("V3 models are not available
-// yet.") is discarded unless it is consumed here. The status has already been
-// classified, so a body that cannot be read costs nothing.
+// The SDK throws with the HTTP response still unread, so the one sentence saying which setting was
+// refused is discarded unless it is consumed here.
 async function readProviderError(
   error: unknown,
 ): Promise<{ code: string; message: string } | undefined> {

@@ -1,15 +1,9 @@
-// Usage: pnpm transform:real https://<deployment> <sourceId>
-// Requires a real identity cookie: set V2V_COOKIE to the full `Cookie` request header
-// value (e.g. "v2v_uid=<value>"), copied from a browser that uploaded the clip through the
-// deployed Create page, so the request is attributed to a user that owns the source.
-//
-// Optional overrides (env): TRANSFORM_START_SECONDS, TRANSFORM_END_SECONDS,
-// TRANSFORM_ART_STYLE, TRANSFORM_NAME, TRANSFORM_POLL_MS, TRANSFORM_TIMEOUT_MINUTES.
-//
-// Posts to /api/transform, then polls /api/history until the job reaches a terminal
-// status, printing each status change with a timestamp. Prints, at the end, total
-// wall-clock time, clip length and creditsCharged — the numbers that correct the guessed
-// JOB_DEADLINE_* constants in .env.example.
+// Usage: pnpm transform:real https://<deployment> <sourceId>, with V2V_COOKIE set to a Cookie
+// header from a browser that owns the source (overrides: TRANSFORM_START_SECONDS,
+// TRANSFORM_END_SECONDS, TRANSFORM_ART_STYLE, TRANSFORM_NAME, TRANSFORM_POLL_MS,
+// TRANSFORM_TIMEOUT_MINUTES).
+// Posts to /api/transform, polls /api/history until the job is terminal, and prints the wall-clock
+// time, clip length and creditsCharged that correct the guessed JOB_DEADLINE_* constants.
 import { randomUUID } from "node:crypto";
 import { errorBodySchema } from "@/lib/error-codes";
 import {
@@ -58,8 +52,8 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
   return { baseUrl, sourceId, cookie };
 }
 
-// Reuses the real request schema so an invalid override fails locally with a clear message
-// instead of as an opaque 400 from the deployed API.
+// Reuses the real request schema so an invalid override fails locally with a clear message instead
+// of as an opaque 400.
 export function buildParams(env: Record<string, string | undefined>): TransformParams {
   const result = transformParamsSchema.safeParse({
     name: env.TRANSFORM_NAME ?? "real-transform smoke test",
@@ -92,8 +86,8 @@ export function formatElapsed(ms: number): string {
 function describeError(body: unknown): string {
   const parsed = errorBodySchema.safeParse(body);
   if (parsed.success) return `${parsed.data.error.code} — ${parsed.data.error.message}`;
-  // body is undefined when the response was empty or not valid JSON — JSON.stringify(body)
-  // would otherwise print the literal string "undefined", which reads like a real value.
+  // JSON.stringify(undefined) would print the literal string "undefined", which reads like a real
+  // value.
   if (body === undefined) return "(empty or non-JSON response body)";
   return JSON.stringify(body);
 }
@@ -130,7 +124,7 @@ async function postTransform(
 }
 
 // A single page is enough: a freshly created job sorts first under /api/history's default
-// (createdAt desc), so it never needs the second page to be found.
+// createdAt-desc order.
 async function findJob(
   baseUrl: string,
   cookie: string,
@@ -203,8 +197,8 @@ async function main() {
   }
 }
 
-// Guarded so parseArgs/buildParams above can be imported by a test without the script
-// making any network calls on import.
+// Guarded so parseArgs/buildParams above can be imported by a test without the script making
+// network calls on import.
 if (process.argv[1] === import.meta.filename) {
   main().catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : error);

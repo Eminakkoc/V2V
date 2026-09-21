@@ -23,20 +23,9 @@ export function formatDuration(seconds: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
 }
 
-// Fixed locale and fixed UTC timezone, not the runtime's own -- an absolute
-// timestamp formatted from the runtime's locale/timezone would render
-// differently on the server (SSR) than in the browser (hydration) depending
-// on where each happens to run, and a relative form ("8s ago") would need
-// the live-region-and-never-tick discipline docs/design-findings.md W5
-// requires. This sidesteps both by being the same string everywhere.
-//
-// `timeZoneName: "short"` is what makes pinning the zone to UTC acceptable
-// rather than misleading: without a visible "UTC" label the string reads as
-// the reader's own local time, and on a History page that can misstate
-// which calendar day a job belongs to. Do not strip it as noise -- it is
-// the fix for that, not decoration. (It also forces the explicit
-// year/month/day/hour/minute fields below: `Intl.DateTimeFormat` rejects
-// `timeZoneName` combined with `dateStyle`/`timeStyle`.)
+// Fixed locale and UTC so SSR and hydration render the same string, with `timeZoneName: "short"` to
+// keep the pinned zone honest rather than misleading -- which is also why the date/time fields
+// below are spelled out (Intl rejects timeZoneName beside dateStyle/timeStyle).
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
   month: "short",

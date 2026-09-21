@@ -12,24 +12,18 @@ import { formatTimestamp } from "@/lib/format";
 import type { HistoryJobView } from "@/lib/history-contract";
 
 type JobCardProps = {
-  // The history projection, not the bare JobView: it carries the job's own
-  // `source`, so the Source player survives a reload instead of depending on
-  // the uploading session still being on screen.
+  // The history projection, not the bare JobView: it carries the job's own `source`, so the Source
+  // player survives a reload.
   job: HistoryJobView;
   cloudName: string;
-  // Handed the card's own job, not RetryDialog's narrower JobView: a retry
-  // re-runs this job's source, and the caller needs it to show the new card
-  // with its Source player already in place.
+  // The card's own job, not RetryDialog's narrower JobView: a retry re-runs this job's source, and
+  // the caller needs it for the new card's player.
   onRetry: (job: HistoryJobView) => void;
   retryDisabled?: boolean;
 };
 
-// Figma "Job card" (58:3124) plus its stepper: the optimistic card inserted
-// after POST /api/transform. Status changes are announced via aria-live
-// without moving focus.
-// memo: this card shows a job the server owns, and nothing about editing the
-// draft below it can change what it says -- without this, every keystroke in
-// the form re-rendered the card and both of its players.
+// memo: nothing about editing the draft below can change what this card says, and without it every
+// keystroke re-rendered the card and both of its players.
 export const JobCard = memo(function JobCard({
   job,
   cloudName,

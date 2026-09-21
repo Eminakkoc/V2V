@@ -12,19 +12,13 @@ type BusyState = { status: "uploading"; progress: number } | { status: "storing"
 
 type UploadProgressProps = {
   state: BusyState;
-  // The file being uploaded, when the picker reported one. Shown in place of
-  // the generic heading, as in the design.
   file?: { name: string; size: number } | null;
   onCancel?: () => void;
-  // Focus target after "Try again": the label is a stable element that survives
-  // the retry, so focus does not fall back to the document body.
+  // Focus target after "Try again": a stable element that survives the retry, so focus does not
+  // fall back to the document body.
   labelRef?: Ref<HTMLParagraphElement>;
 };
 
-// Figma "Upload area", State=Uploading / State=Storing (55:1554, 55:1563):
-// the same dashed frame as the idle drop zone, with the file on one row and a
-// bar beneath -- determinate for real bytes, indeterminate for the Cloudinary
-// copy, which reports no percentage.
 export function UploadProgress({ state, file, onCancel, labelRef }: UploadProgressProps) {
   const uploading = state.status === "uploading";
   const labelId = uploading ? "upload-progress-label" : "storing-label";
@@ -125,12 +119,9 @@ type UploadWaitRetryProps = {
   onRetry: () => void;
 };
 
-// A 429 after the bytes are already stored: the wait is real (Retry-After), but
-// unlike a plain "wait" this one ends in a retry the hook can act on (the same
-// cdnUrl), so the button is offered up front, disabled until the wait elapses.
-// The caller only renders this while `state.status === "failed"`, so a later
-// wait (a different retryAfterSeconds) arrives as a fresh mount, not a prop
-// change on this instance — `ready` starting at false is enough on its own.
+// The wait is real, but unlike a plain "wait" it ends in a retry the hook can act on, so the button
+// is offered up front and disabled until the wait elapses; a later wait arrives as a fresh mount,
+// so `ready` starting at false is enough.
 export function UploadWaitRetry({ id, message, retryAfterSeconds, onRetry }: UploadWaitRetryProps) {
   const [ready, setReady] = useState(false);
 

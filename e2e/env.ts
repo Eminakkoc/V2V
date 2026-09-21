@@ -1,9 +1,7 @@
 export const E2E_PORT = 3100;
 
-// Exported on its own (not read back off E2E_ENV) so a signing helper gets a
-// plain `string`: E2E_ENV is typed as an index signature for spreading into a
-// child process's env, and noUncheckedIndexedAccess would widen a property
-// read off it to `string | undefined`.
+// Exported on its own so a signing helper gets a plain `string`: reading it back off E2E_ENV's
+// index signature would widen it to `string | undefined`.
 export const E2E_WEBHOOK_SECRET = "e2e-webhook-secret";
 
 export const E2E_ENV: Record<string, string> = {

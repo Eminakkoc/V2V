@@ -139,9 +139,6 @@ describe("Cloudinary adapter", () => {
   });
 
   it("files a render under results, not alongside the user's uploads", async () => {
-    // WHK-005. The folder used to be hardcoded to "sources" for every caller,
-    // so paid renders landed in the uploads folder and the two were
-    // indistinguishable in asset management.
     const upload = vi.fn(async () => uploaded({ public_id: "results/abc" }));
     await adapterWith(upload).copyVideoFromUrl(url, {
       deadline: 50_000,

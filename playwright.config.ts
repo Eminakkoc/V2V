@@ -12,23 +12,13 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    // history-sheet.spec.ts drives the phone-only Filter sheet, which the
-    // FilterBar renders under a `md:hidden` class -- on the desktop viewport
-    // its trigger exists but is never visible, so that spec is mobile-only.
+    // history-sheet.spec.ts drives the phone-only Filter sheet, whose trigger exists but is never visible on the desktop viewport.
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"] },
       testIgnore: /history-sheet\.spec\.ts/,
     },
-    // Both of these seed jobs or need no viewport, and every seed draws down
-    // the per-IP rate-limit window that all specs share.
-    //
-    // Budget as of 36aec0d: upload 29/30, transform 22/30 (per-IP, per
-    // scope, 30 per 10 minutes) -- upload headroom is down to ONE hit.
-    // Adding any spec that uploads, or running an existing upload/transform
-    // spec under a second project, requires re-running the tally first (see
-    // e2e/history.spec.ts's header for the full breakdown), or the next
-    // failure here reads as flaky rather than a budget overrun (L-007).
+    // Both seed jobs and draw down the per-IP rate-limit window every spec shares, so adding another uploading spec needs the budget tally re-run first (see e2e/history.spec.ts's header).
     {
       name: "mobile",
       use: { ...devices["iPhone 13"] },

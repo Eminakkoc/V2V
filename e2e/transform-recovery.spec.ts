@@ -10,11 +10,8 @@ import {
   signWebhook,
 } from "./helpers";
 
-// These scenarios are deliberately API-only: they exercise recovery branches of
-// the transform route, the webhook and finalize that no UI affordance can reach,
-// and none of them depends on the viewport. Running them on one project keeps
-// them off the shared per-IP rate-limit window the browser specs also draw on
-// (RATE_LIMITS.perIp is 30 per 10 minutes, counted per scope across the suite).
+// Deliberately API-only: these recovery branches have no UI affordance and no viewport dependence,
+// so running on one project keeps them off the shared per-IP rate-limit window.
 
 const MAX_CLIP_SECONDS = 30;
 
@@ -68,8 +65,8 @@ async function startJob(request: APIRequestContext, sourceId: string, name: stri
   return (await response.json()).job;
 }
 
-// Takes the already-serialized body, never an object to re-serialize: the
-// signature is over these exact bytes.
+// Takes the already-serialized body, never an object to re-serialize: the signature is over these
+// exact bytes.
 async function deliver(request: APIRequestContext, payload: Record<string, unknown>) {
   const rawBody = JSON.stringify({ type: "video.completed", payload });
   const { signature, timestamp } = signWebhook(rawBody, E2E_WEBHOOK_SECRET);
@@ -100,8 +97,8 @@ test.describe("finalize storage failures", () => {
     const job = await startJob(request, sourceId, `clip ${FAKE_JOB_NAME_TRIGGERS.copyFailsOnce}`);
     const magicHourId = fakeMagicHourId(job.id, FAKE_UUID_PREFIXES.failsOnce);
 
-    // First delivery: the copy fails retryably. The claim must be released and
-    // the answer must be a 500, which is what invites Magic Hour to redeliver.
+    // The copy fails retryably, so the claim must be released and the 500 is what invites Magic
+    // Hour to redeliver.
     const first = await deliver(request, { id: magicHourId });
     expect(first.status()).toBe(500);
     expect(await first.json()).toEqual({ status: "transient" });
@@ -111,16 +108,9 @@ test.describe("finalize storage failures", () => {
     expect(afterFailure.output).toBeUndefined();
     expect(afterFailure.errorCode).toBeUndefined();
 
-    // Redelivery: the render was never lost, and the job does reach complete
-    // with a stored result. But readJob's own GET /api/history above also
-    // schedules reconciliation (see reconcile.ts), and copyFailsOnce's
-    // one-time failure was already consumed by the first delivery -- so a
-    // background reconciliation pass, seeing this untriggered job's default
-    // "complete" status, would attempt its own copy and succeed too, and
-    // could finalize the job before this redelivery ever runs. Both are
-    // legitimate recovery paths and the single-claim guarantee means only
-    // one of them actually performs the copy, so this test cannot pin which
-    // one did -- only that the job recovers and completes either way.
+    // A background reconciliation pass could also finalize this job, and the single-claim guarantee
+    // means only one path performs the copy -- so this pins that the job recovers, not which path
+    // did it.
     const second = await deliver(request, { id: magicHourId });
     expect(second.status()).toBe(200);
 
@@ -137,8 +127,7 @@ test.describe("finalize storage failures", () => {
     const magicHourId = fakeMagicHourId(job.id, FAKE_UUID_PREFIXES.unreadable);
 
     const response = await deliver(request, { id: magicHourId });
-    // 200, not 500: the failure is terminal, so asking for a redelivery would
-    // only repeat it.
+    // 200, not 500: the failure is terminal, so asking for a redelivery would only repeat it.
     expect(response.status()).toBe(200);
 
     const failed = await readJob(request, job.id);
@@ -146,7 +135,6 @@ test.describe("finalize storage failures", () => {
     expect(failed.errorCode).toBe("CLOUDINARY_UPLOAD_FAILED");
     expect(failed.output).toBeUndefined();
 
-    // A second delivery finds a terminal job and still acknowledges.
     expect((await deliver(request, { id: magicHourId })).status()).toBe(200);
   });
 });
@@ -157,15 +145,14 @@ test.describe("lost provider id recovery", () => {
   }) => {
     const { sourceId } = await createSource(request);
     const name = `clip ${FAKE_JOB_NAME_TRIGGERS.createUncertain}`;
-    // The create call reports an *uncertain* failure, so the route still answers
-    // 202 and leaves the job alive with no magicHourId — the only state the name
-    // fallback can recover from.
+    // An *uncertain* create failure leaves the job alive with no magicHourId -- the only state the
+    // name fallback can recover from.
     const job = await startJob(request, sourceId, name);
     expect(job.status).toBe("processing");
     expect(job.phase).toBe("submitting");
 
-    // The provider's own id, which this job has never seen. findByMagicHourId
-    // must miss it and the name must be the only way back to the job.
+    // The provider's own id, which this job has never seen, so findByMagicHourId must miss and the
+    // name must be the only way back.
     const magicHourId = `mh-live-${randomUUID()}`;
     const response = await deliver(request, { id: magicHourId, name: fakeJobName(job.id, name) });
     expect(response.status()).toBe(200);
@@ -185,15 +172,15 @@ test.describe("lost provider id recovery", () => {
 
     const [a, b] = await Promise.all([deliver(request, payload), deliver(request, payload)]);
 
-    // Whichever delivery loses the attach or the claim answers 409; neither may
-    // fail outright, and neither may 500 (there is nothing transient here).
+    // Whichever delivery loses the attach or the claim answers 409; neither may fail outright, and
+    // neither may 500.
     for (const status of [a.status(), b.status()]) {
       expect([200, 409]).toContain(status);
     }
     expect([a.status(), b.status()]).toContain(200);
 
-    // The assertion that matters: the job actually advanced. Two 200s over a job
-    // nothing matched would look identical to success without this.
+    // The assertion that matters: two 200s over a job nothing matched would look identical to
+    // success without this.
     const completed = await readJob(request, job.id);
     expect(completed.status).toBe("complete");
     expect(completed.output?.cloudinaryUrl).toContain("/video/upload/");
@@ -205,8 +192,8 @@ test("MAX_CLIP_SECONDS binds on a source longer than the cap", async ({ request 
     request,
     fakeUuid(FAKE_UUID_PREFIXES.longSource),
   );
-  // The cap is only reachable at all when the source outlives it; on the default
-  // fake source the duration check always binds first.
+  // The cap is only reachable when the source outlives it; on the default fake source the duration
+  // check always binds first.
   expect(duration).toBeGreaterThan(MAX_CLIP_SECONDS);
 
   const tooLong = await postTransform(request, sourceId, "long clip", MAX_CLIP_SECONDS + 1);

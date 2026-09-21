@@ -92,9 +92,7 @@ type AppErrorOptions = {
   details?: Record<string, unknown>;
   retryAfterSeconds?: number;
   cause?: unknown;
-  // The provider's own words for the rejection. Deliberately separate from
-  // `details`, which is serialized to the browser: this is internal detail,
-  // withheld for the same reason toJobView withholds magicHourError.
+  // Internal detail, kept out of `details`, which is serialized to the browser.
   providerError?: ProviderError;
 };
 

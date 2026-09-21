@@ -102,10 +102,8 @@ function sourcesResponse(
   return { items, nextCursor };
 }
 
-// Every test's mount fires useHistoryRefresh's own on-mount tick, which
-// calls apiFetch("/api/history?changeable=true", ...). Left never-resolving
-// by default so it can never race a test's own assertions or its own
-// load-more mock; tests that care about the poll set this up explicitly.
+// Every mount fires useHistoryRefresh's own on-mount tick; left never-resolving by default so it
+// can never race a test's assertions or its load-more mock.
 function hangingFetch() {
   fetchMock.mockImplementation(() => new Promise(() => {}));
 }
@@ -117,9 +115,8 @@ beforeEach(() => {
 
 describe("HistoryView -- the first page arrives server-rendered", () => {
   it("shows the server-provided job synchronously, before the mount poll can ever resolve", () => {
-    // The changeable-poll fetch never resolves (hangingFetch, set in
-    // beforeEach) -- if the card's text depended on that fetch settling,
-    // it could not be present the instant render() returns.
+    // The changeable poll never resolves, so text present the instant render() returns cannot have
+    // depended on it settling.
     render(
       <HistoryView
         tab="jobs"
@@ -131,7 +128,7 @@ describe("HistoryView -- the first page arrives server-rendered", () => {
     );
 
     expect(screen.getByText("Server rendered job")).toBeInTheDocument();
-    // F13: skeletons are for a client-side load only, never the first paint.
+    // Skeletons are for a client-side load only, never the first paint.
     expect(document.querySelector('[data-slot="skeleton"]')).not.toBeInTheDocument();
   });
 
@@ -175,9 +172,7 @@ describe("HistoryView -- load more (jobs)", () => {
     });
 
     await waitFor(() => expect(screen.getByText("Second page job")).toBeInTheDocument());
-    // Both pages are visible together -- load more appends, it never replaces.
     expect(screen.getByText("First page job")).toBeInTheDocument();
-    // The cursor the second page returned was null: no more pages remain.
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 
@@ -224,9 +219,8 @@ describe("HistoryView -- load more (jobs)", () => {
   });
 });
 
-// Several microtask round trips, mirroring use-history-refresh.test.tsx's own
-// `flush` helper: a tick here can chain a changeable poll into an `ids`
-// follow-up, so settling it needs more than one hop.
+// A tick can chain a changeable poll into an `ids` follow-up, so settling it needs more than one
+// hop.
 async function flushMicrotasks(times = 3) {
   for (let i = 0; i < times; i++) {
     await act(async () => {
@@ -247,8 +241,6 @@ describe("HistoryView -- a load-more row still receives live refresh (Finding 1 
       });
       const loadedOlderComplete: HistoryJobView = { ...loadedOlder, status: "complete" };
 
-      // Mount tick: firstPageJob is still processing, so the schedule keeps
-      // polling (the 3s "live" rung) after this response.
       fetchMock.mockImplementation((path: string) => {
         if (path.includes("changeable=true")) return Promise.resolve(jobsResponse([firstPageJob]));
         return new Promise(() => {});
@@ -265,8 +257,6 @@ describe("HistoryView -- a load-more row still receives live refresh (Finding 1 
       );
       await flushMicrotasks();
 
-      // `load more`: the account's only remaining page, one older row that
-      // has already timed out.
       fetchMock.mockImplementation((path: string) => {
         if (path.includes("changeable=true")) return new Promise(() => {});
         return Promise.resolve(jobsResponse([loadedOlder], null));
@@ -278,13 +268,10 @@ describe("HistoryView -- a load-more row still receives live refresh (Finding 1 
 
       expect(screen.getByText("Loaded via load more")).toBeInTheDocument();
       expect(screen.getByText(/Taking longer than expected/)).toBeInTheDocument();
-      // No more pages remain -- the button that would let a reader page
-      // back to this row again is already gone.
       expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
 
-      // Next scheduled poll: the account-wide ?changeable=true no longer
-      // reports the load-more row at all (it finished), which is exactly
-      // what triggers the one-off `ids` follow-up carrying its real status.
+      // The account-wide poll no longer reports the load-more row, which is exactly what triggers
+      // the one-off `ids` follow-up carrying its real status.
       fetchMock.mockImplementation((path: string) => {
         if (path.includes("changeable=true")) return Promise.resolve(jobsResponse([firstPageJob]));
         if (path.includes("ids="))
@@ -294,9 +281,8 @@ describe("HistoryView -- a load-more row still receives live refresh (Finding 1 
       act(() => vi.advanceTimersByTime(3_000));
       await flushMicrotasks();
 
-      // The load-more row's card now reflects its true, current status --
-      // it never gets stuck on "Taking longer" just because it arrived
-      // after the first page.
+      // The load-more row never gets stuck on "Taking longer" just because it arrived after the
+      // first page.
       expect(screen.queryByText(/Taking longer than expected/)).not.toBeInTheDocument();
       expect(screen.getByText("Complete")).toBeInTheDocument();
       expect(screen.getByText("Loaded via load more")).toBeInTheDocument();
@@ -425,10 +411,8 @@ describe("HistoryView -- tab wiring", () => {
   });
 });
 
-// The shell is keyed on the serialized search params by the page (not by
-// HistoryView itself), so these tests reproduce that call site directly:
-// they choose the `key` on each render() / rerender() call the same way
-// page.tsx would build it from the URL. See docs/... section 6.3.
+// The page, not HistoryView, keys the shell on the serialized search params, so these tests choose
+// the `key` on each render the same way page.tsx would.
 describe("HistoryView -- keying the shell on the search params", () => {
   it("a changed key remounts the shell: loaded pages, the cursor and the poll all restart from the new first page", async () => {
     fetchMock.mockImplementation((path: string) => {
@@ -451,7 +435,6 @@ describe("HistoryView -- keying the shell on the search params", () => {
       screen.getByRole("button", { name: "Load more" }).click();
     });
     await waitFor(() => expect(screen.getByText("A, page 2")).toBeInTheDocument());
-    // Both of query A's pages are loaded and its cursor is now exhausted.
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
 
     fetchMock.mockImplementation(() => new Promise(() => {}));
@@ -466,14 +449,13 @@ describe("HistoryView -- keying the shell on the search params", () => {
       />,
     );
 
-    // Both of query A's rows are gone -- this is the "clears the loaded
-    // pages" requirement, not merely "new props were rendered".
+    // Both of query A's rows are gone -- the "clears the loaded pages" requirement, not merely new
+    // props being rendered.
     expect(screen.queryByText("A, page 1")).not.toBeInTheDocument();
     expect(screen.queryByText("A, page 2")).not.toBeInTheDocument();
     expect(screen.getByText("B, page 1")).toBeInTheDocument();
-    // The cursor restarted from query B's own first page, which still has
-    // more pages -- if the old, exhausted cursor had survived, this button
-    // would be missing.
+    // The cursor restarted from query B's own first page; had the old, exhausted cursor survived,
+    // this button would be missing.
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
   });
 
@@ -510,10 +492,8 @@ describe("HistoryView -- keying the shell on the search params", () => {
       />,
     );
 
-    // No remount happened (same key), so the client state from query A is
-    // untouched by the new `initial`/`query` props -- proving the reset in
-    // the test above comes from the key change, not from HistoryView
-    // reacting to its props.
+    // Same key, so no remount: the reset in the test above comes from the key change, not from
+    // HistoryView reacting to its props.
     expect(screen.getByText("A, page 1")).toBeInTheDocument();
     expect(screen.getByText("A, page 2")).toBeInTheDocument();
     expect(screen.queryByText("B, page 1")).not.toBeInTheDocument();
@@ -558,8 +538,6 @@ describe("HistoryView -- previous attempts nest under their owning job", () => {
     );
 
     expect(screen.getByText(/Previous attempts \(1\)/)).toBeInTheDocument();
-    // The card is an <article> (Figma names it so): one item of a list, not a
-    // landmark region.
     within(screen.getByRole("article", { name: /Latest attempt/ }));
   });
 });

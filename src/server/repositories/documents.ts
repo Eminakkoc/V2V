@@ -21,10 +21,8 @@ export function parseStored<S extends z.ZodObject>(
   return { ...result.data, id };
 }
 
-// A record our own server built badly (a provider response with an unexpected
-// shape, for example) is our bug, not the caller's: this throws a plain Error,
-// never a ZodError, so withErrorHandling reports it as a logged 500 INTERNAL
-// instead of a 400 VALIDATION_FAILED that hides it and blames the request.
+// A record our own server built badly is our bug: this throws a plain Error, never a ZodError, so
+// withErrorHandling reports a logged 500 instead of a 400.
 export function parseForWrite<S extends z.ZodObject>(
   collection: string,
   schema: S,

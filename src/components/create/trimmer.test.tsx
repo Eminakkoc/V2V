@@ -8,9 +8,8 @@ import { Trimmer, type TrimmerProps } from "./trimmer";
 const DURATION = 60;
 const MAX_CLIP_SECONDS = 30;
 
-// clampRange's math only lines up with hand-picked clientX values (see the
-// drag test) when a pixel of track maps to one second: rect.left = 0,
-// rect.width = DURATION.
+// clampRange's math only lines up with the hand-picked clientX values when one pixel of track maps
+// to one second.
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
     x: 0,
@@ -40,9 +39,8 @@ function renderTrimmer(overrides: Partial<TrimmerProps> = {}) {
   return props;
 }
 
-// A real controlled usage: onChange feeds back into `value`, so repeated
-// interactions (arrow-key presses, a drag) build on the previous result
-// instead of always starting from the same initial props.
+// A real controlled usage: onChange feeds back into `value`, so repeated interactions build on the
+// previous result.
 function ControlledTrimmer({
   initial,
   onChange,
@@ -132,9 +130,8 @@ describe("Trimmer", () => {
     fireEvent.focus(endThumb);
     fireEvent.keyDown(endThumb, { key: "Home" });
 
-    // The end handle's own minimum is bounded by the start handle plus the
-    // minimum gap, not the slider's overall minimum (0) -- that's thumb 0's
-    // Home target, and pressing Home on the *end* handle must not reach it.
+    // The end handle's own minimum is the start handle plus the gap, not the slider's overall
+    // minimum, which is thumb 0's Home target.
     expect(props.onChange).toHaveBeenCalledWith({ startSeconds: 5, endSeconds: 5.1 });
   });
 
@@ -144,8 +141,6 @@ describe("Trimmer", () => {
     fireEvent.focus(startThumb);
     fireEvent.keyDown(startThumb, { key: "End" });
 
-    // Likewise, the start handle's own maximum is short of the end handle by
-    // the minimum gap, not the slider's overall maximum (duration).
     expect(props.onChange).toHaveBeenCalledWith({ startSeconds: 19.9, endSeconds: 20 });
   });
 
@@ -215,8 +210,8 @@ describe("Trimmer", () => {
       return screen.getByTestId("preview") as HTMLVideoElement;
     }
 
-    // jsdom has no playback engine, so `paused` is a always-true getter;
-    // looping only ever applies to a playing video, which has to be said here.
+    // jsdom has no playback engine, so `paused` is an always-true getter and has to be overridden
+    // here.
     function setPlaying(video: HTMLVideoElement, playing: boolean) {
       Object.defineProperty(video, "paused", { value: !playing, configurable: true });
     }
@@ -239,10 +234,8 @@ describe("Trimmer", () => {
       expect(video.currentTime).toBe(10.2);
     });
 
-    // Dragging the end handle parks the preview on exactly endSeconds so the
-    // reader can see the frame they picked. Seeking fires timeupdate too, so
-    // a loop that ignored `paused` would read that as "reached the end" and
-    // rewind -- leaving the end handle apparently unable to move the frame.
+    // Seeking fires timeupdate too, so a loop that ignored `paused` would read the parked end frame
+    // as "reached the end" and rewind it.
     it("holds a paused preview on the end frame instead of rewinding it", () => {
       const video = renderWithPreview({ startSeconds: 5, endSeconds: 10 });
       setPlaying(video, false);
@@ -255,10 +248,8 @@ describe("Trimmer", () => {
   describe("filmstrip failure", () => {
     afterEach(() => vi.restoreAllMocks());
 
-    // The required case for OPT-004: thumbnail extraction can throw for
-    // reasons entirely outside the trimmer's control (missing CORS headers,
-    // a mobile browser that refuses to seek). The slider and its handles
-    // must stay fully usable regardless.
+    // Thumbnail extraction can throw for reasons outside the trimmer's control, and the slider and
+    // its handles must stay usable regardless.
     it("keeps the slider handles usable when filmstrip extraction throws", () => {
       vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
         drawImage: () => {

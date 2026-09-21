@@ -50,8 +50,6 @@ async function insertJob(overrides: Partial<NewJob> = {}) {
   });
 }
 
-// A separate helper (rather than insertJob({ magicHourId: undefined })) since an
-// explicit undefined override is ambiguous about whether the field is absent.
 async function insertJobWithoutMagicHourId() {
   idempotencyCounter += 1;
   return jobs.insert("user-1", {
@@ -85,7 +83,6 @@ function makeVideo(overrides: Partial<StoredVideo> = {}): StoredVideo {
   };
 }
 
-// The unused half of MagicHourAdapter for tests that never touch it.
 const unusedCreateJob = () => Promise.reject(new Error("unused"));
 const unusedVerifyWebhook = () => {
   throw new Error("unused");
@@ -132,15 +129,12 @@ describe("finalizeJob", () => {
       },
     });
     if (outcome.kind === "completed") {
-      // markComplete stamps completedAt with its own real clock, not the
-      // injected `now` — only finalizeJob's own timing (the claim, the
-      // Cloudinary deadline) is driven by the injected clock.
+      // markComplete stamps completedAt with its own clock, not the injected one.
       expect(outcome.job.completedAt).toBeInstanceOf(Date);
       expect(outcome.job.claimedAt).toBeUndefined();
     }
     expect(copyVideoFromUrl).toHaveBeenCalledWith("https://fake.magichour.ai/mh-1/output.mp4", {
       deadline: now().getTime() + FINALIZE_COPY_BUDGET_MS,
-      // WHK-005: a render is a result, never filed with the user's uploads.
       folder: "results",
       treatSanityFailureAsRetryable: true,
     });
@@ -154,8 +148,7 @@ describe("finalizeJob", () => {
   it("fetches details itself instead of trusting the caller", async () => {
     const job = await insertJob();
     const getJobDetails = vi.fn(async () => makeDetails());
-    // The caller may already know the video.completed event fired; finalizeJob
-    // still has no way to receive that, and must call the provider itself.
+    // finalizeJob has no way to receive the event payload, so it must ask the provider itself.
     await finalizeJob(job.id, makeDeps({ getJobDetails }), now);
     expect(getJobDetails).toHaveBeenCalledTimes(1);
     expect(getJobDetails).toHaveBeenCalledWith("mh-1");
@@ -183,9 +176,8 @@ describe("finalizeJob", () => {
     const job = await insertJob({ status: "failed" });
     const copyVideoFromUrl = vi.fn(async () => makeVideo());
     const outcome = await finalizeJob(job.id, makeDeps({ copyVideoFromUrl }), now);
-    // Distinct from claim-held: a failed job will never become claimable
-    // again, so the webhook route must acknowledge (200) instead of asking
-    // Magic Hour to keep retrying (409).
+    // Distinct from claim-held: a failed job is never claimable again, so the route acknowledges
+    // instead of asking for a retry.
     expect(outcome).toEqual({ kind: "already-terminal" });
     expect(copyVideoFromUrl).not.toHaveBeenCalled();
   });
@@ -242,8 +234,6 @@ describe("finalizeJob", () => {
 
   it("releases the claim and returns transient on a Cloudinary sanity failure, never marking the job failed", async () => {
     const job = await insertJob();
-    // What copyVideoFromUrl throws once treatSanityFailureAsRetryable is honoured
-    // (see cloudinary.test.ts): a sanity failure, but retryable.
     const copyVideoFromUrl = vi.fn(async () => {
       throw new AppError("CLOUDINARY_UPLOAD_FAILED", {
         retryable: true,
@@ -357,11 +347,8 @@ describe("finalizeJob", () => {
     ]);
 
     const kinds = [first.kind, second.kind];
-    // Exactly one caller wins the claim and completes the job. The loser's
-    // exact outcome is a timing race between its own findByIdUnscoped read
-    // and the winner's markComplete write, both settling from an in-flight
-    // "finalizing" state — "claim-held" if it reads first, "already-complete"
-    // if the winner finishes first. Either is safe: neither touches Cloudinary.
+    // Exactly one caller wins; the loser reads back either claim-held or already-complete depending
+    // on timing, and neither touches Cloudinary.
     expect(kinds.filter((kind) => kind === "completed")).toHaveLength(1);
     expect(
       kinds.filter((kind) => kind === "claim-held" || kind === "already-complete"),

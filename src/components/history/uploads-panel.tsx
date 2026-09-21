@@ -4,29 +4,21 @@ import { HistoryEmptyState } from "./empty-states";
 import { SourceCard } from "./source-card";
 
 export type UploadsPanelProps = {
-  // The merged/current list of sources, taken as a prop rather than read
-  // from a server value held elsewhere -- see HistoryEmptyState. Passing a
-  // freshly merged array here on every render is what makes the empty
-  // state below dissolve without a reload.
+  // Taken as a prop rather than read from a server value held elsewhere, which is what lets the
+  // empty state below dissolve without a reload.
   sources: readonly SourceView[];
   cloudName: string;
   hasMore: boolean;
   onLoadMore?: () => void;
   loadingMore?: boolean;
-  // The Uploads tab has no filter controls of its own today (F18's status
-  // and style filters apply to Transformations only), so this defaults to
-  // false. It stays a real prop, not a hardcoded false, so the no-match
-  // state HistoryEmptyState already knows how to render is available the
-  // day a filter is added here, with no change to the selection logic.
+  // The Uploads tab has no filter controls of its own today, but this stays a real prop so the
+  // no-match state is available the day one is added.
   hasActiveFilter?: boolean;
   uploadHref?: string;
   clearFiltersHref?: string;
 };
 
-// The Uploaded videos tab's content (section 7, Task 21). Owns nothing about
-// the Transformations tab -- it never reads job data -- so its empty state
-// can never show that tab's copy (see HistoryEmptyState's "never compete"
-// guarantee).
+// Never reads job data, so its empty state can never show the Transformations tab's copy.
 export function UploadsPanel({
   sources,
   cloudName,

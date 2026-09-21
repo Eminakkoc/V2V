@@ -122,8 +122,6 @@ describe("messageFor", () => {
   });
 
   it("never offers a Try again that cannot work before anything has uploaded", () => {
-    // A signature failure or any other pre-upload problem has no cdnUrl to retry, so
-    // a would-be "retry" action becomes "choose-another-file" in the rejected stage.
     expect(messageFor(error("DATABASE_UNAVAILABLE"), limits, { stage: "rejected" })).toMatchObject({
       action: "choose-another-file",
     });
@@ -147,7 +145,6 @@ describe("messageFor", () => {
     expect(
       messageFor(error("RATE_LIMITED", { retryAfterSeconds: 30 }), limits, { stage: "failed" }),
     ).toMatchObject({ action: "wait-retry" });
-    // Unchanged when no stage is given, so every existing caller keeps its behaviour.
     expect(messageFor(error("RATE_LIMITED", { retryAfterSeconds: 30 }), limits)).toMatchObject({
       action: "wait",
     });

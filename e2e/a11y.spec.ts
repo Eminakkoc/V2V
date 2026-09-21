@@ -11,11 +11,8 @@ import {
   signWebhook,
 } from "./helpers";
 
-// Axe measures the settled page. On "/" the drop zone's buttons stay disabled
-// until the uploader's dynamic import resolves, and axe reports their muted
-// disabled palette as a contrast violation if it runs first. WCAG 1.4.3 exempts
-// inactive components, so waiting measures the state the bar actually applies
-// to instead of racing the import.
+// Axe measures the settled page: the drop zone's buttons stay disabled until the uploader's dynamic
+// import resolves, and their muted disabled palette reads as a contrast violation if it runs first.
 const pages: { path: string; settled: (page: Page) => Promise<void> }[] = [
   {
     path: "/",
@@ -39,12 +36,8 @@ for (const { path, settled } of pages) {
   });
 }
 
-// A separate test, not a third entry in `pages` above: that loop titles each
-// test after its bare path, and a second "/history" entry would collide with
-// the empty-list one already covered there. Rate-limit spend for this job is
-// tallied in e2e/history.spec.ts's own top-of-file comment -- this is the
-// "a11y.spec.ts (populated)" line, desktop-only for the same shared-per-IP
-// reason that file gives.
+// A separate test rather than a third entry in `pages`, whose loop titles each test after its bare
+// path and would collide with the empty-list "/history".
 test("/history (with a transformation) has no WCAG 2.1 A/AA violations", async ({
   page,
 }, testInfo) => {
@@ -53,9 +46,8 @@ test("/history (with a transformation) has no WCAG 2.1 A/AA violations", async (
     "seeds a job against the per-IP rate-limit window every e2e spec shares; desktop-only, same as history.spec.ts",
   );
 
-  // The completed job's card renders a <video poster> pointing at Cloudinary
-  // (see video-pair.tsx); without this the browser attempts a real fetch for
-  // that poster against a URL that only the fake provider knows about.
+  // The completed job's card renders a <video poster> pointing at Cloudinary, which would otherwise
+  // be a real fetch for a URL only the fake provider knows.
   await mockProviders(page, fakeUuid());
 
   const uploadResponse = await page.request.post("/api/upload", {
@@ -83,10 +75,8 @@ test("/history (with a transformation) has no WCAG 2.1 A/AA violations", async (
   expect(transformResponse.status()).toBe(202);
   const { job } = await transformResponse.json();
 
-  // Delivered directly rather than left to reconciliation's background pass
-  // (GET /api/history schedules one on every request) so the card the scan
-  // sees is deterministically "Complete", not whatever state a race happened
-  // to leave it in.
+  // Delivered directly rather than left to reconciliation's background pass, so the card the scan
+  // sees is deterministically "Complete".
   const rawBody = JSON.stringify({
     type: "video.completed",
     payload: { id: fakeMagicHourId(job.id) },

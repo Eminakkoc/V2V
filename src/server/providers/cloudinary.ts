@@ -57,8 +57,8 @@ export function createCloudinaryAdapter(
       try {
         result = await attempt();
       } catch (firstError) {
-        // One retry, same public id, and only when a second attempt can still finish
-        // inside the route's time budget.
+        // One retry, same public id, and only when a second attempt can still finish inside the
+        // route's budget.
         const budgetLeft = deadline - now() - RETRY_DELAY_MS;
         if (!isTransient(firstError) || budgetLeft < MIN_RETRY_BUDGET_MS) {
           throw toAppError(firstError);

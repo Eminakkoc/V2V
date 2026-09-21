@@ -1,10 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import type { TransformParams } from "@/lib/transform-contract";
 
-// Copy matches the create-page form (src/components/create/options-form.tsx)
-// so a reader sees the same words on the form and on the card that resulted
-// from it. F9: no fps numbers -- fpsResolution is relative to the source
-// frame rate, which the sources model does not store.
+// Copy matches the create-page form so a reader sees the same words there and on the resulting
+// card; no fps numbers, since fpsResolution is relative to a source frame rate the model does not
+// store.
 const PROMPT_TYPE_SUMMARY: Record<TransformParams["promptType"], string> = {
   default: "Default prompt",
   custom: "Custom prompt",
@@ -20,10 +19,7 @@ type ParamSummaryProps = {
   params: TransformParams;
 };
 
-// Figma "Parameters": a wrapping row of neutral tags. One of the History
-// view's three named deliverables (6.6) -- shown here as text, not only
-// implied by the players. The art style is deliberately absent: the card's
-// own title already carries it.
+// The art style is deliberately absent: the card's own title already carries it.
 export function ParamSummary({ params }: ParamSummaryProps) {
   const clipSeconds = params.endSeconds - params.startSeconds;
 

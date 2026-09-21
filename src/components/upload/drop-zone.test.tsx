@@ -31,7 +31,6 @@ describe("DropZone", () => {
     const props = renderZone();
     fireEvent.click(screen.getByRole("button", { name: /choose a video/i }));
     expect(props.onChoose).toHaveBeenCalledOnce();
-    // The brief asks only for an upload; there is deliberately no capture path.
     expect(screen.queryByRole("button", { name: /record/i })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(1);
   });

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { JOB_PHASES, JOB_STATUSES } from "./job-status";
 import { ART_STYLES, FPS_RESOLUTIONS, MODELS, PROMPT_TYPES, VERSIONS } from "./magic-hour-styles";
 
-// Binary floating point makes 0.29 % 0.01 non-zero, so z.multipleOf(0.01) rejects
-// values the trimmer legitimately produces. Rounding is exact for two decimals.
+// 0.29 % 0.01 is non-zero in binary floating point, so z.multipleOf(0.01) would reject values the
+// trimmer legitimately produces.
 const twoDecimals = (value: number) => Math.round(value * 100) / 100 === value;
 
 export const transformParamsSchema = z

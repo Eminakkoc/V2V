@@ -69,8 +69,6 @@ describe("UploadsPanel", () => {
 
     const textWithout = (node: HTMLElement) =>
       Array.from(node.querySelectorAll("h2, p")).map((el) => el.textContent);
-    // Same headings/paragraphs either way, aside from the list items
-    // themselves not being compared here -- only the affordance differs.
     expect(textWithout(withoutMore)).toEqual(textWithout(withMore));
     expect(withMore.querySelector("button")).not.toBeNull();
     expect(withoutMore.querySelector("button")).toBeNull();
@@ -97,10 +95,8 @@ describe("UploadsPanel", () => {
     );
     expect(screen.getAllByRole("button", { name: /load more/i })).toHaveLength(1);
 
-    // Simulates a completed load-more cycle appending rows -- the button
-    // must stay singular rather than one appearing per row (which is what
-    // it would render as if it lived inside the sources.map() instead of
-    // after it).
+    // Simulates a completed load-more cycle appending rows: the button must stay singular, not
+    // render once per row.
     rerender(
       <UploadsPanel
         sources={[buildSource(), buildSource(), buildSource()]}

@@ -4,15 +4,13 @@ import { cn } from "@/lib/utils";
 
 type AlertProps = React.ComponentProps<"div"> & {
   tone?: "error" | "success";
-  // "banner" is the standalone error block (title + body + actions);
-  // "callout" is the single-line note that sits inside a card.
+  // "banner" is the standalone error block; "callout" is the single-line note that sits inside a
+  // card.
   kind?: "banner" | "callout";
 };
 
-// Figma "Alert" (55:1374). Error banners and validation summaries take
-// role="alert", success callouts role="status" -- the caller passes the role,
-// because only it knows which of the two this instance is. Icon + text, never
-// colour alone.
+// The caller passes the role, because only it knows whether this instance is an error
+// (role="alert") or a success callout (role="status").
 export function Alert({
   className,
   tone = "error",

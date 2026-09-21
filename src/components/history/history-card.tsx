@@ -15,21 +15,13 @@ export type HistoryCardVariant = "top" | "attempt";
 type HistoryCardProps = {
   job: HistoryJobView;
   cloudName: string;
-  // "top": the latest job in a retry chain, rendered as its own list item.
-  // "attempt": one of its earlier attempts, rendered by PreviousAttempts
-  // inside the disclosure (HIS-005) -- same markup, so the two views can
-  // never drift apart. The only behavioural difference is the heading level
-  // and that an attempt never renders its own Source column (see VideoPair).
+  // "top" is the latest job in a retry chain; "attempt" is one of its earlier attempts, rendered
+  // from the same markup so the two views can never drift apart.
   variant?: HistoryCardVariant;
 };
 
-// Figma "Transformation card" (58:2455). One card renders both a top-level job
-// and a nested earlier attempt. The brief names three deliverables for this
-// view by name -- source URL, transformation parameters, generated URL -- so
-// all three are visible here as text/links, not merely implied by the players.
-// memo, with the merge keeping an unchanged row's object identity: a poll
-// exists to notice the one job that moved, and without this every other card
-// on the page re-rendered on every tick alongside it.
+// memo, with the merge keeping an unchanged row's object identity: without it, every other card on
+// the page re-rendered on every poll tick.
 export const HistoryCard = memo(function HistoryCard({
   job,
   cloudName,
@@ -44,10 +36,9 @@ export const HistoryCard = memo(function HistoryCard({
       aria-labelledby={titleId}
       className={cn(
         "flex flex-col gap-4 p-4 sm:p-6",
-        // A top-level card does not paint its own panel: the list item owns it,
-        // so the attempts disclosure sits inside the same surface rather than
-        // floating beneath it (Figma 58:2455). A nested attempt paints its own,
-        // one step lighter, to stay legible against the panel it sits on.
+        // A top-level card does not paint its own panel -- the list item owns it -- so the attempts
+        // disclosure sits inside the same surface; a nested attempt paints its own, one step
+        // lighter.
         variant === "attempt" && "rounded-card bg-bg",
       )}
     >

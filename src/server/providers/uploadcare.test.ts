@@ -37,8 +37,8 @@ describe("Uploadcare adapter", () => {
   });
 
   it("prefers the type Uploadcare sniffed from the bytes over the one the client declared", async () => {
-    // An uploader that sends no Content-Type gets "application/octet-stream"
-    // echoed back in mimeType, while contentInfo carries the real type.
+    // An uploader that sends no Content-Type gets "application/octet-stream" echoed back in
+    // mimeType, while contentInfo carries the real type.
     const adapter = createUploadcareAdapter(
       keys,
       vi.fn(async () =>

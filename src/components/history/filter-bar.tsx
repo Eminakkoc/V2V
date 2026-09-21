@@ -16,23 +16,14 @@ export type FilterBarProps = {
   style?: ArtStyle;
   sort: "createdAt" | "duration";
   dir: "asc" | "desc";
-  // F15: there is nothing to reorder while the list on screen is empty, so
-  // the sort control is disabled. It used to be unmounted, which took a whole
-  // control out of the filter row the moment a filter matched nothing --
-  // the largest of this page's layout jumps (IR-008).
+  // Disabled rather than unmounted: removing a whole control from the filter row the moment a
+  // filter matched nothing was this page's largest layout jump.
   isListEmpty: boolean;
 };
 
-// The Transformations tab's filter and sort controls (Task 20). Every
-// control is a server navigation to /history?... -- pushed via the router,
-// never fetched -- so the same query that produced the page on first load
-// reproduces it on every later change (see history-filters.ts, history.ts).
-//
-// Tablet and up get inline Select-based controls (F25); phones collapse the
-// same values into FilterSheet, a bottom sheet whose status and style
-// controls are chip radiogroups (F18). Both variants read the same
-// resolved query values as props, so they can never disagree about what is
-// currently active.
+// Every control is a server navigation to /history?... rather than a fetch, so the query that
+// produced the page reproduces it on every later change; tablet and up get inline Selects, while
+// phones collapse the same values into FilterSheet.
 export function FilterBar({ statusBucket, style, sort, dir, isListEmpty }: FilterBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,17 +35,12 @@ export function FilterBar({ statusBucket, style, sort, dir, isListEmpty }: Filte
   const sortValue = sortValueOf(sort, dir);
   const currentSortLabel =
     SORT_OPTIONS.find((option) => sortValueOf(option.sort, option.dir) === sortValue)?.label ?? "";
-  // Shown on the phone Filter button, as in the design ("Filter · 2"), so the
-  // number of filters hidden inside the sheet is visible without opening it.
+  // Shown on the phone Filter button, so the number of filters hidden inside the sheet is visible
+  // without opening it.
   const activeFilterCount = [statusBucket, style].filter(Boolean).length;
 
-  // Each trigger's own visible text is "<Prefix>: <value>", so its accessible
-  // name already reads that way -- but role="combobox" is not
-  // name-from-content, so each still carries an explicit aria-label (W4).
-  //
-  // Every control is a server navigation to /history?... -- pushed via the
-  // router, never fetched -- so the same query that produced the page on first
-  // load reproduces it on every later change.
+  // role="combobox" is not name-from-content, so each trigger carries an explicit aria-label even
+  // though its visible text already reads that way.
   return (
     <div className="flex flex-wrap items-center gap-3 md:gap-4">
       {/* Phones: the status and style filters collapse into the bottom sheet,

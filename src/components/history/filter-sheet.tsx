@@ -22,9 +22,8 @@ export type SortOption = {
   label: string;
 };
 
-// One control for both sort key and direction (W11): four combined options
-// rather than two selects, so there is only ever one valid (sort, dir) pair
-// on screen instead of a cross-product a reader could set inconsistently.
+// One control for both sort key and direction, so there is only ever one valid (sort, dir) pair on
+// screen instead of a cross-product a reader could set inconsistently.
 export const SORT_OPTIONS: readonly SortOption[] = [
   { sort: "createdAt", dir: "desc", label: "Newest first" },
   { sort: "createdAt", dir: "asc", label: "Oldest first" },
@@ -32,19 +31,14 @@ export const SORT_OPTIONS: readonly SortOption[] = [
   { sort: "duration", dir: "asc", label: "Shortest clip first" },
 ];
 
-// Exported (not local to filter-bar.tsx too) so both the inline desktop
-// Select and this file's own Select share one mapping from a (sort, dir)
-// pair to a single string value -- two copies is how they would drift into
-// disagreeing about what a sort value means.
+// Exported so the inline desktop Select and this file's own share one (sort, dir) to value mapping
+// rather than drifting into disagreement.
 export function sortValueOf(sort: "createdAt" | "duration", dir: "asc" | "desc"): string {
   return `${sort}:${dir}`;
 }
 
-// Builds the next /history URL by cloning the current query and applying
-// `changes` on top of it. `cursor` always drops: a filter or sort change
-// reshapes the list, so resuming an old page position would show a page 2
-// that no longer follows from page 1. `undefined` deletes a key, returning
-// that control to its schema default rather than sending it explicitly.
+// Clones the current query and applies `changes`; `cursor` always drops, because a reshaped list
+// makes an old page position meaningless, and `undefined` deletes a key back to its schema default.
 export function buildFilterHref(
   current: URLSearchParams,
   changes: Record<string, string | undefined>,
@@ -64,23 +58,9 @@ type RadioChipOption<T> = {
   label: string;
 };
 
-// A role="radiogroup" of role="radio" chips (F18) with the APG radio-group
-// keyboard model, which a bare aria-checked toggle does not get for free:
-//
-//   - Roving tabindex: exactly one chip is a Tab stop -- the checked one,
-//     or the first when none is checked -- so Tab enters and leaves the
-//     group in one stop each way instead of once per chip.
-//   - ArrowRight/ArrowDown and ArrowLeft/ArrowUp move focus to the next or
-//     previous chip, wrapping at the ends; Home/End jump to the first or
-//     last chip.
-//   - Selection follows focus: landing on a chip by arrow key selects it
-//     immediately (the same navigation a click triggers), matching the
-//     native <input type="radio"> group model the role announces.
-//   - Space/Enter (re)select the focused chip.
-//
-// A screen reader announces role="radio" as "this is a radio group, arrow
-// keys move between options" -- without this, the arrow keys silently do
-// nothing, which is worse than not claiming the role at all.
+// A role="radiogroup" of chips with the APG keyboard model -- roving tabindex, arrow keys that
+// wrap, Home/End, and selection following focus -- which a bare aria-checked toggle does not get
+// for free.
 function RadioChipGroup<T extends string>({
   labelId,
   options,
@@ -104,10 +84,8 @@ function RadioChipGroup<T extends string>({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    // The moved-to/activated chip is found from the event target itself,
-    // not from `checkedIndex` -- `value` is a prop the URL controls, and in
-    // a chain of key presses it may not have caught up with where focus
-    // already moved to on an earlier press in the same chain.
+    // Found from the event target, not from `checkedIndex`: `value` is controlled by the URL and
+    // may not have caught up with where focus already moved.
     const currentIndex = buttonRefs.current.indexOf(event.currentTarget);
     if (currentIndex === -1) return;
     const lastIndex = options.length - 1;
@@ -158,8 +136,8 @@ function RadioChipGroup<T extends string>({
             onClick={() => onChange(option.value)}
             onKeyDown={handleKeyDown}
             className={cn(
-              // Figma "Filter chip" (16:457): the selected state is marked by
-              // a check as well as by the fill, never by colour alone.
+              // The selected state is marked by a check as well as by the fill, never by colour
+              // alone.
               "inline-flex min-h-11 items-center gap-1.5 rounded-pill px-(--chip-px) py-(--chip-py) type-body-sm focus-ring transition-colors",
               checked
                 ? "bg-accent-strong text-bg"
@@ -176,14 +154,9 @@ function RadioChipGroup<T extends string>({
 }
 
 export type FilterSheetProps = {
-  // The element that opens the sheet -- rendered through SheetTrigger so
-  // Radix's Dialog owns focus trapping while it is open and restores focus
-  // to this exact element once it closes (F20, F21).
-  //
-  // Omitted when the caller drives `open` itself: the design's phone row has
-  // two buttons (Filter and Sort) that open this one sheet, and Radix allows
-  // a single SheetTrigger. Focus still returns to whichever button was
-  // clicked, because Radix restores it to whatever had focus on open.
+  // Rendered through SheetTrigger so Radix owns focus trapping and restoration; omitted when the
+  // caller drives `open` itself, since the phone row has two buttons opening this one sheet and
+  // Radix allows a single trigger.
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -191,11 +164,8 @@ export type FilterSheetProps = {
   style?: ArtStyle;
 };
 
-// The phone filter panel (F18, F20, F21): a role="dialog" bottom sheet whose
-// status and style controls are role="radiogroup" chips. Every change is a
-// server navigation to /history?... -- never a client fetch -- so the sheet
-// carries no local draft state of its own; it only reads the resolved query
-// values it is given and pushes a new URL on each change.
+// Every change is a server navigation to /history?..., so the sheet carries no local draft state
+// and only reads the resolved query values it is given.
 export function FilterSheet({
   trigger,
   open,
@@ -219,9 +189,7 @@ export function FilterSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        // Radix's Dialog.Content sets role="dialog" but, in the installed
-        // version, no aria-modal -- F20 asks for it explicitly, so it is set
-        // here rather than assumed.
+        // Radix's Dialog.Content sets role="dialog" but, in the installed version, no aria-modal.
         aria-modal="true"
         className="max-h-[85vh] gap-4 overflow-y-auto"
       >

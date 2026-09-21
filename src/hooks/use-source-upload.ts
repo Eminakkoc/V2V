@@ -48,11 +48,8 @@ function clientError(code: string): ErrorLike {
 
 type Options = {
   onServerError?: (error: ErrorLike) => void;
-  // Called with each real transition, in order, as it happens -- never
-  // synthetically on mount. Driven from the same call sites that dispatch to
-  // the reducer (below), not from an Effect watching `state`: an Effect fires
-  // once on mount with the initial value too, which a consumer mapping "idle"
-  // to "clear everything" cannot tell apart from a genuine reset.
+  // Driven from the call sites that dispatch, not an Effect watching `state`: an Effect also fires
+  // once on mount, which a consumer cannot tell apart from a genuine reset.
   onStateChange?: (state: UploadState) => void;
 };
 
@@ -61,9 +58,8 @@ export function useSourceUpload(rules: VideoRules, { onServerError, onStateChang
   const cdnUrlRef = useRef<string | null>(null);
   const attemptRef = useRef(0);
   const signatureErrorRef = useRef<ErrorLike | null>(null);
-  // Mirrors `state` synchronously so `notify` can compute the exact next value
-  // (via the same pure `reducer`) before React has committed it, without
-  // duplicating each case's logic at the call site.
+  // Mirrors `state` synchronously so `notify` can compute the exact next value through the same
+  // reducer before React has committed it.
   const stateRef = useRef<UploadState>({ status: "idle" });
 
   const notify = useCallback(

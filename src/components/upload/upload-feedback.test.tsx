@@ -114,9 +114,8 @@ describe("UploadWaitRetry", () => {
   });
 
   it("starts disabled again on a fresh mount for a later wait", () => {
-    // The caller only renders this component while failed, so a second rate
-    // limit after a retry is a new mount (it unmounts during "storing"
-    // between attempts), never a prop change on the same instance.
+    // The caller only renders this component while failed, so a second rate limit after a retry is
+    // a new mount, never a prop change on the same instance.
     const { unmount } = render(
       <UploadWaitRetry
         id="upload-error"

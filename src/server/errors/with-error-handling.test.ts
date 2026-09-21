@@ -81,9 +81,6 @@ describe("withErrorHandling", () => {
     expect(log).toHaveBeenCalled();
   });
 
-  // A generic client message is the right thing to return and the wrong thing
-  // to be left with in the logs: without the provider's own words, a rejected
-  // submission leaves no record of which setting it refused.
   it("logs a client-status rejection when it carries the provider's reason", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const handler = withErrorHandling(async () => {

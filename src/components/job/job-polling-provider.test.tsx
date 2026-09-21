@@ -42,8 +42,6 @@ function response(overrides: Partial<HistoryJobsResponse> = {}): HistoryJobsResp
   return { items: [], nextCursor: null, active: { ...noneActive }, ...overrides };
 }
 
-// The poll now lives in a provider above the pages, so every consumer in
-// these tests needs that provider around it.
 function wrapper({ children }: { children: React.ReactNode }) {
   return <JobPollingProvider>{children}</JobPollingProvider>;
 }
@@ -56,10 +54,8 @@ async function flush() {
 }
 
 beforeEach(() => {
-  // A block body matters here: `mockReset()` returns the mock itself, and a
-  // concise-body arrow would return that too — Vitest treats a `beforeEach`
-  // return value that's a function as an implicit post-test cleanup, which
-  // would call `fetchMock()` for real once more after every test.
+  // A block body matters: Vitest treats a function returned from `beforeEach` as cleanup, and
+  // `mockReset()` returns the mock.
   fetchMock.mockReset();
 });
 afterEach(() => {
@@ -93,8 +89,8 @@ describe("useJobPolling", () => {
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);
 
-      // Nothing is active any more: the schedule returned null, so the interval
-      // must have been torn down rather than kept running at the last cadence.
+      // The schedule returned null, so the interval must have been torn down rather than kept
+      // running at the last cadence.
       act(() => vi.advanceTimersByTime(60_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -149,8 +145,6 @@ describe("useJobPolling", () => {
       expect(result.current.stalled).toBe(false);
       expect(result.current.jobs).toEqual([]);
 
-      // The failed attempt schedules a retry rather than leaving the schedule
-      // null (which would stop polling forever).
       act(() => vi.advanceTimersByTime(10_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -180,7 +174,6 @@ describe("useJobPolling", () => {
       expect(result.current.stalled).toBe(true);
       expect(result.current.error).toBe(true);
 
-      // The schedule was set to null once the bound was hit: no more retries.
       act(() => vi.advanceTimersByTime(60_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -240,9 +233,7 @@ describe("useJobPolling", () => {
       Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
       act(() => window.dispatchEvent(new Event("offline")));
 
-      // Comfortably past enough 10s retry cadences to have reached the
-      // 5-failure stalled bound had ticking continued offline -- it must
-      // not have, so the count stays exactly where offline found it.
+      // Past enough retry cadences to have reached the stalled bound had ticking continued offline.
       act(() => vi.advanceTimersByTime(60_000));
       await flush();
       expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -5,9 +5,8 @@ import { Filmstrip } from "./filmstrip";
 
 const SRC = "https://res.cloudinary.com/demo/video/upload/sources/a.mp4";
 
-// Extraction advances one `await` at a time as each DOM event resolves a
-// pending promise; the next event in a sequence must not fire until that
-// continuation has actually run and registered its own listener.
+// Extraction advances one `await` at a time, so the next event must not fire until that
+// continuation has registered its own listener.
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -15,8 +14,7 @@ function flush(): Promise<void> {
 let getContextSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  // jsdom has no real canvas backend; each test controls what "extraction"
-  // sees by stubbing the 2D context it gets back.
+  // jsdom has no real canvas backend, so each test stubs the 2D context extraction gets back.
   getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext");
   vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,AAA");
 });
@@ -46,10 +44,8 @@ describe("Filmstrip", () => {
     expect(screen.queryByTestId("filmstrip-fallback")).not.toBeInTheDocument();
   });
 
-  // The required case: extraction can fail for reasons entirely outside the
-  // trimmer's control (no CORS headers, a mobile browser that refuses to
-  // seek an off-screen video, ...). It must never do worse than showing the
-  // plain track.
+  // Extraction can fail for reasons outside the trimmer's control (no CORS headers, a browser that
+  // refuses to seek), and must never do worse than the plain track.
   it("falls back to the plain track when a thrown extraction error occurs", async () => {
     const drawImage = vi.fn(() => {
       throw new Error("canvas is tainted");
@@ -94,8 +90,6 @@ describe("Filmstrip", () => {
     await flush(); // now genuinely mid-seek, waiting on "seeked"
     unmount();
 
-    // A seek that resolves after unmount must not throw or warn about
-    // updating state on an unmounted component.
     expect(() => fireEvent(video, new Event("seeked"))).not.toThrow();
   });
 });

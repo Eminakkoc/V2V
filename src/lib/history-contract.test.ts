@@ -77,11 +77,8 @@ describe("history query contract", () => {
     expect(() => parseHistoryQuery({ ids, limit: "5" })).toThrow(ZodError);
   });
 
-  // `limit` is a parameter changeable/ids both ignore (neither mode is
-  // paginated -- changeable returns every changeable row, ids returns
-  // exactly the named rows), so per the module's own rule (see the JOB_ONLY
-  // comment above) it must be refused rather than silently accepted and
-  // disregarded, exactly like `cursor` already is.
+  // changeable and ids both ignore `limit`, so it must be refused rather than silently disregarded,
+  // exactly like `cursor` already is.
   it("names limit, not just cursor, when rejecting it alongside changeable or ids", () => {
     const ids = "65f000000000000000000001";
     let caught: unknown;
@@ -126,15 +123,8 @@ describe("history query contract", () => {
     expect(parse({ nope: "1" }).success).toBe(false);
   });
 
-  // parseHistoryQuery must throw a ZodError, never an AppError -- this module
-  // carries no server-only import (AppError is server-only) so the browser
-  // can parse responses with the same schemas. The end-to-end proof that this
-  // ZodError survives src/server/errors/with-error-handling.ts's mapping to
-  // VALIDATION_FAILED lives in src/server/services/history.test.ts, which is
-  // free to import server code; this test instead confirms, without leaving
-  // src/lib, that the issues we construct carry the exact shape that mapping
-  // depends on (lines 32-41 of with-error-handling.ts read `issue.path.join(".")`
-  // and `issue.message` off each issue).
+  // with-error-handling.ts reads `issue.path.join(".")` and `issue.message`, so this pins that
+  // shape without leaving src/lib.
   it("throws a ZodError whose issues carry a joinable path and a message", () => {
     let caught: unknown;
     try {

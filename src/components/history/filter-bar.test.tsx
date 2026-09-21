@@ -62,8 +62,6 @@ describe("FilterBar", () => {
     expect(router.push).toHaveBeenCalledWith("/history?sort=duration&dir=desc");
   });
 
-  // Previous attempts are always nested under the job that superseded them,
-  // so the filter row no longer offers to promote them to top-level rows.
   it("offers no include-previous control", () => {
     render(<FilterBar {...defaultProps()} />);
     expect(
@@ -81,15 +79,8 @@ describe("FilterBar", () => {
     expect(router.push).toHaveBeenCalledWith("/history?statusBucket=complete");
   });
 
-  // IR-008: disabled rather than unmounted. Unmounting it removed a control
-  // from the filter row the moment a filter matched nothing, which shifted
-  // everything beside it, and left no way to re-sort from an empty result
-  // without first clearing the filter.
-  //
-  // There is exactly one sort control at any width -- the phone layout shows
-  // the same element beside the Filter button rather than a second copy
-  // inside the sheet, which would put two of them in the accessibility tree
-  // at once (the desktop row is only hidden with CSS).
+  // Disabled rather than unmounted, and there is exactly one sort control at any width -- the phone
+  // layout reuses the same element instead of putting a second copy in the accessibility tree.
   it("disables the sort control while the list is empty, without removing it", () => {
     render(<FilterBar {...defaultProps({ isListEmpty: true })} />);
     const sortControls = screen.getAllByRole("combobox", { name: /^Sort:/ });
@@ -264,13 +255,8 @@ describe("FilterBar", () => {
     });
 
     it("traps focus inside the sheet -- moving focus outside it is pulled straight back in", () => {
-      // jsdom has no native Tab-key focus traversal to hijack, so this
-      // exercises Radix FocusScope's real trap mechanism directly: it
-      // watches `focusin` on the document and, whenever the new target
-      // isn't inside the trapped container, refocuses back inside. A
-      // literal Tab keydown would not move focus anywhere under jsdom in
-      // the first place, so it could never show escape being prevented --
-      // this does the one thing that actually would move focus out.
+      // jsdom has no Tab-key focus traversal, so this drives Radix FocusScope's real `focusin` trap
+      // directly -- a literal Tab keydown would move focus nowhere at all.
       const outside = document.createElement("button");
       outside.textContent = "Outside the sheet";
       document.body.appendChild(outside);
@@ -298,9 +284,8 @@ describe("FilterBar", () => {
       fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      // Radix restores focus from a setTimeout(0) queued when the dialog
-      // unmounts, not synchronously with the click -- waitFor lets that
-      // macrotask run rather than asserting before it has a chance to.
+      // Radix restores focus from a setTimeout(0) queued when the dialog unmounts, so waitFor lets
+      // that macrotask run first.
       await waitFor(() => expect(document.activeElement).toBe(filterButton));
     });
 

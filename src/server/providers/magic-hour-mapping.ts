@@ -10,8 +10,8 @@ export function buildJobName(jobId: string, userName: string): string {
   return `${head}${userName}`.slice(0, MAX_NAME_LENGTH);
 }
 
-// Only the first token after the prefix is considered, so a user name that
-// itself contains "v2v:" cannot shadow the real id.
+// Only the first token after the prefix is considered, so a user name that itself contains "v2v:"
+// cannot shadow the real id.
 export function parseJobName(name: string | null | undefined): string | null {
   if (!name?.startsWith(JOB_NAME_PREFIX)) return null;
   const candidate = name.slice(JOB_NAME_PREFIX.length).split(" ")[0] ?? "";

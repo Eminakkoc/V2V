@@ -83,8 +83,6 @@ function useDeps() {
   const magicHour: MagicHourAdapter = {
     createJob: () => Promise.reject(new Error("unused")),
     getJobDetails,
-    // Real crypto against the configured test secret, exactly like the real
-    // adapter and the PROVIDER_MODE=fake wiring both do.
     verifyWebhook: (args) =>
       verifyWebhookSignature({
         rawBody: args.rawBody,

@@ -13,13 +13,9 @@ import {
 
 const clip = { name: "clip.mp4", mimeType: "video/mp4", size: 5 * 1024 * 1024 };
 
-// GET /api/history now schedules reconciliation (after() -- see reconcile.ts),
-// and useJobPolling fires one on mount plus one right after a successful
-// submit. With the fake provider's default status ("complete"), that
-// background call would race ahead of a test's own webhook and finalize the
-// job first. Any test that needs the job to stay non-terminal while it drives
-// its own webhook drops this trigger into the file name so reconciliation
-// sees "rendering" instead.
+// The fake provider's default status is "complete" and /api/history schedules reconciliation, so
+// any test that needs a job to stay non-terminal while it drives its own webhook drops this trigger
+// into the file name.
 const rendering = FAKE_JOB_NAME_TRIGGERS.statusRendering;
 
 async function uploadTrimAndChooseStyle(page: Page, fileName: string = clip.name) {
@@ -28,9 +24,7 @@ async function uploadTrimAndChooseStyle(page: Page, fileName: string = clip.name
   await dropFile(dropZone(page), { ...clip, name: fileName });
   await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
 
-  // Trim: the source is a 12.5s fixture clip, narrow it to a 5s window. The
-  // slider thumbs share these same accessible names, so scope to the number
-  // inputs (role "spinbutton") specifically.
+  // The slider thumbs share these accessible names, so scope to the number inputs specifically.
   await page.getByRole("spinbutton", { name: "Clip start" }).fill("1");
   await page.getByRole("spinbutton", { name: "Clip end" }).fill("6");
 
@@ -48,9 +42,8 @@ async function submitTransform(page: Page): Promise<{ job: { id: string } }> {
   return response.json();
 }
 
-// Takes the already-serialized body, never an object to re-serialize: the
-// signature is over these exact bytes, and re-stringifying risks producing
-// bytes that no longer match what was signed.
+// Takes the already-serialized body, never an object to re-serialize: the signature is over these
+// exact bytes.
 async function postWebhook(
   request: APIRequestContext,
   rawBody: string,
@@ -67,25 +60,15 @@ function goodHeaders(rawBody: string) {
   return { "magic-hour-event-signature": signature, "magic-hour-event-timestamp": timestamp };
 }
 
-// Folded into the existing happy-path test rather than given a spec of its
-// own: every upload draws down the per-IP rate-limit window the whole suite
-// shares, and that budget has one hit of headroom left (see the note in
-// playwright.config.ts). Double-clicking costs nothing extra as long as the
-// guard holds -- and if it ever stops holding, the second POST both fails this
-// assertion and shows up as a budget overrun.
-//
-// The clicks go through page.mouse at fixed coordinates, NOT through
-// locator.click(). A locator re-resolves and waits for actionability, and
-// while the request is in flight the button is disabled and relabelled
-// "Starting…" -- so a second locator.click() blocks until the first request
-// finishes and then submits a legitimate SECOND job. That is a measurement
-// artifact, not a double-submit; it is what IR-001 recorded.
+// The clicks go through page.mouse at fixed coordinates, NOT locator.click(), which re-resolves and
+// waits for actionability and would therefore submit a legitimate second job once the first request
+// finished.
 async function doubleClickTransform(page: Page): Promise<{ posts: number }> {
   let posts = 0;
   await page.route("**/api/transform", async (route) => {
     posts += 1;
-    // Stand in for real provider latency: the fake answers in ~10ms, which
-    // leaves no in-flight window for a second click to land in at all.
+    // Stand in for real provider latency: the fake answers in ~10ms, which leaves no in-flight
+    // window for a second click to land in.
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await route.continue();
   });
@@ -98,7 +81,6 @@ async function doubleClickTransform(page: Page): Promise<{ posts: number }> {
   const y = box.y + box.height / 2;
 
   await page.mouse.click(x, y);
-  // Mid-flight, the control must say so: disabled, and relabelled.
   await expect(button).toBeHidden();
   const busy = page.getByRole("button", { name: "Starting…" });
   await expect(busy).toBeVisible();
@@ -115,7 +97,6 @@ test("upload, trim, choose a style and transform shows a job card immediately", 
 }) => {
   await uploadTrimAndChooseStyle(page);
 
-  // A double-click must buy exactly one paid render (JOB-003).
   const { posts } = await doubleClickTransform(page);
   expect(posts).toBe(1);
 
@@ -130,17 +111,9 @@ test("a correctly signed webhook is accepted and the result reaches the page wit
   request,
 }) => {
   test.setTimeout(45_000);
-  // This job carries no status trigger, so it reports "complete" to both the
-  // webhook below and to reconciliation (which /api/history now schedules on
-  // every request, including useJobPolling's own mount and post-submit
-  // fetches). Whichever path reaches the job first finalizes it; the other
-  // finds it already complete and no-ops -- that race is the single-claim
-  // guarantee working as intended, not a defect. So this test cannot pin
-  // *which* path stored the result: it proves the delivery is accepted (200)
-  // and that the UI picks up the change through polling alone, with no
-  // page.reload() anywhere below. Webhook-driven finalization in isolation,
-  // independent of reconciliation, is covered by
-  // src/app/api/webhook/route.test.ts's "finalizes the job on video.completed".
+  // This job reports "complete" to both the webhook and reconciliation, so the test cannot pin
+  // which path stored the result -- only that the delivery is accepted and the UI picks the change
+  // up through polling alone.
   await uploadTrimAndChooseStyle(page);
   const { job } = await submitTransform(page);
 
@@ -149,9 +122,8 @@ test("a correctly signed webhook is accepted and the result reaches the page wit
   const response = await postWebhook(request, rawBody, goodHeaders(rawBody));
   expect(response.status()).toBe(200);
 
-  // No page.reload() anywhere in this test: the update below can only reach
-  // the DOM through useJobPolling's own backing-off refetch (3s -> 10s -> 30s),
-  // so a generous timeout stands in for "allow a few intervals to pass".
+  // No page.reload() anywhere: the update can only reach the DOM through useJobPolling's
+  // backing-off refetch, so the generous timeout stands in for "allow a few intervals to pass".
   await expect(page.locator('video[aria-label="Result: clip.mp4"]')).toBeVisible({
     timeout: 20_000,
   });
@@ -169,9 +141,8 @@ test("a webhook with a bad signature is rejected and the job stays processing", 
 
   const magicHourId = fakeMagicHourId(job.id, "", "rendering");
   const rawBody = JSON.stringify({ type: "video.completed", payload: { id: magicHourId } });
-  // Same shape as a real delivery, signed with the wrong secret: a well-formed
-  // signature that the server must still reject, proving the fake provider's
-  // verifyWebhook genuinely runs the real HMAC check rather than rubber-stamping.
+  // A well-formed signature made with the wrong secret, proving the fake provider's verifyWebhook
+  // genuinely runs the real HMAC check.
   const { signature, timestamp } = signWebhook(rawBody, "not-the-configured-secret");
   const response = await postWebhook(request, rawBody, {
     "magic-hour-event-signature": signature,
