@@ -19,6 +19,8 @@
     "prepare": "husky",
     "db:indexes": "tsx --env-file=.env.local --conditions=react-server scripts/create-indexes.ts",
     "cleanup:manual": "tsx --env-file=.env.local --conditions=react-server scripts/cleanup-manual-test-assets.ts",
+    "storage:inventory": "tsx --env-file=.env.local --conditions=react-server scripts/storage-inventory.ts",
+    "storage:clear": "tsx --env-file=.env.local --conditions=react-server scripts/storage-clear.ts",
     "transform:real": "tsx --env-file=.env.local scripts/real-transform.ts"
   },
   "dependencies": {

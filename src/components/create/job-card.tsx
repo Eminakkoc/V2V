@@ -10,7 +10,6 @@ import { ActivityBar } from "@/components/ui/activity-bar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { formatTimestamp } from "@/lib/format";
 import type { HistoryJobView } from "@/lib/history-contract";
-import { cn } from "@/lib/utils";
 
 type JobCardProps = {
   // The history projection, not the bare JobView: it carries the job's own `source`, so the Source
@@ -85,12 +84,7 @@ export const JobCard = memo(function JobCard({
             </Button>
           ) : null}
           <RetryDialog job={job} onConfirm={() => onRetry(job)} disabled={retryDisabled} />
-          {/* cn(), not buttonVariants({ className }): cva concatenates without merging, so the
-              ghost size's own px would land on the element beside this one. */}
-          <Link
-            href="/history"
-            className={cn(buttonVariants({ variant: "ghost", size: "ghost" }), "px-(--btn-px)")}
-          >
+          <Link href="/history" className={buttonVariants({ variant: "ghost" })}>
             Go to History
           </Link>
         </div>

@@ -13,7 +13,9 @@ const buttonVariants = cva(
         default: "border-transparent bg-accent-strong text-bg hover:bg-accent-800",
         outline: "border-divider text-foreground hover:bg-neutral-100",
         secondary: "border-divider bg-neutral-100 text-foreground hover:bg-neutral-200",
-        ghost: "border-transparent text-accent-strong hover:bg-accent-100",
+        // Bordered like the outline variant, and padded like every other button: the label alone
+        // left it guessing whether the words were a button at all.
+        ghost: "border-divider text-accent-strong hover:bg-accent-100",
         // The design has no red; a blocked or undoing action is carried by the lighter end of the
         // same terracotta ramp.
         destructive: "border-transparent bg-accent-200 text-accent-900 hover:bg-accent-300",
@@ -24,15 +26,13 @@ const buttonVariants = cva(
         lg: "px-(--btn-lg-px) py-(--btn-lg-py) type-button-lg",
         sm: "px-3 py-1.5 type-button any-pointer-coarse:min-h-11",
         xs: "px-2.5 py-1 type-tag any-pointer-coarse:min-h-11",
-        // Ghost buttons sit flush with the text around them, so they carry the label's own padding
-        // rather than a button's.
-        ghost: "px-(--btn-ghost-px) py-(--btn-py) type-button",
         icon: "size-11 [&_svg:not([class*='size-'])]:size-4",
         "icon-sm": "size-9 [&_svg:not([class*='size-'])]:size-4 any-pointer-coarse:size-11",
       },
     },
     compoundVariants: [
-      { variant: "ghost", size: "default", className: "px-(--btn-ghost-px)" },
+      // Only the link variant still sits flush with the text around it, which is what
+      // --btn-ghost-px is now for; a ghost button takes a border and a button's own padding.
       { variant: "link", size: "default", className: "px-(--btn-ghost-px)" },
     ],
     defaultVariants: {

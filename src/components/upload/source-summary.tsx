@@ -29,7 +29,7 @@ export function SourceSummary({ result, fileName, onReplace }: SourceSummaryProp
         </h2>
         <p className="type-caption text-muted-foreground">{meta}</p>
       </div>
-      <Button type="button" variant="ghost" size="ghost" onClick={onReplace}>
+      <Button type="button" variant="ghost" onClick={onReplace}>
         Replace video
       </Button>
     </div>

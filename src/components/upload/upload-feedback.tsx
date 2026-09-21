@@ -48,7 +48,7 @@ export function UploadProgress({ state, file, onCancel, labelRef }: UploadProgre
           </p>
         </div>
         {onCancel ? (
-          <Button type="button" variant="ghost" size="ghost" onClick={onCancel}>
+          <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
         ) : null}

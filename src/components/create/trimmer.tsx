@@ -238,7 +238,7 @@ export function Trimmer({
             disabled={disabled}
             value={value.startSeconds}
             onChange={handleNumberChange("start")}
-            className="w-[90px] text-right"
+            className="w-[90px] text-center"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -254,7 +254,7 @@ export function Trimmer({
             disabled={disabled}
             value={value.endSeconds}
             onChange={handleNumberChange("end")}
-            className="w-[90px] text-right"
+            className="w-[90px] text-center"
           />
         </div>
         {/* Styled from aria-pressed rather than a parallel class, so the fill can never disagree

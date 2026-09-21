@@ -206,7 +206,6 @@ export function FilterSheet({
             <Button
               type="button"
               variant="ghost"
-              size="ghost"
               onClick={() => navigate({ statusBucket: undefined, style: undefined })}
             >
               Clear all

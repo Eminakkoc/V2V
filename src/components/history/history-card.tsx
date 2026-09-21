@@ -101,10 +101,7 @@ export const HistoryCard = memo(function HistoryCard({
           {variant === "top" && job.source ? (
             <Link
               href={`/?sourceId=${job.sourceId}`}
-              className={buttonVariants({
-                variant: job.output ? "ghost" : "outline",
-                size: job.output ? "ghost" : "default",
-              })}
+              className={buttonVariants({ variant: job.output ? "ghost" : "outline" })}
             >
               Restyle again
             </Link>
