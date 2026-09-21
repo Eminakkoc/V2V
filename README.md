@@ -314,19 +314,21 @@ production depending on the status check alone until someone remembers to fix it
 
 ## Scripts
 
-| Command               | What it does                                                               |
-| --------------------- | -------------------------------------------------------------------------- |
-| `pnpm dev`            | Start the development server                                               |
-| `pnpm build`          | Production build                                                           |
-| `pnpm lint`           | ESLint (Next.js, TypeScript, jsx-a11y rules)                               |
-| `pnpm typecheck`      | TypeScript type check                                                      |
-| `pnpm format`         | Prettier                                                                   |
-| `pnpm test`           | Unit and integration tests (Vitest)                                        |
-| `pnpm test:e2e`       | End-to-end and accessibility tests (Playwright)                            |
-| `pnpm check`          | Lint, typecheck, format check and tests                                    |
-| `pnpm db:indexes`     | Create the MongoDB indexes (run once per environment)                      |
-| `pnpm cleanup:manual` | Remove the sources a live manual-test run left behind (dry run by default) |
-| `pnpm transform:real` | Trigger and poll a real transform against a deployed instance (see below)  |
+| Command                  | What it does                                                               |
+| ------------------------ | -------------------------------------------------------------------------- |
+| `pnpm dev`               | Start the development server                                               |
+| `pnpm build`             | Production build                                                           |
+| `pnpm lint`              | ESLint (Next.js, TypeScript, jsx-a11y rules)                               |
+| `pnpm typecheck`         | TypeScript type check                                                      |
+| `pnpm format`            | Prettier                                                                   |
+| `pnpm test`              | Unit and integration tests (Vitest)                                        |
+| `pnpm test:e2e`          | End-to-end and accessibility tests (Playwright)                            |
+| `pnpm check`             | Lint, typecheck, format check and tests                                    |
+| `pnpm db:indexes`        | Create the MongoDB indexes (run once per environment)                      |
+| `pnpm cleanup:manual`    | Remove the sources a live manual-test run left behind (dry run by default) |
+| `pnpm storage:inventory` | Count everything stored in MongoDB, Cloudinary and Uploadcare; reads only  |
+| `pnpm storage:clear`     | Empty every store of this app's own data (dry run by default)              |
+| `pnpm transform:real`    | Trigger and poll a real transform against a deployed instance (see below)  |
 
 ## Tests and CI
 
@@ -358,6 +360,29 @@ to run unless `PROVIDER_MODE` is `real`, removes each source from both providers
 dropping its database row, and stops at the first failure so nothing is left half-removed.
 An Uploadcare file shared by a source outside the window is kept — re-sending the same
 upload reuses one file across several sources.
+
+### Emptying the stores completely
+
+`cleanup:manual` works from the `sources` collection outwards, so it only reaches what the
+database still knows about: a file left behind by an upload that failed before its row was
+written stays where it is, and finished renders in `results/` and the `jobs` rows are outside
+its remit entirely. To start genuinely empty — before a delivery, say — `pnpm storage:clear`
+enumerates the providers themselves instead.
+
+```bash
+pnpm storage:inventory   # what is in each store right now; reads only
+pnpm storage:clear       # what would go, and from where; deletes nothing
+pnpm storage:clear --delete
+```
+
+It clears both Cloudinary folders this app writes (`sources/` and `results/`), every stored
+Uploadcare file, and every document in `sources`, `jobs` and `rateLimitHits`. **It is
+irreversible and it reads `.env.local`**, which the deployment steps above have you point at
+the production database — so check which one that is before passing `--delete`.
+
+Two things it deliberately leaves alone: anything in Cloudinary outside those two folders,
+including the `samples/` assets a new account ships with, and the MongoDB indexes, so there is
+no need to re-run `pnpm db:indexes` afterwards.
 
 ## Troubleshooting
 
