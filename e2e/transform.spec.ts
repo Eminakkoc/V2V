@@ -67,17 +67,62 @@ function goodHeaders(rawBody: string) {
   return { "magic-hour-event-signature": signature, "magic-hour-event-timestamp": timestamp };
 }
 
+// Folded into the existing happy-path test rather than given a spec of its
+// own: every upload draws down the per-IP rate-limit window the whole suite
+// shares, and that budget has one hit of headroom left (see the note in
+// playwright.config.ts). Double-clicking costs nothing extra as long as the
+// guard holds -- and if it ever stops holding, the second POST both fails this
+// assertion and shows up as a budget overrun.
+//
+// The clicks go through page.mouse at fixed coordinates, NOT through
+// locator.click(). A locator re-resolves and waits for actionability, and
+// while the request is in flight the button is disabled and relabelled
+// "Starting…" -- so a second locator.click() blocks until the first request
+// finishes and then submits a legitimate SECOND job. That is a measurement
+// artifact, not a double-submit; it is what IR-001 recorded.
+async function doubleClickTransform(page: Page): Promise<{ posts: number }> {
+  let posts = 0;
+  await page.route("**/api/transform", async (route) => {
+    posts += 1;
+    // Stand in for real provider latency: the fake answers in ~10ms, which
+    // leaves no in-flight window for a second click to land in at all.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+
+  const button = page.getByRole("button", { name: "Transform" });
+  await button.scrollIntoViewIfNeeded();
+  const box = await button.boundingBox();
+  if (!box) throw new Error("Transform button has no box");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+
+  await page.mouse.click(x, y);
+  // Mid-flight, the control must say so: disabled, and relabelled.
+  await expect(button).toBeHidden();
+  const busy = page.getByRole("button", { name: "Starting…" });
+  await expect(busy).toBeVisible();
+  await expect(busy).toBeDisabled();
+
+  await page.mouse.click(x, y);
+  await expect(page.getByRole("button", { name: "Transform" })).toBeVisible();
+  await page.unroute("**/api/transform");
+  return { posts };
+}
+
 test("upload, trim, choose a style and transform shows a job card immediately", async ({
   page,
 }) => {
   await uploadTrimAndChooseStyle(page);
-  const { job } = await submitTransform(page);
+
+  // A double-click must buy exactly one paid render (JOB-003).
+  const { posts } = await doubleClickTransform(page);
+  expect(posts).toBe(1);
 
   const jobCard = page.getByRole("region", { name: "clip.mp4" });
   await expect(jobCard).toBeVisible();
   await expect(jobCard.getByText("Cyberpunk", { exact: false })).toBeVisible();
   await expect(jobCard.getByText("Queued", { exact: true })).toBeVisible();
-  expect(job.id).toBeTruthy();
 });
 
 test("a correctly signed webhook is accepted and the result reaches the page without a reload", async ({
