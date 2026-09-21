@@ -292,7 +292,22 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
                 ? { creditsCharged: patch.creditsCharged }
                 : {}),
             },
-            $unset: { claimedAt: "", preFinalizeStatus: "" },
+            // errorCode/errorMessage go too. A job can reach here carrying an
+            // earlier failure: reconciliation abandons a never-confirmed
+            // submission with SUBMISSION_UNCONFIRMED, and a correctly signed
+            // late webhook then rescues it. That recovery is right, but
+            // leaving the error behind left rows reading
+            // {status: "complete", errorCode: "SUBMISSION_UNCONFIRMED"}, and
+            // errorCode is projected into the public job view -- so a consumer
+            // reading it without also checking status sees a completed job
+            // reporting a submission failure. lastError is deliberately left:
+            // it is a diagnostic breadcrumb, not part of the view. (IR-005.)
+            $unset: {
+              claimedAt: "",
+              preFinalizeStatus: "",
+              errorCode: "",
+              errorMessage: "",
+            },
           },
           { returnDocument: "after" },
         );

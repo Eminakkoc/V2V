@@ -905,6 +905,39 @@ describe("reconciliation writes", () => {
     });
   });
 
+  // IR-005. Scenario F.4: reconciliation abandons a never-confirmed
+  // submission, then a correctly signed late video.completed attaches the
+  // provider id and finalizes the job. The rescue itself is right and
+  // valuable; what was wrong is that the earlier error survived it.
+  describe("markComplete on a job that had already failed", () => {
+    it.each([
+      ["SUBMISSION_UNCONFIRMED", "We could not confirm this submission."] as const,
+      ["JOB_ABANDONED", "We stopped checking this job."] as const,
+    ])("clears a stale %s when a late webhook rescues the job", async (code, message) => {
+      const created = await jobs.insert("user-1", { ...input, status: "processing" });
+      const abandoned = await jobs.markAbandoned(created.id, code, message);
+      expect(abandoned?.errorCode).toBe(code);
+
+      const completed = await jobs.markComplete(created.id, {
+        output: { cloudinaryPublicId: "results/abc", cloudinaryUrl: "https://example.com/abc.mp4" },
+        creditsCharged: 1,
+      });
+
+      // errorCode and errorMessage are both projected into jobViewSchema, so
+      // a consumer reading either without also checking status would see a
+      // completed job reporting a failure.
+      expect(completed?.status).toBe("complete");
+      expect(completed?.errorCode).toBeUndefined();
+      expect(completed?.errorMessage).toBeUndefined();
+      expect(completed?.output?.cloudinaryPublicId).toBe("results/abc");
+      expect(completed?.creditsCharged).toBe(1);
+
+      const stored = await jobs.findByIdUnscoped(created.id);
+      expect(stored?.errorCode).toBeUndefined();
+      expect(stored?.errorMessage).toBeUndefined();
+    });
+  });
+
   describe("markFailedFromCheck", () => {
     it("fails a processing job", async () => {
       const created = await jobs.insert("user-1", { ...input, status: "processing" });
