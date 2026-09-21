@@ -22,6 +22,13 @@ export default defineConfig({
     },
     // Both of these seed jobs or need no viewport, and every seed draws down
     // the per-IP rate-limit window that all specs share.
+    //
+    // Budget as of 36aec0d: upload 29/30, transform 22/30 (per-IP, per
+    // scope, 30 per 10 minutes) -- upload headroom is down to ONE hit.
+    // Adding any spec that uploads, or running an existing upload/transform
+    // spec under a second project, requires re-running the tally first (see
+    // e2e/history.spec.ts's header for the full breakdown), or the next
+    // failure here reads as flaky rather than a budget overrun (L-007).
     {
       name: "mobile",
       use: { ...devices["iPhone 13"] },
