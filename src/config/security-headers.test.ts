@@ -11,10 +11,12 @@ describe("security headers", () => {
     expect(header("X-Frame-Options")).toBe("DENY");
   });
 
-  it("allows the camera and microphone for Record and denies other features", () => {
+  it("denies the camera, the microphone and every other feature the app does not use", () => {
     const policy = header("Permissions-Policy") ?? "";
-    expect(policy).toContain("camera=(self)");
-    expect(policy).toContain("microphone=(self)");
+    // The app only ever reads an already-recorded file, so neither capture
+    // device is ever requested -- see the uploader's sourceList="local".
+    expect(policy).toContain("camera=()");
+    expect(policy).toContain("microphone=()");
     expect(policy).toContain("geolocation=()");
   });
 

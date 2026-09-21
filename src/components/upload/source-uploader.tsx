@@ -109,13 +109,6 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
     api()?.openSystemDialog();
   }
 
-  function openCamera() {
-    const uploader = api();
-    uploader?.removeAllFiles();
-    uploader?.setCurrentActivity("camera");
-    uploader?.setModalState(true);
-  }
-
   function addDroppedFile(file: File) {
     if (!uploaderRef.current) {
       pendingFileRef.current = file;
@@ -159,8 +152,7 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
         multiple={false}
         accept={rules.accept}
         maxLocalFileSizeBytes={settings.maxBytes}
-        sourceList="local, camera"
-        cameraModes="video"
+        sourceList="local"
         qualityInsights={false}
         {...TELEMETRY_OFF}
         secureUploadsSignatureResolver={resolveSignature}
@@ -194,7 +186,6 @@ export function SourceUploader({ settings, onStateChange, onFileSelected }: Sour
           titleRef={dropZoneTitleRef}
           onFile={addDroppedFile}
           onChoose={openChooser}
-          onRecord={openCamera}
         />
       )}
       {problem && problem.action === "wait-retry" && state.status === "failed" ? (

@@ -49,7 +49,7 @@ export function securityHeaders(isDevelopment: boolean): Array<{ key: string; va
     {
       key: "Permissions-Policy",
       value:
-        "camera=(self), microphone=(self), fullscreen=(self), geolocation=(), payment=(), usb=(), display-capture=()",
+        "camera=(), microphone=(), fullscreen=(self), geolocation=(), payment=(), usb=(), display-capture=()",
     },
   ];
 }

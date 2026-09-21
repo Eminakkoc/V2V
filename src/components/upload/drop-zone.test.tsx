@@ -10,7 +10,6 @@ function renderZone(overrides: Partial<Parameters<typeof DropZone>[0]> = {}) {
     invalid: false,
     onFile: vi.fn(),
     onChoose: vi.fn(),
-    onRecord: vi.fn(),
     ...overrides,
   };
   render(<DropZone {...props} />);
@@ -27,12 +26,13 @@ describe("DropZone", () => {
     expect(props.onFile).toHaveBeenCalledWith(file);
   });
 
-  it("offers Choose and Record buttons", () => {
+  it("offers a single Choose button and no recording affordance", () => {
     const props = renderZone();
     fireEvent.click(screen.getByRole("button", { name: /choose a video/i }));
-    fireEvent.click(screen.getByRole("button", { name: /record/i }));
     expect(props.onChoose).toHaveBeenCalledOnce();
-    expect(props.onRecord).toHaveBeenCalledOnce();
+    // The brief asks only for an upload; there is deliberately no capture path.
+    expect(screen.queryByRole("button", { name: /record/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
   it("points at the error message when invalid", () => {

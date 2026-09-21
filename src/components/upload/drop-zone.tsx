@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, FolderOpen, Upload } from "lucide-react";
+import { FolderOpen, Upload } from "lucide-react";
 import { useState, type Ref } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,6 @@ type DropZoneProps = {
   titleRef?: Ref<HTMLParagraphElement>;
   onFile: (file: File) => void;
   onChoose: () => void;
-  onRecord: () => void;
 };
 
 export function DropZone({
@@ -26,7 +25,6 @@ export function DropZone({
   titleRef,
   onFile,
   onChoose,
-  onRecord,
 }: DropZoneProps) {
   const [dragging, setDragging] = useState(false);
   return (
@@ -66,17 +64,6 @@ export function DropZone({
           <FolderOpen aria-hidden />
           <span className="sm:hidden">Camera roll</span>
           <span className="hidden sm:inline">Choose a video</span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11"
-          disabled={disabled}
-          onClick={onRecord}
-        >
-          <Camera aria-hidden />
-          <span className="sm:hidden">Record a video</span>
-          <span className="hidden sm:inline">Record</span>
         </Button>
       </div>
     </div>

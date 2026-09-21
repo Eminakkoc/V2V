@@ -236,12 +236,8 @@ recovery at all. Local development doesn't need it — see "Local development" a
 
 ## Known limitations
 
-- **Camera recording has never run on real hardware.** `openCamera()` in
-  `src/components/upload/source-uploader.tsx`, and the `camera=(self)` / `microphone=(self)`
-  Permissions-Policy it depends on, are covered only by unit tests and by end-to-end tests
-  against a fake camera. Verifying it needs a physical device and human judgement.
 - **The mobile layout has never run on a real handset.** The Playwright suite covers iPhone
-  WebKit against fakes; no real phone has run the flow end to end. One pass — record a clip,
+  WebKit against fakes; no real phone has run the flow end to end. One pass — pick a clip,
   confirm it uploads and the summary renders — is the last unexercised user-facing path.
 - **Identity is an anonymous cookie.** There is no sign-in; clearing the cookie loses the
   history tied to it.
