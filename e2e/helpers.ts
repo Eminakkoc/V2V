@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // Must match FAKE_UUID_PREFIXES in src/server/providers/fakes.ts.
 export const FAKE_UUID_PREFIXES = {
@@ -138,10 +138,21 @@ export function dropZone(page: Page): Locator {
   return page.getByRole("group", { name: "Drop a video here" });
 }
 
+// A finished upload replaces the drop zone with a summary titled by the file's own name. Every
+// spec that uploads waits on this, so the assertion lives here rather than at six call sites.
+export async function expectUploaded(page: Page, fileName: string) {
+  await expect(page.getByRole("heading", { name: fileName })).toBeVisible();
+}
+
 export async function dropFile(
   target: Locator,
   file: { name: string; mimeType: string; size: number },
 ) {
+  // The drop zone's own button is disabled until the uploader's dynamic import resolves, which is
+  // also the moment React has hydrated and onDrop exists. A drop dispatched before that lands on
+  // plain server-rendered DOM and is lost with no error anywhere -- the whole page just sits there.
+  await expect(target.getByRole("button").first()).toBeEnabled();
+
   const dataTransfer = await target.page().evaluateHandle(({ name, mimeType, size }) => {
     const transfer = new DataTransfer();
     transfer.items.add(new File([new Uint8Array(size)], name, { type: mimeType }));

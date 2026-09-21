@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { dropFile, dropZone, fakeUuid, FAKE_UUID_PREFIXES, mockProviders } from "./helpers";
+import {
+  dropFile,
+  dropZone,
+  expectUploaded,
+  fakeUuid,
+  FAKE_UUID_PREFIXES,
+  mockProviders,
+} from "./helpers";
 
 const clip = { name: "clip.mp4", mimeType: "video/mp4", size: 5 * 1024 * 1024 };
 
@@ -7,9 +14,9 @@ test("a dropped video is uploaded, stored and shown", async ({ page }) => {
   await mockProviders(page, fakeUuid());
   await page.goto("/");
   await dropFile(dropZone(page), clip);
-  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
-  await expect(page.getByText("1280 × 720")).toBeVisible();
-  await expect(page.getByText("MP4", { exact: true })).toBeVisible();
+  await expectUploaded(page, clip.name);
+  // Format, size, dimensions and duration share one line under the file name.
+  await expect(page.getByText(/^MP4 · .+ · 1280 × 720 · /)).toBeVisible();
 });
 
 test("an oversize video is refused before any upload", async ({ page }) => {
@@ -30,7 +37,7 @@ test("a failed copy is retried without uploading again", async ({ page }) => {
   await dropFile(dropZone(page), clip);
   await expect(page.locator("#upload-error")).toContainText("We couldn't store your video");
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  await expectUploaded(page, clip.name);
   expect(providers.uploads()).toBe(1);
 });
 
@@ -50,7 +57,7 @@ test("a file at the multipart threshold is uploaded over the S3 host", async ({ 
     mimeType: "video/mp4",
     size: 27 * 1024 * 1024,
   });
-  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  await expectUploaded(page, "large.mp4");
   expect(providers.multipartParts()).toBeGreaterThan(0);
 });
 
@@ -66,6 +73,6 @@ test("an upload logs no blocked-request errors", async ({ page }) => {
   await mockProviders(page, fakeUuid());
   await page.goto("/");
   await dropFile(dropZone(page), clip);
-  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  await expectUploaded(page, clip.name);
   expect(blocked).toEqual([]);
 });

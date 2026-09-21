@@ -4,6 +4,7 @@ import { E2E_WEBHOOK_SECRET } from "./env";
 import {
   dropFile,
   dropZone,
+  expectUploaded,
   FAKE_JOB_NAME_TRIGGERS,
   fakeMagicHourId,
   fakeUuid,
@@ -22,7 +23,7 @@ async function uploadTrimAndChooseStyle(page: Page, fileName: string = clip.name
   await mockProviders(page, fakeUuid());
   await page.goto("/");
   await dropFile(dropZone(page), { ...clip, name: fileName });
-  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  await expectUploaded(page, fileName);
 
   // The slider thumbs share these accessible names, so scope to the number inputs specifically.
   await page.getByRole("spinbutton", { name: "Clip start" }).fill("1");
@@ -214,7 +215,7 @@ test("the create page has no WCAG 2.1 A/AA violations across idle, uploaded and 
   expect((await scan()).violations).toEqual([]);
 
   await dropFile(dropZone(page), clip);
-  await expect(page.getByRole("heading", { name: "Uploaded" })).toBeVisible();
+  await expectUploaded(page, clip.name);
   expect((await scan()).violations).toEqual([]);
 
   await page.getByRole("combobox", { name: "Art style" }).click();
