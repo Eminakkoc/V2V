@@ -497,9 +497,26 @@ export function createJobsRepository(getDb: DbGetter): JobsRepository {
           userId,
           $or: [
             {
-              status: { $in: ["processing", "timed_out", "superseded"] },
+              status: { $in: ["processing", "timed_out"] },
               magicHourId: { $exists: true },
               ...uncheckedBefore(windows.recentMs),
+            },
+            // superseded gets its own arm, bounded by the same 24h redelivery
+            // window as abandoned below. Without this bound a superseded
+            // attempt whose provider job never reports terminal would be
+            // re-checked every recentMs forever: nothing moves "superseded"
+            // to a terminal state (markTimedOut only takes processing,
+            // markAbandoned only takes processing/timed_out/finalizing), so
+            // the (a) arm above would otherwise keep matching it
+            // indefinitely.
+            {
+              status: "superseded",
+              magicHourId: { $exists: true },
+              ...uncheckedBefore(windows.recentMs),
+              deadlineAt: {
+                $lt: now,
+                $gte: new Date(now.getTime() - windows.redeliveryMs),
+              },
             },
             {
               status: "finalizing",

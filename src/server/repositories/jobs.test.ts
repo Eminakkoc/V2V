@@ -681,6 +681,43 @@ describe("selectForReconcile", () => {
     expect(selected.map((j) => j.id)).not.toContain(pastRedelivery.id);
   });
 
+  it("selects a superseded job checked 90s ago within 24h of its deadline", async () => {
+    const created = await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "superseded",
+      magicHourId: "mh-f",
+      lastCheckedAt: new Date(now.getTime() - 90_000),
+      deadlineAt: new Date(now.getTime() - 60 * 60_000),
+    });
+    const selected = await jobs.selectForReconcile("user-1", now, windows, 5);
+    expect(selected.map((j) => j.id)).toEqual([created.id]);
+  });
+
+  it("does not select a superseded job 30h past its deadline, even when unchecked for 90s", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "superseded",
+      magicHourId: "mh-g",
+      lastCheckedAt: new Date(now.getTime() - 90_000),
+      deadlineAt: new Date(now.getTime() - 30 * 60 * 60_000),
+    });
+    expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
+  });
+
+  it("does not select a superseded job whose deadline is still in the future", async () => {
+    await jobs.insert("user-1", {
+      ...input,
+      idempotencyKey: randomUUID(),
+      status: "superseded",
+      magicHourId: "mh-h",
+      lastCheckedAt: new Date(now.getTime() - 90_000),
+      deadlineAt: new Date(now.getTime() + 60_000),
+    });
+    expect(await jobs.selectForReconcile("user-1", now, windows, 5)).toEqual([]);
+  });
+
   it("never selects a complete or a failed job", async () => {
     await jobs.insert("user-1", {
       ...input,
