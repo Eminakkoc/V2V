@@ -165,6 +165,11 @@ export function SourceUploader({
         {...TELEMETRY_OFF}
         secureUploadsSignatureResolver={resolveSignature}
         onFileAdded={(entry) => {
+          // Picking a file through the system dialog opens the widget's own upload list over our
+          // progress card, which reports the same file in the design's own language. Closed here as
+          // well as on the two terminal handlers, so both entry paths look the same -- a drop never
+          // opens it at all.
+          api()?.setModalState(false);
           if (upload.select({ name: entry.name, mimeType: entry.mimeType, size: entry.size })) {
             setSelectedFile({ name: entry.name, size: entry.size });
             onFileSelected?.(entry.name);

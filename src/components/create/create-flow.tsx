@@ -348,17 +348,29 @@ export function CreateFlow({
           )}
         </Button>
       </div>
+      {/* The same callout the upload errors use, rather than a line of caption
+          text: this one refuses a submit the reader has to act on, and at
+          caption size in bare accent it read as a footnote to the button. */}
       {state.submitError ? (
-        <p role="alert" className="type-caption text-accent-900">
-          {state.submitError.title}. {state.submitError.description}
-        </p>
+        <Alert role="alert" kind="callout" className="mt-1">
+          <p className="min-w-[200px] flex-1 type-body">
+            <strong className="font-bold">{state.submitError.title}.</strong>{" "}
+            {state.submitError.description}
+          </p>
+        </Alert>
       ) : null}
     </div>
   );
 
   return (
-    // pb-28 on phones keeps the last of the page clear of the pinned action bar.
-    <div className={cn("flex flex-col gap-6 sm:gap-8", ready && "pb-28 sm:pb-0")}>
+    // Keeps the last of the page clear of the pinned action bar on phones, which grows by roughly
+    // the height of the callout when a submit is refused.
+    <div
+      className={cn(
+        "flex flex-col gap-6 sm:gap-8",
+        ready && (state.submitError ? "pb-52 sm:pb-0" : "pb-28 sm:pb-0"),
+      )}
+    >
       {/* Figma "Desktop — empty" and "Desktop — trim & configure": one row
           whose right column is the explainer aside before a source is picked
           and the transformation form after. The uploader itself stays mounted

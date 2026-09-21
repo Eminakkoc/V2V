@@ -417,3 +417,43 @@
     transform: translateX(233%);
   }
 }
+
+/* The Uploadcare widget's own chrome. It is headless, so the app draws the drop
+   zone, the progress card and every error itself -- but the widget still owns
+   a few surfaces it opens on its own (the upload list it shows while a file
+   picked through the system dialog uploads). Its stylesheet defines these on
+   `:where([uc-wgt-common])`, a zero-specificity selector, so naming the
+   attribute plainly is enough to win; the defaults are system-ui, a blue
+   primary and a white dialog, none of which exist in this palette. */
+[uc-wgt-common] {
+  --uc-font-family: var(--font-sans);
+  --uc-font-size: var(--text-body);
+  --uc-line-height: var(--leading-body);
+  --uc-simple-btn-font-family: var(--font-sans);
+  --uc-simple-btn-font-size: var(--text-body);
+  --uc-radius: var(--radius-lg);
+
+  --uc-background: var(--color-bg);
+  --uc-foreground: var(--color-ink);
+  --uc-border: var(--color-divider);
+  --uc-dialog-shadow: var(--shadow-lg);
+
+  --uc-primary: var(--color-accent-strong);
+  --uc-primary-hover: var(--color-accent-800);
+  --uc-primary-foreground: var(--color-bg);
+  --uc-primary-transparent: var(--color-accent-100);
+
+  --uc-secondary: var(--color-surface);
+  --uc-secondary-hover: var(--color-accent-200);
+  --uc-secondary-foreground: var(--color-ink);
+
+  --uc-muted: var(--color-surface);
+  --uc-muted-foreground: var(--color-ink-muted);
+
+  --uc-destructive: var(--color-accent-900);
+  --uc-destructive-foreground: var(--color-bg);
+
+  --uc-simple-btn: transparent;
+  --uc-simple-btn-hover: var(--color-accent-100);
+  --uc-simple-btn-foreground: var(--color-accent-strong);
+}
