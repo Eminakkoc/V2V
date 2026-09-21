@@ -62,7 +62,10 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
   const initialSource = await resolveInitialSource(params.sourceId, deps);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:py-12">
+    // max-w-5xl, matching the header, the offline banner and /history. This
+    // page was the only one on max-w-6xl, so its content overhung the nav
+    // above it by 64px on each side while History lined up with it exactly.
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:py-12">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Create</h1>
         <p className="text-muted-foreground">
