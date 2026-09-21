@@ -12,14 +12,20 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    // The recovery spec is API-only — no page, no viewport — so a second run of
-    // it proves nothing and only draws down the per-IP rate-limit window that
-    // every spec shares (RATE_LIMITS.perIp, 30 per 10 minutes per scope).
+    // history-sheet.spec.ts drives the phone-only Filter sheet, which the
+    // FilterBar renders under a `md:hidden` class -- on the desktop viewport
+    // its trigger exists but is never visible, so that spec is mobile-only.
+    {
+      name: "desktop",
+      use: { ...devices["Desktop Chrome"] },
+      testIgnore: /history-sheet\.spec\.ts/,
+    },
+    // Both of these seed jobs or need no viewport, and every seed draws down
+    // the per-IP rate-limit window that all specs share.
     {
       name: "mobile",
       use: { ...devices["iPhone 13"] },
-      testIgnore: /transform-recovery\.spec\.ts/,
+      testIgnore: /transform-recovery\.spec\.ts|history\.spec\.ts/,
     },
   ],
   webServer: {
