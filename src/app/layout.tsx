@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { OfflineBanner } from "@/components/app-shell/offline-banner";
 import { TopBar } from "@/components/app-shell/top-bar";
 import { SessionBootstrap } from "@/components/session-bootstrap";
 import { Toaster } from "@/components/ui/sonner";
@@ -42,6 +43,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         </a>
         <TooltipProvider>
           <TopBar />
+          <OfflineBanner />
           <main id="main" className="flex flex-1 flex-col">
             {children}
           </main>

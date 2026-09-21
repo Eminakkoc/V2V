@@ -5,6 +5,7 @@ import type { StatusFilter } from "@/lib/history-filters";
 import { mergeRefreshed } from "@/lib/history-merge";
 import { CHANGEABLE_STATUSES, type JobStatus } from "@/lib/job-status";
 import { nextRefreshDelayMs } from "@/lib/history-refresh-schedule";
+import { isOnline, isOnlineOnServer, subscribeOnlineStatus } from "@/lib/online-status";
 
 function subscribeVisibility(onChange: () => void) {
   document.addEventListener("visibilitychange", onChange);
@@ -134,6 +135,7 @@ export function useHistoryRefresh({
   const failuresRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const visible = useSyncExternalStore(subscribeVisibility, isVisible, isVisibleOnServer);
+  const online = useSyncExternalStore(subscribeOnlineStatus, isOnline, isOnlineOnServer);
 
   const onTick = useEffectEvent(() => {
     void (async () => {
@@ -210,23 +212,24 @@ export function useHistoryRefresh({
   }, []);
 
   useEffect(() => {
-    if (delay === null || !visible) return;
+    if (delay === null || !visible || !online) return;
     const id = setInterval(() => onTick(), delay);
     return () => clearInterval(id);
-  }, [delay, visible]);
+  }, [delay, visible, online]);
 
-  const wasHiddenRef = useRef(false);
+  const wasPausedRef = useRef(false);
   useEffect(() => {
-    if (!visible) {
-      wasHiddenRef.current = true;
+    if (!visible || !online) {
+      wasPausedRef.current = true;
       return;
     }
-    if (!wasHiddenRef.current) return;
-    wasHiddenRef.current = false;
+    if (!wasPausedRef.current) return;
+    wasPausedRef.current = false;
     // Same sanctioned re-sync as the mount effect above, triggered by the tab
-    // becoming visible again instead of by mounting.
+    // becoming visible or the browser coming back online instead of by
+    // mounting.
     onTick();
-  }, [visible]);
+  }, [visible, online]);
 
   return { jobs, error, stalled };
 }

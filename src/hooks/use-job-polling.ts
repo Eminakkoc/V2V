@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { isOnline, isOnlineOnServer, subscribeOnlineStatus } from "@/lib/online-status";
 import { nextDelayMs } from "@/lib/polling-schedule";
 import { historyResponseSchema, type JobView } from "@/lib/transform-contract";
 
@@ -48,6 +49,7 @@ export function useJobPolling() {
   const failuresRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const visible = useSyncExternalStore(subscribeVisibility, isVisible, isVisibleOnServer);
+  const online = useSyncExternalStore(subscribeOnlineStatus, isOnline, isOnlineOnServer);
 
   const fetchOnce = useCallback(async () => {
     // A manual refresh() can race a scheduled tick; abort whatever is still
@@ -105,23 +107,24 @@ export function useJobPolling() {
   }, []);
 
   useEffect(() => {
-    if (delay === null || !visible) return;
+    if (delay === null || !visible || !online) return;
     const id = setInterval(() => onTick(), delay);
     return () => clearInterval(id);
-  }, [delay, visible]);
+  }, [delay, visible, online]);
 
-  const wasHiddenRef = useRef(false);
+  const wasPausedRef = useRef(false);
   useEffect(() => {
-    if (!visible) {
-      wasHiddenRef.current = true;
+    if (!visible || !online) {
+      wasPausedRef.current = true;
       return;
     }
-    if (!wasHiddenRef.current) return;
-    wasHiddenRef.current = false;
+    if (!wasPausedRef.current) return;
+    wasPausedRef.current = false;
     // Same sanctioned re-sync as the mount effect above, triggered by the tab
-    // becoming visible again instead of by mounting.
+    // becoming visible or the browser coming back online instead of by
+    // mounting.
     onTick();
-  }, [visible]);
+  }, [visible, online]);
 
   const refresh = useCallback(() => {
     void fetchOnce();

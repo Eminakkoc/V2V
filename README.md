@@ -267,10 +267,6 @@ recovery at all. Local development doesn't need it — see "Local development" a
   computes each job's duration (`endSeconds - startSeconds`) at query time rather than reading
   a stored, indexed field. This is fine at the scale of one browser's own history and would
   need a stored, indexed duration field to stay fast at a much larger scale.
-- **The offline banner was never built.** The architecture doc (section 16) and design finding
-  F25 both call for an app-wide banner that appears when the browser goes offline and pauses
-  polling; no cycle has implemented it (there are zero references to "offline" UI anywhere in
-  `src/`). Going offline today shows no indication at all.
 - **Timestamps are shown in UTC, not the reader's local time.** Every timestamp renders with an
   explicit "UTC" label rather than converting to the viewer's timezone, so the server-rendered
   and client-rendered strings are always identical and never mismatch on hydration. Converting

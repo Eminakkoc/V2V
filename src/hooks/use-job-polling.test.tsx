@@ -59,6 +59,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
 });
 
 describe("useJobPolling", () => {
@@ -198,5 +199,56 @@ describe("useJobPolling", () => {
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
     act(() => document.dispatchEvent(new Event("visibilitychange")));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("pauses while offline and refreshes immediately once back online", async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }))
+      .mockResolvedValueOnce(response({ active: { ...noneActive, processing: 1 } }));
+
+    renderHook(() => useJobPolling());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    act(() => window.dispatchEvent(new Event("offline")));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    act(() => window.dispatchEvent(new Event("online")));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not advance the consecutive-failure counter while offline", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockRejectedValue(new Error("still down"));
+      const { result } = renderHook(() => useJobPolling());
+
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result.current.stalled).toBe(false);
+
+      act(() => vi.advanceTimersByTime(10_000));
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+      act(() => window.dispatchEvent(new Event("offline")));
+
+      // Comfortably past enough 10s retry cadences to have reached the
+      // 5-failure stalled bound had ticking continued offline -- it must
+      // not have, so the count stays exactly where offline found it.
+      act(() => vi.advanceTimersByTime(60_000));
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.current.stalled).toBe(false);
+
+      Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+      act(() => window.dispatchEvent(new Event("online")));
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
