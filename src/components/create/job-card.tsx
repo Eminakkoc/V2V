@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useId } from "react";
+import { memo, useId } from "react";
 import { CopyableUrl } from "@/components/history/copyable-url";
 import { ParamSummary } from "@/components/history/param-summary";
 import { VideoPair } from "@/components/history/video-pair";
@@ -27,7 +27,15 @@ type JobCardProps = {
 // Figma "Job card" (58:3124) plus its stepper: the optimistic card inserted
 // after POST /api/transform. Status changes are announced via aria-live
 // without moving focus.
-export function JobCard({ job, cloudName, onRetry, retryDisabled = false }: JobCardProps) {
+// memo: this card shows a job the server owns, and nothing about editing the
+// draft below it can change what it says -- without this, every keystroke in
+// the form re-rendered the card and both of its players.
+export const JobCard = memo(function JobCard({
+  job,
+  cloudName,
+  onRetry,
+  retryDisabled = false,
+}: JobCardProps) {
   const titleId = useId();
   const running = job.status === "processing" || job.status === "finalizing";
 
@@ -91,4 +99,4 @@ export function JobCard({ job, cloudName, onRetry, retryDisabled = false }: JobC
       <Stepper job={job} />
     </div>
   );
-}
+});

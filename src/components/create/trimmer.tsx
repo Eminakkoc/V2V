@@ -98,6 +98,12 @@ function useThrottledSeek(onSeek: (second: number) => void) {
   }, []);
 }
 
+// Deliberately NOT memo()-wrapped. Under React 19.2 a memo component's
+// useEffectEvent is not refreshed when the component re-renders from its own
+// state: the DOM commits the new value (the Loop button's aria-pressed flips)
+// while useLoopPlayback's handler goes on reading the previous `looping`, so
+// turning the loop off silently stops working. The "leaves the preview alone
+// once looping is turned off" test catches exactly that.
 export function Trimmer({
   duration,
   maxClipSeconds,
