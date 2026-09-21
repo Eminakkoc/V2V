@@ -157,3 +157,34 @@ export async function dropFile(
   }, file);
   await target.dispatchEvent("drop", { dataTransfer });
 }
+
+// Axe samples computed colours, so it must not run while one is still being
+// interpolated. Waiting for a locator is not enough on its own: `toBeEnabled()`
+// resolves the moment the `disabled` attribute is gone, but the Button base
+// class pairs `transition-all` with `disabled:opacity-50`, so a button that has
+// just been enabled spends the transition somewhere between opacity .5 and 1 --
+// and it is no longer disabled, so WCAG 1.4.3's inactive-component exemption no
+// longer covers it and axe reports that intermediate colour as a real
+// contrast violation.
+//
+// `document.getAnimations()` reports CSS transitions as well as animations, so
+// awaiting their `finished` promises settles the page exactly rather than
+// sleeping for a guessed duration -- and it closes the whole class of
+// sampled-mid-transition races, not just the one on the drop-zone buttons.
+// Infinite animations (a spinner) are skipped because they never settle and are
+// not what the race is about; `finished` rejects on cancel, which is a settled
+// outcome too.
+export async function settleForAxe(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    const settling = document
+      .getAnimations()
+      .filter((animation) => {
+        const iterations = animation.effect?.getComputedTiming().iterations;
+        return iterations !== undefined && Number.isFinite(iterations);
+      })
+      .map((animation) => animation.finished.catch(() => undefined));
+    await Promise.all(settling);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  });
+}

@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_WEBHOOK_SECRET } from "./env";
-import { dropZone, fakeMagicHourId, fakeUuid, mockProviders, signWebhook } from "./helpers";
+import {
+  dropZone,
+  fakeMagicHourId,
+  fakeUuid,
+  mockProviders,
+  settleForAxe,
+  signWebhook,
+} from "./helpers";
 
 // Axe measures the settled page. On "/" the drop zone's buttons stay disabled
 // until the uploader's dynamic import resolves, and axe reports their muted
@@ -24,6 +31,7 @@ for (const { path, settled } of pages) {
   test(`${path} has no WCAG 2.1 A/AA violations`, async ({ page }) => {
     await page.goto(path);
     await settled(page);
+    await settleForAxe(page);
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
@@ -96,6 +104,7 @@ test("/history (with a transformation) has no WCAG 2.1 A/AA violations", async (
 
   await page.goto("/history");
   await expect(page.getByRole("region", { name: "a11y clip" })).toBeVisible();
+  await settleForAxe(page);
 
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
